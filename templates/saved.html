@@ -1,0 +1,111 @@
+{% extends "layout.html" %}
+{% from "macros.html" import card %}
+
+{% block title %}Saved - StudyLib{% endblock %}
+
+{% block active_saved %}active{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 900px;">
+    <div class="row">
+        <div class="col-12">
+            <h4 class="mb-4">
+                <i class="bi bi-bookmark-fill me-2"></i>
+                Saved Items
+                <span class="badge bg-primary ms-2" id="countBadge">{{ saved_items|length }}</span>
+            </h4>
+            <div class="row row-cols-2 row-cols-md-3 row-cols-lg-4 g-3" id="savedContainer">
+                {% for item in saved_items %}
+                <div class="col">
+                    {{ card(item) }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const savedItems = {{ saved_items|tojson }};
+</script>
+<script type="module">
+import { showToast } from "{{ url_for('static', filename='js/main.js') }}";
+
+function toggleSave(itemId) {
+    fetch('/api/item/unsave', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({item_id: itemId})
+    }).then(r => r.json()).then(result => {
+        if (result.status) {
+            showToast('Unsaved', 'success');
+            // Remove the card from DOM
+            const card = document.querySelector(`[data-item-id="${itemId}"]`).closest('.col');
+            card.remove();
+            // Update count
+            const countBadge = document.getElementById('countBadge');
+            countBadge.textContent = parseInt(countBadge.textContent) - 1;
+        }
+    });
+}
+
+function viewItem(item) {
+    if (window.openViewer) window.openViewer(item);
+}
+
+function addToWorkspace(item) {
+    fetch('/api/summarise', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url: item.source_url, title: item.title})
+    }).then(r => r.json()).then(result => {
+        if (result.status) {
+            fetch('/api/workspace/add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    item_id: item.id,
+                    summary: result.summary,
+                    bullets: result.bullets,
+                    relevance: result.relevance,
+                    citation_apa: 'APA citation',
+                    citation_harvard: 'Harvard citation'
+                })
+            }).then(r => r.json()).then(addResult => {
+                if (addResult.status) {
+                    showToast('Added to workspace', 'success');
+                }
+            });
+        } else {
+            showToast('Summarisation failed', 'danger');
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.save-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const itemId = parseInt(btn.dataset.itemId);
+            toggleSave(itemId);
+        });
+    });
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const itemId = parseInt(btn.dataset.itemId);
+            const item = savedItems.find(i => i.id === itemId);
+            if (item) viewItem(item);
+        });
+    });
+    document.querySelectorAll('.add-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const itemId = parseInt(btn.dataset.itemId);
+            const item = savedItems.find(i => i.id === itemId);
+            if (item) addToWorkspace(item);
+        });
+    });
+});
+</script>
+{% endblock %}

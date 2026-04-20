@@ -1,0 +1,49 @@
+{% macro card(item) %}
+<div class="card card-fixed shadow-sm rounded-3 h-100">
+    <img src="{{ item.thumb_url or '/static/img/placeholder.png' }}" class="card-img-top" style="height: 130px; object-fit: contain; background-color: var(--bs-body-secondary);" alt="">
+    <div class="card-body">
+        <h6 class="card-title text-truncate mb-1">{{ item.title }}</h6>
+        <p class="card-text small text-muted card-description mb-2">{{ item.description }}</p>
+        <div class="d-flex align-items-center justify-content-between">
+            <small class="text-muted"><i class="bi bi-globe2"></i> {{ item.source_name }}</small>
+            <button class="btn btn-link btn-sm p-0 save-btn" data-item-id="{{ item.id }}">
+                <i class="bi bi-bookmark{{ '-fill text-danger' if item.saved else '' }}"></i>
+            </button>
+        </div>
+    </div>
+    <div class="card-footer bg-transparent border-top p-2">
+        <button class="btn btn-outline-secondary btn-sm w-50 view-btn" data-item-id="{{ item.id }}">View</button>
+        <button class="btn btn-primary btn-sm w-50 add-btn" data-item-id="{{ item.id }}">Add</button>
+    </div>
+</div>
+{% endmacro %}
+{% macro workspace_card(item) %}
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center">
+        <h6 class="fw-semibold mb-0 text-truncate">{{ item.title }}</h6>
+        <span class="badge bg-secondary ms-2">{{ item.source_name }}</span>
+        <button class="btn btn-outline-danger btn-sm ms-auto remove-btn" data-id="{{ item.id }}">
+            <i class="bi bi-trash"></i>
+        </button>
+    </div>
+    <div class="card-body">
+        <p>{{ item.summary }}</p>
+        <button class="btn btn-link btn-sm p-0 toggle-bullets" data-bs-toggle="collapse" data-bs-target="#bullets-{{ item.id }}">
+            Key Points ▾
+        </button>
+        <div class="collapse mt-2" id="bullets-{{ item.id }}">
+            <ul>
+                {% for bullet in item.bullets %}
+                <li>{{ bullet }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% if item.relevance %}
+        <div class="alert alert-info mt-2"><i class="bi bi-lightbulb"></i> {{ item.relevance }}</div>
+        {% endif %}
+    </div>
+    <div class="card-footer bg-transparent">
+        <small class="font-monospace text-muted">{{ item.citation_apa }}</small>
+    </div>
+</div>
+{% endmacro %}

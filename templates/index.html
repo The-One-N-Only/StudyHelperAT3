@@ -1,0 +1,106 @@
+{% extends "layout.html" %}
+{% from "macros.html" import card %}
+
+{% block title %}Home - StudyLib{% endblock %}
+
+{% block active_home %}active{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 900px;">
+    <div class="row g-4">
+        <div class="col-12">
+            <h1 class="text-center mb-4">Welcome to StudyLib</h1>
+            <p class="text-center text-muted">Your verified academic study resource aggregator</p>
+        </div>
+        
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex align-items-center">
+                    <i class="bi bi-bookmark-fill me-2"></i>
+                    <h5 class="mb-0">Saved Items</h5>
+                    <a href="/saved" class="ms-auto btn btn-link btn-sm">View all →</a>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-3 overflow-x-auto pb-2 scroll-row" id="savedContainer">
+                        {% if user_data %}
+                        {% for item in user_data.saved %}
+                        {{ card(item) }}
+                        {% endfor %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex align-items-center">
+                    <i class="bi bi-eye me-2"></i>
+                    <h5 class="mb-0">Recently Viewed</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-3 overflow-x-auto pb-2 scroll-row" id="viewedContainer">
+                        {% if user_data %}
+                        {% for item in user_data.recently_viewed %}
+                        {{ card(item) }}
+                        {% endfor %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex align-items-center">
+                    <i class="bi bi-search me-2"></i>
+                    <h5 class="mb-0">Recently Searched</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-3 overflow-x-auto pb-2 scroll-row" id="searchedContainer">
+                        {% if user_data %}
+                        {% for item in user_data.recently_searched %}
+                        {{ card(item) }}
+                        {% endfor %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+import { createCard } from "{{ url_for('static', filename='js/card.js') }}";
+
+function updateHomeSections(data) {
+    const savedContainer = document.getElementById('savedContainer');
+    const viewedContainer = document.getElementById('viewedContainer');
+    const searchedContainer = document.getElementById('searchedContainer');
+    
+    savedContainer.innerHTML = '';
+    data.saved.forEach(item => {
+        savedContainer.appendChild(createCard(item));
+    });
+    
+    viewedContainer.innerHTML = '';
+    data.recently_viewed.forEach(item => {
+        viewedContainer.appendChild(createCard(item));
+    });
+    
+    searchedContainer.innerHTML = '';
+    data.recently_searched.forEach(item => {
+        searchedContainer.appendChild(createCard(item));
+    });
+}
+
+window.updateHomeSections = updateHomeSections;
+
+// Load on page load if logged in
+document.addEventListener('DOMContentLoaded', () => {
+    // Assume login updates this
+});
+</script>
+{% endblock %}

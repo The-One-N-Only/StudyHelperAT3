@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+
+{% block title %}Browse - StudyLib{% endblock %}
+
+{% block active_browse %}active{% endblock %}
+
+{% block content %}
+<div class="bg-body-tertiary border-bottom p-3">
+    <div class="container-fluid">
+        <div class="row g-3 align-items-end">
+            <div class="col">
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" id="searchInput" placeholder="Search verified academic sources...">
+                    <button class="btn btn-primary" id="goBtn">Go</button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label for="atnInput" class="form-label">Assessment Task (optional)</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="atnInput" placeholder="Enter your assessment task...">
+                    <button class="btn btn-outline-secondary" id="clearAtnBtn" type="button">×</button>
+                </div>
+                <div class="mt-1">
+                    <span class="badge bg-secondary" id="modeBadge">Search Mode</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex" style="height: calc(100vh - 200px);">
+    <div class="border-end p-3" style="width: 250px; overflow-y: auto;" id="filterContainer">
+        <!-- Filters will be populated by JS -->
+    </div>
+    <div class="flex-grow-1 p-3 overflow-y-auto" id="resultsContainer">
+        <div class="text-center py-5">
+            <i class="bi bi-mortarboard display-4 text-muted"></i>
+            <h5>Search verified academic sources</h5>
+            <p class="text-muted">Use the search bar above to find academic resources from trusted sources</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/search.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/card.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/viewer.js') }}"></script>
+{% endblock %}

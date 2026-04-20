@@ -1,0 +1,23 @@
+{
+  "domains": [
+    "en.wikipedia.org",
+    "scholar.google.com",
+    "pubmed.ncbi.nlm.nih.gov",
+    "www.jstor.org",
+    "eric.ed.gov",
+    "www.sciencedirect.com",
+    "link.springer.com",
+    "www.researchgate.net",
+    "www.academia.edu",
+    "books.google.com",
+    "www.britannica.com",
+    "www.bbc.co.uk",
+    "www.nationalgeographic.com"
+  ],
+  "domain_patterns": [
+    "*.edu.au",
+    "*.gov.au",
+    "*.ac.uk",
+    "*.edu"
+  ]
+}

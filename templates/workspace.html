@@ -1,0 +1,96 @@
+{% extends "layout.html" %}
+{% from "macros.html" import workspace_card %}
+
+{% block title %}Workspace - StudyLib{% endblock %}
+
+{% block active_workspace %}active{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <ul class="nav nav-tabs mb-4" id="workspaceTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="compilation-tab" data-bs-toggle="tab" data-bs-target="#compilation" type="button" role="tab">Compilation</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="notes-tab" data-bs-toggle="tab" data-bs-target="#notes" type="button" role="tab">Notes</button>
+        </li>
+    </ul>
+    <div class="tab-content" id="workspaceTabsContent">
+        <div class="tab-pane fade show active" id="compilation" role="tabpanel">
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <h4 class="mb-4">Compilation Workspace</h4>
+                    <div id="workspaceContainer">
+                        {% for item in workspace_items %}
+                        {{ workspace_card(item) }}
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card sticky-top">
+                        <div class="card-header">
+                            <i class="bi bi-gear me-2"></i>
+                            Compilation Settings
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="atnInput" class="form-label">Assessment Task</label>
+                                <input type="text" class="form-control" id="atnInput" placeholder="Optional assessment task...">
+                                <div class="form-text">This will be included in the exported document</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Citation Format</label>
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="citationFormat" id="apaRadio" value="apa" checked>
+                                    <label class="btn btn-outline-primary" for="apaRadio">APA</label>
+                                    <input type="radio" class="btn-check" name="citationFormat" id="harvardRadio" value="harvard">
+                                    <label class="btn btn-outline-primary" for="harvardRadio">Harvard</label>
+                                </div>
+                            </div>
+                            <hr>
+                            <button class="btn btn-outline-danger w-100 mb-2" id="exportPdfBtn">
+                                <i class="bi bi-file-pdf me-2"></i>
+                                Export PDF
+                            </button>
+                            <button class="btn btn-outline-primary w-100" id="exportDocxBtn">
+                                <i class="bi bi-file-word me-2"></i>
+                                Export DOCX
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="notes" role="tabpanel">
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <h4 class="mb-4">Notes</h4>
+                    <div id="notesContainer">
+                        <!-- Notes will be loaded here -->
+                    </div>
+                    <button class="btn btn-primary mt-3" id="createNoteBtn">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Create New Note
+                    </button>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card sticky-top">
+                        <div class="card-header">
+                            <i class="bi bi-info-circle me-2"></i>
+                            Notes Info
+                        </div>
+                        <div class="card-body">
+                            <p>Use this space to write notes, add code snippets, and upload images. Notes are saved automatically.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/workspace.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/notes.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,65 @@
+{
+  "filters": [
+    {
+      "title": "Source",
+      "id": "sourceRadio",
+      "name": "source",
+      "default": "wikipedia",
+      "type": "radio",
+      "options": [
+        {"id": "wikipedia", "name": "Wikipedia"},
+        {"id": "gbooks", "name": "Google Books"}
+      ],
+      "shown_source": null
+    },
+    {
+      "title": "Number of Results",
+      "id": "resultsSlider",
+      "name": "Number of Results",
+      "default": 5,
+      "type": "range",
+      "min": 1,
+      "max": 20,
+      "step": 1,
+      "shown_source": null
+    },
+    {
+      "title": "Download",
+      "id": "downloadRadio",
+      "name": "download",
+      "default": "none",
+      "type": "radio",
+      "options": [
+        {"id": "none", "name": "All"},
+        {"id": "epub", "name": "Epub only"}
+      ],
+      "shown_source": "gbooks"
+    },
+    {
+      "title": "Available Text",
+      "id": "availableRadio",
+      "name": "available",
+      "default": "partial",
+      "type": "radio",
+      "options": [
+        {"id": "partial", "name": "Partial Text"},
+        {"id": "free-ebooks", "name": "Free Ebook"},
+        {"id": "full", "name": "Full Text"}
+      ],
+      "shown_source": "gbooks"
+    },
+    {
+      "title": "Print Type",
+      "id": "printRadio",
+      "name": "print",
+      "default": "all",
+      "type": "radio",
+      "options": [
+        {"id": "all", "name": "All"},
+        {"id": "books", "name": "Books only"},
+        {"id": "magazines", "name": "Magazines only"}
+      ],
+      "shown_source": "gbooks"
+    }
+  ]
+}
