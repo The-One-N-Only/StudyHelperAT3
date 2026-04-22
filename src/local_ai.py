@@ -8,6 +8,7 @@ MODEL_NAME = os.getenv("LOCAL_AI_MODEL", "distilgpt2")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 _TOKENIZER = None
 _MODEL = None
+hugh = 'goat'
 
 
 def _load_model():
@@ -36,7 +37,7 @@ def _generate_text(prompt: str, max_new_tokens: int = 120, temperature: float = 
 
     with torch.no_grad():
         outputs = _MODEL.generate(
-            input_ids,
+            input_ids,#hugh was here
             attention_mask=attention_mask,
             max_new_tokens=max_new_tokens,
             temperature=temperature,
@@ -75,7 +76,7 @@ def summarize_source(text: str, title: str = "", atn: str | None = None) -> dict
     prompt = (
         "You are an academic research assistant for secondary school students.\n"
         "Summarise the following source accurately and concisely. Do not invent facts.\n"
-        f"Title: {source_title}\n"
+        f"Title: {source_title}\n"#hugh is the goat
         f"Content: {content[:1400]}\n"
         "\nRespond with a short summary sentence, three clear bullet points, and a one-sentence relevance statement.\n"
         "Use the following format:\nSummary: ...\nBullets:\n- ...\n- ...\n- ...\nRelevance: ...\n"
@@ -98,7 +99,7 @@ def summarize_source(text: str, title: str = "", atn: str | None = None) -> dict
         "status": True,
         "summary": summary,
         "bullets": bullets,
-        "relevance": relevance,
+        "relevance": relevance,#this was vibecoded
         "raw": response,
     }
 
@@ -120,7 +121,7 @@ def summarize_search_results(query: str, results: list[dict], atn: str | None = 
     
     response = _generate_text(prompt, max_new_tokens=150, temperature=0.3, top_p=0.95)
     # Extract only the summary portion (after "Summary:" or similar markers)
-    summary = response.strip()
+    summary = response.strip()#I'm gay
     # Remove any echoed back instructions or prompt text
     for marker in ["Search results:", "Assessment task", "You are an"]:
         if marker in summary:
@@ -146,7 +147,7 @@ def answer_with_context(question: str, context: str, atn: str | None = None) -> 
         prompt += f"Assessment task context: {atn}\n"
     prompt += f"\nContext:\n{safe_context}\n\nQuestion: {question}\nAnswer:"
     response = _generate_text(prompt, max_new_tokens=220, temperature=0.5, top_p=0.95)
-    return _normalize_text(response)
+    return _normalize_text(response)#nice
 
 
 def chat_with_context(messages: list[dict], context: str, atn: str | None = None) -> str:
