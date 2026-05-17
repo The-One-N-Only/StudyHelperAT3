@@ -32,6 +32,8 @@ class LocalAIClient:
         try:
             print(f"Loading model: {model_name}...")
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
             self.model = AutoModelForCausalLM.from_pretrained(model_name).to(self.device)
             print(f"Model loaded successfully!")
         except Exception as e:
@@ -58,18 +60,25 @@ class LocalAIClient:
             Generated completion text
         """
         try:
-            inputs = self.tokenizer.encode(prompt, return_tensors="pt").to(self.device)
-            
+            encoded = self.tokenizer(
+                prompt,
+                return_tensors="pt",
+                return_attention_mask=True,
+            )
+            inputs = encoded["input_ids"].to(self.device)
+            attention_mask = encoded["attention_mask"].to(self.device)
+
             with torch.no_grad():
                 outputs = self.model.generate(
                     inputs,
-                    max_new_tokens=max_length,  # Use max_new_tokens instead of max_length
+                    attention_mask=attention_mask,
+                    max_new_tokens=max_length,
                     temperature=temperature,
                     top_p=top_p,
                     do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id,
+                    pad_token_id=self.tokenizer.pad_token_id,
                 )
-            
+
             completion = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
             return completion
         except Exception as e:

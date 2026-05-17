@@ -3,276 +3,369 @@
 import { showToast } from '../main.js';
 
 let pageRoot = null;
-let workspaceItems = [];
+let currentWorkspaceId = null;
+let workspaces = [];
+let currentWorkspaceItems = [];
 let currentNoteId = null;
-let quill = null;
 
 export function initWorkspace(root, data = {}) {
     pageRoot = root;
-    workspaceItems = Array.isArray(data.workspace_items) ? data.workspace_items : [];
+    currentWorkspaceId = null;
+    loadWorkspaces();
+}
 
+function renderWorkspacePage() {
     pageRoot.innerHTML = `
         <div class="container-fluid py-4">
-            <ul class="nav nav-tabs mb-4" id="workspaceTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="compilation-tab" data-bs-toggle="tab" data-bs-target="#compilation" type="button" role="tab">Compilation</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="notes-tab" data-bs-toggle="tab" data-bs-target="#notes" type="button" role="tab">Notes</button>
-                </li>
-            </ul>
-            <div class="tab-content" id="workspaceTabsContent">
-                <div class="tab-pane fade show active" id="compilation" role="tabpanel">
-                    <div class="row g-4">
-                        <div class="col-lg-8">
-                            <h4 class="mb-4">Compilation Workspace</h4>
-                            <div id="workspaceContainer"></div>
-                        </div>
-                        <div class="col-lg-4">
-                            <div class="card sticky-top">
-                                <div class="card-header">
-                                    <i class="bi bi-gear me-2"></i>
-                                    Compilation Settings
-                                </div>
-                                <div class="card-body">
-                                    <div class="mb-3">
-                                        <label for="atnInput" class="form-label">Assessment Task</label>
-                                        <input type="text" class="form-control" id="atnInput" placeholder="Optional assessment task...">
-                                        <div class="form-text">This will be included in the exported document</div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Citation Format</label>
-                                        <div class="btn-group w-100" role="group">
-                                            <input type="radio" class="btn-check" name="citationFormat" id="apaRadio" value="apa" checked>
-                                            <label class="btn btn-outline-primary" for="apaRadio">APA</label>
-                                            <input type="radio" class="btn-check" name="citationFormat" id="harvardRadio" value="harvard">
-                                            <label class="btn btn-outline-primary" for="harvardRadio">Harvard</label>
-                                        </div>
-                                    </div>
-                                    <hr>
-                                    <button class="btn btn-outline-danger w-100 mb-2" id="exportPdfBtn">
-                                        <i class="bi bi-file-pdf me-2"></i>
-                                        Export PDF
-                                    </button>
-                                    <button class="btn btn-outline-primary w-100" id="exportDocxBtn">
-                                        <i class="bi bi-file-word me-2"></i>
-                                        Export DOCX
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+            <!-- Workspace Selector -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-folder me-2"></i>
+                        Workspaces
+                    </h5>
+                    <button class="btn btn-sm btn-primary" id="createWorkspaceBtn">
+                        <i class="bi bi-plus-lg me-1"></i>
+                        New Workspace
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="workspaceList" class="row g-2"></div>
+                </div>
+            </div>
+
+            <!-- Current Workspace View -->
+            <div id="workspaceDetailContainer"></div>
+        </div>
+    `;
+
+    renderWorkspaceList();
+    attachCreateWorkspaceListener();
+
+    if (workspaces.length > 0) {
+        selectWorkspace(workspaces[0].id);
+    }
+}
+
+function renderWorkspaceList() {
+    const container = pageRoot.querySelector('#workspaceList');
+    container.innerHTML = '';
+
+    if (workspaces.length === 0) {
+        container.innerHTML = '<p class="text-muted">No workspaces yet. Create one to get started!</p>';
+        return;
+    }
+
+    workspaces.forEach((workspace) => {
+        const isActive = workspace.id === currentWorkspaceId;
+        const btn = document.createElement('button');
+        btn.className = `btn btn-outline-primary position-relative ${isActive ? 'active' : ''}`;
+        btn.innerHTML = `
+            ${escapeHtml(workspace.name)}
+            <span class="badge bg-secondary ms-2">${workspace.item_count}</span>
+        `;
+        btn.addEventListener('click', () => selectWorkspace(workspace.id));
+
+        // Context menu
+        btn.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showWorkspaceContextMenu(workspace, e);
+        });
+
+        container.appendChild(btn);
+    });
+}
+
+function showWorkspaceContextMenu(workspace, event) {
+    const menu = document.createElement('div');
+    menu.className = 'dropdown-menu show';
+    menu.style.position = 'fixed';
+    menu.style.left = event.pageX + 'px';
+    menu.style.top = event.pageY + 'px';
+    menu.innerHTML = `
+        <button class="dropdown-item rename-workspace-btn" data-id="${workspace.id}">
+            <i class="bi bi-pencil me-2"></i>Rename
+        </button>
+        <button class="dropdown-item text-danger delete-workspace-btn" data-id="${workspace.id}">
+            <i class="bi bi-trash me-2"></i>Delete
+        </button>
+    `;
+
+    document.body.appendChild(menu);
+
+    menu.querySelector('.rename-workspace-btn').addEventListener('click', () => {
+        document.body.removeChild(menu);
+        renameWorkspaceDialog(workspace);
+    });
+
+    menu.querySelector('.delete-workspace-btn').addEventListener('click', () => {
+        document.body.removeChild(menu);
+        deleteWorkspaceDialog(workspace);
+    });
+
+    document.addEventListener('click', () => {
+        if (document.body.contains(menu)) document.body.removeChild(menu);
+    }, { once: true });
+}
+
+function selectWorkspace(workspaceId) {
+    currentWorkspaceId = workspaceId;
+    loadWorkspaceDetails();
+}
+
+function loadWorkspaceDetails() {
+    fetch(`/api/workspace/items?workspace_id=${currentWorkspaceId}`)
+        .then(r => r.json())
+        .then(data => {
+            currentWorkspaceItems = data.items || [];
+            renderWorkspaceDetail();
+        })
+        .catch(() => showToast('Failed to load workspace items', 'danger'));
+}
+
+function renderWorkspaceDetail() {
+    const workspace = workspaces.find(w => w.id === currentWorkspaceId);
+    if (!workspace) return;
+
+    const container = pageRoot.querySelector('#workspaceDetailContainer');
+    container.innerHTML = `
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <h4>${escapeHtml(workspace.name)} - Compilation</h4>
+                    </div>
+                    <div class="col-12">
+                        <div id="workspaceItemsContainer"></div>
                     </div>
                 </div>
-                <div class="tab-pane fade" id="notes" role="tabpanel">
-                    <div class="row g-4">
-                        <div class="col-lg-8">
-                            <h4 class="mb-4">Notes</h4>
-                            <div id="notesContainer"></div>
-                            <button class="btn btn-primary mt-3" id="createNoteBtn">
-                                <i class="bi bi-plus-circle me-2"></i>
-                                Create New Note
-                            </button>
+            </div>
+            <div class="col-lg-4">
+                <div class="card sticky-top">
+                    <div class="card-header">
+                        <i class="bi bi-gear me-2"></i>
+                        Compilation Settings
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="atnInput" class="form-label">Assessment Task</label>
+                            <input type="text" class="form-control" id="atnInput" placeholder="Optional assessment task...">
+                            <div class="form-text">This will be included in the exported document</div>
                         </div>
-                        <div class="col-lg-4">
-                            <div class="card sticky-top">
-                                <div class="card-header">
-                                    <i class="bi bi-info-circle me-2"></i>
-                                    Notes Info
-                                </div>
-                                <div class="card-body">
-                                    <p>Use this space to write notes, add code snippets, and upload images. Notes are saved automatically.</p>
-                                </div>
+                        <div class="mb-3">
+                            <label class="form-label">Citation Format</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="citationFormat" id="apaRadio" value="apa" checked>
+                                <label class="btn btn-outline-primary" for="apaRadio">APA</label>
+                                <input type="radio" class="btn-check" name="citationFormat" id="harvardRadio" value="harvard">
+                                <label class="btn btn-outline-primary" for="harvardRadio">Harvard</label>
                             </div>
                         </div>
+                        <hr>
+                        <button class="btn btn-outline-danger w-100 mb-2" id="exportPdfBtn">
+                            <i class="bi bi-file-pdf me-2"></i>
+                            Export PDF
+                        </button>
+                        <button class="btn btn-outline-primary w-100 mb-3" id="exportDocxBtn">
+                            <i class="bi bi-file-word me-2"></i>
+                            Export DOCX
+                        </button>
+                        <hr>
+                        <h6>Notes for this Workspace</h6>
+                        <div id="notesListContainer" class="mb-3"></div>
+                        <button class="btn btn-sm btn-primary w-100" id="createNoteBtn">
+                            <i class="bi bi-plus-lg me-1"></i>
+                            Add Note
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
+        <div id="noteEditorModal"></div>
     `;
 
-    renderWorkspaceItems(workspaceItems);
-    attachWorkspaceListeners();
-    registerWorkspaceActions();
-    registerNotesActions();
+    renderWorkspaceItems();
+    loadWorkspaceNotes();
+    attachWorkspaceDetailListeners();
 }
 
-function renderWorkspaceItems(items) {
-    const container = pageRoot.querySelector('#workspaceContainer');
-    if (!items.length) {
-        container.innerHTML = `
-            <div class="empty-state text-center p-5 border rounded-3">
-                <i class="bi bi-collection display-4 text-muted"></i>
-                <h5 class="mt-3">Your workspace is empty</h5>
-                <p class="text-muted">Add sources from the Browse page to build your compilation.</p>
-                <a href="/browse" class="btn btn-primary mt-3">Browse Sources</a>
-            </div>
-        `;
+function renderWorkspaceItems() {
+    const container = pageRoot.querySelector('#workspaceItemsContainer');
+    if (!currentWorkspaceItems || currentWorkspaceItems.length === 0) {
+        container.innerHTML = `<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No items in this workspace yet. Add sources from the Browse page.</div>`;
         return;
     }
 
     container.innerHTML = '';
-    items.forEach((item) => {
-        container.appendChild(createWorkspaceCard(item));
-    });
-}
-
-function createWorkspaceCard(item) {
-    const card = document.createElement('div');
-    card.className = 'card mb-3';
-    card.innerHTML = `
-        <div class="card-header d-flex align-items-center">
-            <h6 class="fw-semibold mb-0 text-truncate">${escapeHtml(item.title)}</h6>
-            <span class="badge bg-secondary ms-2">${escapeHtml(item.source_name)}</span>
-            <button class="btn btn-outline-danger btn-sm ms-auto remove-btn" data-id="${item.id}">
-                <i class="bi bi-trash"></i>
-            </button>
-        </div>
-        <div class="card-body">
-            <p>${escapeHtml(item.summary)}</p>
-            <button class="btn btn-link btn-sm p-0 toggle-bullets" data-bs-toggle="collapse" data-bs-target="#bullets-${item.id}">
-                Key Points ▾
-            </button>
-            <div class="collapse mt-2" id="bullets-${item.id}">
-                <ul>
-                    ${Array.isArray(item.bullets)
-                        ? item.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')
-                        : ''}
-                </ul>
+    currentWorkspaceItems.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = 'card mb-3';
+        card.innerHTML = `
+            <div class="card-header d-flex align-items-center">
+                <h6 class="fw-semibold mb-0 text-truncate">${escapeHtml(item.title)}</h6>
+                <span class="badge bg-secondary ms-2">${escapeHtml(item.source_name)}</span>
+                <button class="btn btn-outline-danger btn-sm ms-auto remove-btn" data-id="${item.id}">
+                    <i class="bi bi-trash"></i>
+                </button>
             </div>
-            ${item.relevance ? `<div class="alert alert-info mt-2"><i class="bi bi-lightbulb"></i> ${escapeHtml(item.relevance)}</div>` : ''}
-        </div>
-        <div class="card-footer bg-transparent">
-            <small class="font-monospace text-muted">${escapeHtml(item.citation_apa)}</small>
-        </div>
-    `;
-    return card;
-}
+            <div class="card-body">
+                <p>${escapeHtml(item.summary)}</p>
+                <button class="btn btn-link btn-sm p-0 toggle-bullets" data-bs-toggle="collapse" data-bs-target="#bullets-${item.id}">
+                    Key Points ▾
+                </button>
+                <div class="collapse mt-2" id="bullets-${item.id}">
+                    <ul>
+                        ${Array.isArray(item.bullets)
+                            ? item.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')
+                            : ''}
+                    </ul>
+                </div>
+                ${item.relevance ? `<div class="alert alert-info mt-2"><i class="bi bi-lightbulb"></i> ${escapeHtml(item.relevance)}</div>` : ''}
+            </div>
+            <div class="card-footer bg-transparent">
+                <small class="font-monospace text-muted">${escapeHtml(item.citation_apa)}</small>
+            </div>
+        `;
+        container.appendChild(card);
+    });
 
-function attachWorkspaceListeners() {
-    const removeButtons = pageRoot.querySelectorAll('.remove-btn');
-    removeButtons.forEach((btn) => {
+    container.querySelectorAll('.remove-btn').forEach(btn => {
         btn.addEventListener('click', () => removeFromWorkspace(btn.dataset.id));
     });
 }
 
-function registerWorkspaceActions() {
+function loadWorkspaceNotes() {
+    fetch(`/api/workspaces/${currentWorkspaceId}/notes`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status) {
+                renderWorkspaceNotes(data.notes || []);
+            }
+        })
+        .catch(() => showToast('Failed to load notes', 'danger'));
+}
+
+function renderWorkspaceNotes(notes) {
+    const container = pageRoot.querySelector('#notesListContainer');
+    container.innerHTML = '';
+
+    if (notes.length === 0) {
+        container.innerHTML = '<p class="text-muted small">No notes yet</p>';
+        return;
+    }
+
+    notes.forEach((note) => {
+        const noteBtn = document.createElement('button');
+        noteBtn.className = 'btn btn-sm btn-outline-secondary w-100 text-start mb-2 text-truncate edit-note-btn';
+        noteBtn.dataset.id = note.id;
+        noteBtn.title = note.title;
+        noteBtn.textContent = '📝 ' + note.title;
+        container.appendChild(noteBtn);
+
+        noteBtn.addEventListener('click', () => editNote(note.id));
+    });
+}
+
+function attachWorkspaceDetailListeners() {
     const exportPdfBtn = pageRoot.querySelector('#exportPdfBtn');
     const exportDocxBtn = pageRoot.querySelector('#exportDocxBtn');
-    exportPdfBtn.addEventListener('click', () => exportWorkspace('pdf'));
-    exportDocxBtn.addEventListener('click', () => exportWorkspace('docx'));
+    const createNoteBtn = pageRoot.querySelector('#createNoteBtn');
+
+    if (exportPdfBtn) exportPdfBtn.addEventListener('click', () => exportWorkspace('pdf'));
+    if (exportDocxBtn) exportDocxBtn.addEventListener('click', () => exportWorkspace('docx'));
+    if (createNoteBtn) createNoteBtn.addEventListener('click', () => createNote());
 }
 
-function removeFromWorkspace(id) {
+function attachCreateWorkspaceListener() {
+    const btn = pageRoot.querySelector('#createWorkspaceBtn');
+    if (btn) btn.addEventListener('click', createWorkspaceDialog);
+}
+
+function removeFromWorkspace(itemId) {
     if (!confirm('Remove from workspace?')) return;
-    fetch(`/api/workspace/${id}`, { method: 'DELETE' })
-        .then((r) => r.json())
-        .then((result) => {
+    fetch(`/api/workspace/${itemId}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(result => {
             if (result.status) {
                 showToast('Removed', 'success');
-                loadWorkspaceData();
-            }
-        });
-}
-
-function loadWorkspaceData() {
-    fetch('/api/workspace/items')
-        .then((r) => r.json())
-        .then((result) => {
-            if (result.status) {
-                workspaceItems = result.items || [];
-                renderWorkspaceItems(workspaceItems);
-                attachWorkspaceListeners();
+                loadWorkspaceDetails();
             }
         });
 }
 
 function exportWorkspace(format) {
-    fetch('/api/workspace/items')
-        .then((r) => r.json())
-        .then((result) => {
-            const items = result.items || [];
-            const atn = pageRoot.querySelector('#atnInput').value;
-            const citation_format = pageRoot.querySelector('input[name="citationFormat"]:checked').value;
-            return fetch(`/api/export/${format}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ items, citation_format, atn })
-            });
-        })
-        .then((r) => {
-            if (!r || !r.ok) return null;
-            return r.blob();
-        })
-        .then((blob) => {
-            if (!blob) return;
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `StudyLib_Compilation.${format}`;
-            a.click();
-            URL.revokeObjectURL(url);
-            showToast(`Exported as ${format.toUpperCase()}`, 'success');
-        });
+    const atn = pageRoot.querySelector('#atnInput')?.value || '';
+    const citation_format = pageRoot.querySelector('input[name="citationFormat"]:checked')?.value || 'apa';
+
+    fetch(`/api/export/${format}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: currentWorkspaceItems, citation_format, atn })
+    })
+    .then(r => r.blob())
+    .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `StudyLib_Compilation.${format}`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(`Exported as ${format.toUpperCase()}`, 'success');
+    })
+    .catch(() => showToast('Export failed', 'danger'));
 }
 
-function registerNotesActions() {
-    const notesTab = pageRoot.querySelector('#notes-tab');
-    const createNoteBtn = pageRoot.querySelector('#createNoteBtn');
+function createWorkspaceDialog() {
+    const name = prompt('Enter workspace name:', 'New Workspace');
+    if (!name) return;
 
-    if (notesTab) {
-        notesTab.addEventListener('shown.bs.tab', loadNotes);
-    }
-
-    if (createNoteBtn) {
-        createNoteBtn.addEventListener('click', createNote);
-    }
+    fetch('/api/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status) {
+            showToast('Workspace created', 'success');
+            loadWorkspaces();
+        }
+    })
+    .catch(() => showToast('Failed to create workspace', 'danger'));
 }
 
-function loadNotes() {
-    fetch('/api/notes')
-        .then((r) => r.json())
-        .then((data) => {
-            if (data.status) {
-                displayNotes(data.notes);
-            } else {
-                showToast('Failed to load notes', 'danger');
+function renameWorkspaceDialog(workspace) {
+    const newName = prompt('Enter new name:', workspace.name);
+    if (!newName) return;
+
+    fetch(`/api/workspaces/${workspace.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status) {
+            showToast('Workspace renamed', 'success');
+            loadWorkspaces();
+        }
+    })
+    .catch(() => showToast('Failed to rename workspace', 'danger'));
+}
+
+function deleteWorkspaceDialog(workspace) {
+    if (!confirm(`Delete "${workspace.name}" and all its items?`)) return;
+
+    fetch(`/api/workspaces/${workspace.id}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(result => {
+            if (result.status) {
+                showToast('Workspace deleted', 'success');
+                currentWorkspaceId = null;
+                loadWorkspaces();
             }
         })
-        .catch(() => {
-            showToast('Error loading notes', 'danger');
-        });
-}
-
-function displayNotes(notes) {
-    const container = pageRoot.querySelector('#notesContainer');
-    container.innerHTML = '';
-    if (!notes.length) {
-        container.innerHTML = '<p class="text-muted">No notes yet. Create your first note!</p>';
-        return;
-    }
-
-    notes.forEach((note) => {
-        const noteCard = document.createElement('div');
-        noteCard.className = 'card mb-3';
-        noteCard.innerHTML = `
-            <div class="card-body">
-                <h5 class="card-title">${escapeHtml(note.title)}</h5>
-                <p class="card-text text-muted small">Updated: ${new Date(note.time_updated * 1000).toLocaleString()}</p>
-                <div class="btn-group">
-                    <button class="btn btn-sm btn-outline-primary edit-note-btn" data-id="${note.id}">Edit</button>
-                    <button class="btn btn-sm btn-outline-danger delete-note-btn" data-id="${note.id}">Delete</button>
-                </div>
-            </div>
-        `;
-        container.appendChild(noteCard);
-    });
-
-    pageRoot.querySelectorAll('.edit-note-btn').forEach((btn) => {
-        btn.addEventListener('click', () => editNote(btn.dataset.id));
-    });
-    pageRoot.querySelectorAll('.delete-note-btn').forEach((btn) => {
-        btn.addEventListener('click', () => deleteNote(btn.dataset.id));
-    });
+        .catch(() => showToast('Failed to delete workspace', 'danger'));
 }
 
 function createNote() {
@@ -281,139 +374,107 @@ function createNote() {
 }
 
 function editNote(noteId) {
-    fetch(`/api/notes/${noteId}`)
-        .then((r) => r.json())
-        .then((data) => {
-            if (data.status) {
+    fetch(`/api/workspaces/${currentWorkspaceId}/notes`)
+        .then(r => r.json())
+        .then(data => {
+            const note = data.notes.find(n => n.id === parseInt(noteId));
+            if (note) {
                 currentNoteId = noteId;
-                showNoteEditor(data.note.title, data.note.content);
-            } else {
-                showToast('Failed to load note', 'danger');
+                showNoteEditor(note.title, note.content);
             }
-        })
-        .catch(() => {
-            showToast('Error loading note', 'danger');
         });
 }
 
 function showNoteEditor(title, content) {
-    const container = pageRoot.querySelector('#notesContainer');
-    container.innerHTML = `
-        <div class="card">
-            <div class="card-header">
-                <input type="text" id="noteTitle" class="form-control" placeholder="Note Title" value="${escapeHtml(title)}">
-            </div>
-            <div class="card-body">
-                <div id="editor" style="height: 400px;"></div>
-            </div>
-            <div class="card-footer">
-                <button class="btn btn-success me-2" id="saveNoteBtn">Save</button>
-                <button class="btn btn-secondary" id="cancelNoteBtn">Cancel</button>
+    const modal = pageRoot.querySelector('#noteEditorModal');
+    modal.innerHTML = `
+        <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">${currentNoteId ? 'Edit Note' : 'New Note'}</h5>
+                        <button type="button" class="btn-close" id="closeModalBtn"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="text" class="form-control mb-3" id="noteTitleInput" placeholder="Note title" value="${escapeHtml(title)}">
+                        <textarea class="form-control" id="noteContentInput" rows="10" placeholder="Note content">${escapeHtml(content)}</textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="cancelNoteBtn">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="saveNoteBtn">${currentNoteId ? 'Update' : 'Create'}</button>
+                    </div>
+                </div>
             </div>
         </div>
     `;
 
-    quill = new Quill('#editor', {
-        theme: 'snow',
-        modules: {
-            toolbar: {
-                container: [
-                    [{ header: [1, 2, 3, false] }],
-                    ['bold', 'italic', 'underline'],
-                    ['link', 'image'],
-                    [{ list: 'ordered' }, { list: 'bullet' }],
-                    ['blockquote', 'code-block'],
-                    [{ color: [] }, { background: [] }],
-                    ['clean']
-                ],
-                handlers: {
-                    image: imageHandler
-                }
-            }
-        }
-    });
-
-    if (content) {
-        quill.root.innerHTML = content;
-    }
-
-    pageRoot.querySelector('#saveNoteBtn').addEventListener('click', saveNote);
-    pageRoot.querySelector('#cancelNoteBtn').addEventListener('click', loadNotes);
+    modal.querySelector('#closeModalBtn').addEventListener('click', closeNoteEditor);
+    modal.querySelector('#cancelNoteBtn').addEventListener('click', closeNoteEditor);
+    modal.querySelector('#saveNoteBtn').addEventListener('click', saveNote);
 }
 
 function saveNote() {
-    const title = pageRoot.querySelector('#noteTitle').value.trim();
-    const content = quill.root.innerHTML;
+    const title = pageRoot.querySelector('#noteTitleInput').value.trim();
+    const content = pageRoot.querySelector('#noteContentInput').value.trim();
+
     if (!title) {
-        showToast('Title is required', 'warning');
+        showToast('Please enter a note title', 'warning');
         return;
     }
 
-    const method = currentNoteId ? 'PUT' : 'POST';
-    const url = currentNoteId ? `/api/notes/${currentNoteId}` : '/api/notes';
-
-    fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content })
-    })
-        .then((r) => r.json())
-        .then((data) => {
-            if (data.status) {
-                showToast(currentNoteId ? 'Note updated' : 'Note created', 'success');
-                loadNotes();
-            } else {
-                showToast('Failed to save note', 'danger');
+    if (currentNoteId) {
+        fetch(`/api/notes/${currentNoteId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content })
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.status) {
+                showToast('Note updated', 'success');
+                closeNoteEditor();
+                loadWorkspaceNotes();
             }
         })
-        .catch(() => {
-            showToast('Error saving note', 'danger');
-        });
-}
-
-function deleteNote(noteId) {
-    if (!confirm('Delete note?')) return;
-    fetch(`/api/notes/${noteId}`, { method: 'DELETE' })
-        .then((r) => r.json())
-        .then((data) => {
-            if (data.status) {
-                showToast('Note deleted', 'success');
-                loadNotes();
-            }
-        });
-}
-
-function imageHandler() {
-    const input = document.createElement('input');
-    input.setAttribute('type', 'file');
-    input.setAttribute('accept', 'image/*');
-    input.click();
-    input.onchange = () => {
-        const file = input.files[0];
-        if (!file) return;
-        const formData = new FormData();
-        formData.append('file', file);
-        fetch('/api/files/upload', {
+        .catch(() => showToast('Failed to update note', 'danger'));
+    } else {
+        fetch(`/api/workspaces/${currentWorkspaceId}/notes`, {
             method: 'POST',
-            body: formData
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content })
         })
-            .then((r) => r.json())
-            .then((data) => {
-                if (data.status && quill) {
-                    const range = quill.getSelection();
-                    quill.insertEmbed(range.index, 'image', data.url);
-                } else {
-                    showToast('Failed to upload image', 'danger');
-                }
-            })
-            .catch(() => {
-                showToast('Error uploading image', 'danger');
-            });
-    };
+        .then(r => r.json())
+        .then(result => {
+            if (result.status) {
+                showToast('Note created', 'success');
+                closeNoteEditor();
+                loadWorkspaceNotes();
+            }
+        })
+        .catch(() => showToast('Failed to create note', 'danger'));
+    }
 }
 
-function escapeHtml(value) {
+function closeNoteEditor() {
+    const modal = pageRoot.querySelector('#noteEditorModal');
+    if (modal) modal.innerHTML = '';
+    currentNoteId = null;
+}
+
+function loadWorkspaces() {
+    fetch('/api/workspaces')
+        .then(r => r.json())
+        .then(data => {
+            if (data.status) {
+                workspaces = data.workspaces || [];
+                renderWorkspacePage();
+            }
+        })
+        .catch(() => showToast('Failed to load workspaces', 'danger'));
+}
+
+function escapeHtml(text) {
     const div = document.createElement('div');
-    div.textContent = value;
+    div.textContent = text;
     return div.innerHTML;
 }

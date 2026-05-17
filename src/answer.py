@@ -1,14 +1,21 @@
-import anthropic
 import os
-from typing import Optional
-import src.db as db
-import src.proxy as proxy
-import src.whitelist as whitelist
 import logging
+from typing import Optional
 from urllib.parse import quote
 
-# Initialize Anthropic client
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+import src.db as db
+import src.local_ai as local_ai
+import src.proxy as proxy
+import src.search as search
+import src.whitelist as whitelist
+import src.pubmed as pubmed
+
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+USE_LOCAL_AI = os.getenv("USE_LOCAL_AI", "1") != "0"
+
+if not USE_LOCAL_AI and ANTHROPIC_API_KEY:
+    import anthropic
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 def search_files_for_context(user_id: int, query: str, num_results: int = 5) -> dict:
     """
@@ -110,6 +117,47 @@ def search_wikipedia_for_context(query: str) -> dict:
         return {"status": True, "context": "", "source": None}
 
 
+def gather_whitelisted_context(query: str, user_id: int, num_results: int = 3) -> dict:
+    context_text = ""
+    sources = []
+
+    wiki_context = search_wikipedia_for_context(query)
+    if wiki_context["context"]:
+        context_text += wiki_context["context"]
+        if wiki_context["source"]:
+            sources.append(wiki_context["source"])
+
+    try:
+        gbooks_results = search.gbooks(query, num_results, {}, user_id=user_id)
+        for item in gbooks_results[:2]:
+            title = item.get("title", "")
+            description = item.get("description", "")
+            url = item.get("source_url", "")
+            if description:
+                context_text += f"**Information from Google Books ({title}):**\n{description}\n\n"
+                sources.append({"type": "gbooks", "title": title, "url": url})
+    except Exception:
+        pass
+
+    try:
+        pubmed_results = pubmed.search(query, num_results, [], None, None, user_id=user_id)
+        for item in pubmed_results[:2]:
+            title = item.get("title", "")
+            description = item.get("description", "")
+            url = item.get("source_url", "")
+            if description:
+                context_text += f"**Information from PubMed ({title}):**\n{description}\n\n"
+                sources.append({"type": "pubmed", "title": title, "url": url})
+    except Exception:
+        pass
+
+    return {
+        "status": True,
+        "context": context_text,
+        "sources": sources
+    }
+
+
 def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optional[str] = None) -> dict:
     """
     Answer a user prompt using information from uploaded files and optionally web sources.
@@ -129,38 +177,36 @@ def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optio
         context_text = file_context["context"]
         all_sources = file_context["sources"].copy()
         
-        # Optionally search web
+        # Optionally search web and whitelisted sources
         if search_web:
-            wiki_context = search_wikipedia_for_context(prompt)
-            if wiki_context["context"]:
-                context_text += wiki_context["context"]
-                if wiki_context["source"]:
-                    all_sources.append(wiki_context["source"])
+            web_context = gather_whitelisted_context(prompt, user_id)
+            if web_context["context"]:
+                context_text += web_context["context"]
+                all_sources.extend(web_context["sources"])
         
-        # Build system prompt
-        system_prompt = """You are an academic research assistant for secondary school students. 
+        if USE_LOCAL_AI or not ANTHROPIC_API_KEY:
+            answer_text = local_ai.answer_with_context(prompt, context_text, atn=atn)
+        else:
+            system_prompt = """You are an academic research assistant for secondary school students. 
 You provide accurate, well-reasoned answers based on the information provided. 
 You never fabricate information or cite sources not provided in the context.
 If the provided information is insufficient to answer the question, clearly state that.
 Format your answer clearly with key points where appropriate."""
-        
-        if atn:
-            system_prompt += f"\n\nAssessment Task Context: {atn}"
-        
-        # Build user message with context
-        user_message = f"{context_text}\n---\n\nQuestion: {prompt}\n\nPlease answer this question based on the above information."
-        
-        # Call Claude API
-        message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=2048,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": user_message}
-            ]
-        )
-        
-        answer_text = message.content[0].text
+            
+            if atn:
+                system_prompt += f"\n\nAssessment Task Context: {atn}"
+            
+            user_message = f"{context_text}\n---\n\nQuestion: {prompt}\n\nPlease answer this question based on the above information."
+            
+            message = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=2048,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_message}
+                ]
+            )
+            answer_text = message.content[0].text
         
         logging.info(f"User {user_id} received AI answer for prompt: {prompt[:50]}")
         
@@ -200,26 +246,32 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None) -
         context_text = file_context["context"]
         all_sources = file_context["sources"].copy()
         
-        system_prompt = """You are an academic research assistant for secondary school students.
+        web_context = gather_whitelisted_context(last_user_message, user_id)
+        if web_context["context"]:
+            context_text += web_context["context"]
+            all_sources.extend(web_context["sources"])
+        
+        if USE_LOCAL_AI or not ANTHROPIC_API_KEY:
+            response_text = local_ai.chat_with_context(messages, context_text, atn=atn)
+        else:
+            system_prompt = """You are an academic research assistant for secondary school students.
 You provide accurate, well-reasoned answers based on the information provided.
 You never fabricate information or cite sources not provided in the context.
 Engage naturally in conversation while maintaining academic rigor."""
-        
-        if atn:
-            system_prompt += f"\n\nAssessment Task Context: {atn}"
-        
-        if context_text:
-            system_prompt += f"\n\nContext from your files:\n{context_text}"
-        
-        # Call Claude API with message history
-        response = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=2048,
-            system=system_prompt,
-            messages=messages
-        )
-        
-        response_text = response.content[0].text
+            
+            if atn:
+                system_prompt += f"\n\nAssessment Task Context: {atn}"
+            
+            if context_text:
+                system_prompt += f"\n\nContext from your files:\n{context_text}"
+            
+            response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=2048,
+                system=system_prompt,
+                messages=messages
+            )
+            response_text = response.content[0].text
         
         logging.info(f"User {user_id} had multi-turn conversation")
         

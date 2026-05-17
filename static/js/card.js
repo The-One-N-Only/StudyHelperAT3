@@ -55,32 +55,48 @@ function viewItem(item) {
 }
 
 function addToWorkspace(item) {
+    if (!item.source_url) {
+        showToast('Unable to add item: missing source URL', 'danger');
+        return;
+    }
+    
     // Summarise and add
     fetch('/api/summarise', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({url: item.source_url, title: item.title})
-    }).then(r => r.json()).then(result => {
+        body: JSON.stringify({url: item.source_url, title: item.title || 'Untitled'})
+    })
+    .then(r => r.json())
+    .then(result => {
         if (result.status) {
-            // Add to workspace
-            fetch('/api/workspace/add', {
+            // Add to workspace (will auto-create default workspace if needed)
+            return fetch('/api/workspace/add', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     item_id: item.id,
-                    summary: result.summary,
-                    bullets: result.bullets,
-                    relevance: result.relevance,
-                    citation_apa: 'APA citation', // Generate
+                    summary: result.summary || '',
+                    bullets: Array.isArray(result.bullets) ? result.bullets : [],
+                    relevance: result.relevance || '',
+                    citation_apa: 'APA citation',
                     citation_harvard: 'Harvard citation'
                 })
-            }).then(r => r.json()).then(addResult => {
-                if (addResult.status) {
-                    showToast('Added to workspace', 'success');
-                }
             });
         } else {
-            showToast('Summarisation failed', 'danger');
+            showToast('Summarisation failed: ' + (result.error || 'Unknown error'), 'danger');
+            throw new Error('Summarisation failed');
         }
+    })
+    .then(r => r.json())
+    .then(addResult => {
+        if (addResult.status) {
+            showToast('Added to workspace', 'success');
+        } else {
+            showToast('Failed to add to workspace: ' + (addResult.error || 'Unknown error'), 'danger');
+        }
+    })
+    .catch((error) => {
+        console.error('Add to workspace error:', error);
+        showToast('Error adding to workspace', 'danger');
     });
 }

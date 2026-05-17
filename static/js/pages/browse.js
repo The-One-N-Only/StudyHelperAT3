@@ -35,10 +35,17 @@ export function initBrowse(root) {
         <div class="d-flex" style="height: calc(100vh - 200px);">
             <div class="border-end p-3" style="width: 250px; overflow-y: auto;" id="filterContainer"></div>
             <div class="flex-grow-1 p-3 overflow-y-auto">
-                <div id="aiSummaryBox" class="card mb-4 d-none">
-                    <div class="card-body">
-                        <h5 class="card-title">AI Overview</h5>
-                        <p class="card-text text-muted ai-summary-text">A high-level summary of the search results will appear here once AI summarisation is available.</p>
+                <div id=\"aiSummaryBox\" class=\"card mb-4 d-none\" style=\"max-width: 600px;\">
+                    <div class=\"card-header p-2\" style=\"cursor: pointer;\" data-bs-toggle=\"collapse\" data-bs-target=\"#aiSummaryContent\">
+                        <h6 class=\"mb-0\">
+                            <i class=\"bi bi-chevron-down me-2\" id=\"summaryChevron\"></i>
+                            <strong>AI Overview</strong>
+                        </h6>
+                    </div>
+                    <div class=\"collapse show\" id=\"aiSummaryContent\">
+                        <div class=\"card-body p-3\">
+                            <p class=\"card-text text-muted ai-summary-text small mb-0\">Generating summary...</p>
+                        </div>
                     </div>
                 </div>
                 <div id="resultsContainer">
@@ -217,7 +224,7 @@ function renderResults(results, query) {
 
     const summaryBox = pageRoot.querySelector('#aiSummaryBox');
     summaryBox.classList.remove('d-none');
-    summaryBox.querySelector('.ai-summary-text').innerHTML = `A high-level summary of the search results for <strong>${escapeHtml(query)}</strong> will appear here once AI summarisation is available.`;
+    summaryBox.querySelector('.ai-summary-text').innerHTML = `Generating summary for <strong>${escapeHtml(query)}</strong>...`;
 
     if (results.length === 0) {
         showNoResults();
@@ -233,6 +240,37 @@ function renderResults(results, query) {
         row.appendChild(col);
     });
     resultsContainer.appendChild(row);
+
+    const atn = pageRoot.querySelector('#atnInput').value.trim();
+    summarizeSearchResults(query, results, atn);
+}
+
+function summarizeSearchResults(query, results, atn) {
+    const summaryBox = pageRoot.querySelector('#aiSummaryBox');
+    const trimmedResults = results.slice(0, 8).map((item) => ({
+        title: item.title || '',
+        description: item.description || '',
+        source_name: item.source_name || '',
+        source_url: item.source_url || ''
+    }));
+
+    fetch('/api/browse/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, results: trimmedResults, atn })
+    })
+        .then((r) => r.json())
+        .then((result) => {
+            if (result.status) {
+                const text = result.summary.replace(/^\*\*|\*\*$/g, '').trim();
+                summaryBox.querySelector('.ai-summary-text').textContent = text;
+            } else {
+                summaryBox.querySelector('.ai-summary-text').textContent = 'AI summarisation is currently unavailable.';
+            }
+        })
+        .catch(() => {
+            summaryBox.querySelector('.ai-summary-text').textContent = 'AI summarisation failed. Please try again later.';
+        });
 }
 
 function showNoResults() {

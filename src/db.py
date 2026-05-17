@@ -23,6 +23,7 @@ class User(Base):
     saved_items = relationship("UserToSaved", back_populates="user")
     recently_viewed = relationship("UserToRecentlyViewed", back_populates="user")
     recently_searched = relationship("UserToRecentlySearched", back_populates="user")
+    workspaces = relationship("Workspace", back_populates="user")
     workspace_items = relationship("WorkspaceItem", back_populates="user")
     uploaded_files = relationship("UploadedFile", back_populates="user")
     notes = relationship("Note", back_populates="user")
@@ -84,11 +85,24 @@ class UserToRecentlySearched(Base):
     user = relationship("User", back_populates="recently_searched")
     item = relationship("Item", back_populates="recently_searched_by")
 
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    time_created: Mapped[int] = mapped_column(nullable=False)
+
+    user = relationship("User", back_populates="workspaces")
+    items = relationship("WorkspaceItem", back_populates="workspace")
+    notes = relationship("Note", back_populates="workspace")
+
 class WorkspaceItem(Base):
     __tablename__ = "workspace_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=True)
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), nullable=True)
     file_id: Mapped[int] = mapped_column(ForeignKey("uploaded_files.id"), nullable=True)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
@@ -101,8 +115,10 @@ class WorkspaceItem(Base):
     time_added: Mapped[int] = mapped_column(nullable=False)
 
     user = relationship("User", back_populates="workspace_items")
+    workspace = relationship("Workspace", back_populates="items")
     item = relationship("Item", back_populates="in_workspaces")
     uploaded_file = relationship("UploadedFile", back_populates="in_workspaces")
+
 
 class UploadedFile(Base):
     __tablename__ = "uploaded_files"
@@ -124,12 +140,14 @@ class Note(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     time_created: Mapped[int] = mapped_column(nullable=False)
     time_updated: Mapped[int] = mapped_column(nullable=False)
 
     user = relationship("User", back_populates="notes")
+    workspace = relationship("Workspace", back_populates="notes")
 
 def setup_db():
     Base.metadata.create_all(bind=engine)
@@ -157,6 +175,18 @@ def setup_db():
         for col_name, col_type in new_columns.items():
             if col_name not in columns:
                 conn.execute(text(f"ALTER TABLE items ADD COLUMN {col_name} {col_type}"))
+
+        # Add workspace_id to workspace_items if missing
+        result = conn.execute(text("PRAGMA table_info(workspace_items)"))
+        columns = [row[1] for row in result]
+        if 'workspace_id' not in columns:
+            conn.execute(text("ALTER TABLE workspace_items ADD COLUMN workspace_id INTEGER"))
+
+        # Add workspace_id to notes if missing
+        result = conn.execute(text("PRAGMA table_info(notes)"))
+        columns = [row[1] for row in result]
+        if 'workspace_id' not in columns:
+            conn.execute(text("ALTER TABLE notes ADD COLUMN workspace_id INTEGER"))
 
         conn.commit()
 
@@ -619,4 +649,177 @@ def delete_note(note_id, user_id):
             return False
         session.delete(note)
         session.commit()
+        return True
+
+# ========== Workspace Management Functions ==========
+
+def get_user_workspaces(user_id):
+    """Get all workspaces for a user"""
+    with SessionLocal() as session:
+        workspaces = session.query(Workspace).filter_by(user_id=user_id).order_by(Workspace.time_created).all()
+        return [{
+            "id": w.id,
+            "name": w.name,
+            "time_created": w.time_created,
+            "item_count": len(w.items) if w.items else 0,
+            "note_count": len(w.notes) if w.notes else 0
+        } for w in workspaces]
+
+def create_workspace(user_id, name):
+    """Create a new workspace"""
+    with SessionLocal() as session:
+        new_workspace = Workspace(
+            user_id=user_id,
+            name=name,
+            time_created=int(time.time())
+        )
+        session.add(new_workspace)
+        session.commit()
+        session.refresh(new_workspace)
+        return {
+            "id": new_workspace.id,
+            "name": new_workspace.name,
+            "time_created": new_workspace.time_created
+        }
+
+def rename_workspace(workspace_id, user_id, new_name):
+    """Rename a workspace"""
+    with SessionLocal() as session:
+        workspace = session.query(Workspace).filter_by(id=workspace_id, user_id=user_id).first()
+        if not workspace:
+            return None
+        workspace.name = new_name
+        session.commit()
+        return {
+            "id": workspace.id,
+            "name": workspace.name,
+            "time_created": workspace.time_created
+        }
+
+def delete_workspace(workspace_id, user_id):
+    """Delete a workspace and all its items/notes"""
+    with SessionLocal() as session:
+        workspace = session.query(Workspace).filter_by(id=workspace_id, user_id=user_id).first()
+        if not workspace:
+            return False
+        session.query(WorkspaceItem).filter_by(workspace_id=workspace_id).delete()
+        session.query(Note).filter_by(workspace_id=workspace_id).delete()
+        session.delete(workspace)
+        session.commit()
+        return True
+
+def get_workspace_items(user_id, workspace_id=None):
+    """Get items from a workspace, or default workspace if workspace_id is None"""
+    with SessionLocal() as session:
+        query = session.query(WorkspaceItem, Item).join(Item).filter(WorkspaceItem.user_id == user_id)
+        if workspace_id:
+            query = query.filter(WorkspaceItem.workspace_id == workspace_id)
+        items = query.order_by(WorkspaceItem.position).all()
+        return [{
+            "id": wi.id,
+            "item_id": wi.item_id,
+            "file_id": wi.file_id,
+            "workspace_id": wi.workspace_id,
+            "summary": wi.summary,
+            "bullets": json.loads(wi.bullets) if wi.bullets else [],
+            "relevance": wi.relevance,
+            "atn_used": wi.atn_used,
+            "citation_apa": wi.citation_apa,
+            "citation_harvard": wi.citation_harvard,
+            "position": wi.position,
+            "time_added": wi.time_added,
+            "title": item.title,
+            "description": item.description,
+            "thumb_url": item.thumb_url,
+            "thumb_mime": item.thumb_mime,
+            "thumb_height": item.thumb_height,
+            "source_url": item.source_url,
+            "source_name": item.source_name,
+            "source_id": item.source_id,
+            "abstract": item.abstract,
+            "authors": item.authors,
+            "journal": item.journal,
+            "year": item.year,
+            "volume": item.volume,
+            "issue": item.issue,
+            "doi": item.doi
+        } for wi, item in items]
+
+def add_to_workspace(user_id, item_id, summary, bullets, relevance, atn_used, citation_apa, citation_harvard, workspace_id=None):
+    """Add an item to workspace"""
+    with SessionLocal() as session:
+        # If no workspace_id, get or create the default workspace
+        if workspace_id is None:
+            default = session.query(Workspace).filter_by(user_id=user_id).first()
+            if not default:
+                default = Workspace(user_id=user_id, name="My Collection", time_created=int(time.time()))
+                session.add(default)
+                session.flush()
+            workspace_id = default.id
+        
+        max_pos = session.query(func.max(WorkspaceItem.position)).filter_by(workspace_id=workspace_id).scalar() or 0
+        new_item = WorkspaceItem(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            item_id=item_id,
+            summary=summary,
+            bullets=bullets,
+            relevance=relevance,
+            atn_used=atn_used,
+            citation_apa=citation_apa,
+            citation_harvard=citation_harvard,
+            position=max_pos + 1,
+            time_added=int(time.time())
+        )
+        session.add(new_item)
+        session.commit()
+        session.refresh(new_item)
+        return {
+            "id": new_item.id,
+            "item_id": new_item.item_id,
+            "workspace_id": new_item.workspace_id,
+            "summary": new_item.summary,
+            "bullets": new_item.bullets,
+            "relevance": new_item.relevance,
+            "atn_used": new_item.atn_used,
+            "citation_apa": new_item.citation_apa,
+            "citation_harvard": new_item.citation_harvard,
+            "position": new_item.position,
+            "time_added": new_item.time_added
+        }
+
+def get_workspace_notes(workspace_id, user_id):
+    """Get notes for a specific workspace"""
+    with SessionLocal() as session:
+        notes = session.query(Note).filter_by(workspace_id=workspace_id, user_id=user_id).order_by(Note.time_updated.desc()).all()
+        return [{
+            "id": n.id,
+            "title": n.title,
+            "content": n.content,
+            "time_created": n.time_created,
+            "time_updated": n.time_updated
+        } for n in notes]
+
+def create_workspace_note(user_id, workspace_id, title, content=""):
+    """Create a note in a specific workspace"""
+    with SessionLocal() as session:
+        new_note = Note(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            title=title,
+            content=content,
+            time_created=int(time.time()),
+            time_updated=int(time.time())
+        )
+        session.add(new_note)
+        session.commit()
+        session.refresh(new_note)
+        return {
+            "id": new_note.id,
+            "title": new_note.title,
+            "content": new_note.content,
+            "time_created": new_note.time_created,
+            "time_updated": new_note.time_updated
+        }
+
         return True

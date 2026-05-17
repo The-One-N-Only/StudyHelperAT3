@@ -12,6 +12,7 @@ import src.citations as citations
 import src.files as files
 import src.export as export
 import src.answer as answer
+import src.local_ai as local_ai
 import json
 import uuid
 import mimetypes
@@ -326,6 +327,25 @@ def browse_search_all():
         'source_counts': source_counts
     })
 
+@app.route('/api/browse/summary', methods=['POST'])
+def browse_summary():
+    data = request.json
+    query = data.get('query', '').strip()
+    results = data.get('results', [])
+    atn = data.get('atn')
+    user_id = session.get('user_id')
+
+    if not query:
+        return jsonify({'status': False, 'error': 'Query required'}), 400
+
+    try:
+        summary = local_ai.summarize_search_results(query, results, atn)
+        logging.info(f"User {user_id} requested search summary for '{query}'")
+        return jsonify({'status': True, 'summary': summary})
+    except Exception as e:
+        logging.error(f"Search summary failed for user {user_id}: {str(e)}")
+        return jsonify({'status': False, 'error': 'Search summarisation failed'}), 500
+
 @app.route('/api/filters')
 def api_filters():
     return send_file(os.path.join(os.path.dirname(__file__), 'src', 'filters.json'), mimetype='application/json')
@@ -383,17 +403,96 @@ def workspace_add():
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
     
     data = request.json
-    item_id = data['item_id']
-    summary = data['summary']
-    bullets = json.dumps(data['bullets'])
+    item_id = data.get('item_id')
+    summary = data.get('summary')
+    bullets = json.dumps(data.get('bullets', []))
     relevance = data.get('relevance')
     atn_used = data.get('atn_used')
-    citation_apa = data['citation_apa']
-    citation_harvard = data['citation_harvard']
+    citation_apa = data.get('citation_apa', '')
+    citation_harvard = data.get('citation_harvard', '')
+    workspace_id = data.get('workspace_id')
     
-    result = db.add_to_workspace(user_id, item_id, summary, bullets, relevance, atn_used, citation_apa, citation_harvard)
-    logging.info(f"User {user_id} added item {item_id} to workspace")
-    return jsonify({'status': True, 'item': result})
+    try:
+        result = db.add_to_workspace(user_id, item_id, summary, bullets, relevance, atn_used, citation_apa, citation_harvard, workspace_id)
+        logging.info(f"User {user_id} added item {item_id} to workspace {workspace_id or 'default'}")
+        return jsonify({'status': True, 'item': result})
+    except Exception as e:
+        logging.error(f"Error adding to workspace: {str(e)}")
+        return jsonify({'status': False, 'error': 'Failed to add item'}), 500
+
+@app.route('/api/workspaces', methods=['GET'])
+def get_workspaces():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
+    workspaces = db.get_user_workspaces(user_id)
+    return jsonify({'status': True, 'workspaces': workspaces})
+
+@app.route('/api/workspaces', methods=['POST'])
+def create_workspace():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
+    data = request.json
+    name = data.get('name', 'New Workspace')
+    workspace = db.create_workspace(user_id, name)
+    logging.info(f"User {user_id} created workspace: {name}")
+    return jsonify({'status': True, 'workspace': workspace})
+
+@app.route('/api/workspaces/<int:workspace_id>', methods=['PUT'])
+def update_workspace(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
+    data = request.json
+    name = data.get('name')
+    if not name:
+        return jsonify({'status': False, 'error': 'Name required'}), 400
+    
+    workspace = db.rename_workspace(workspace_id, user_id, name)
+    if not workspace:
+        return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+    
+    logging.info(f"User {user_id} renamed workspace {workspace_id} to: {name}")
+    return jsonify({'status': True, 'workspace': workspace})
+
+@app.route('/api/workspaces/<int:workspace_id>', methods=['DELETE'])
+def delete_workspace(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
+    if db.delete_workspace(workspace_id, user_id):
+        logging.info(f"User {user_id} deleted workspace {workspace_id}")
+        return jsonify({'status': True})
+    return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+
+@app.route('/api/workspaces/<int:workspace_id>/notes', methods=['GET'])
+def get_workspace_notes(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
+    notes = db.get_workspace_notes(workspace_id, user_id)
+    return jsonify({'status': True, 'notes': notes})
+
+@app.route('/api/workspaces/<int:workspace_id>/notes', methods=['POST'])
+def create_workspace_note(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
+    data = request.json
+    title = data.get('title', 'New Note')
+    content = data.get('content', '')
+    
+    note = db.create_workspace_note(user_id, workspace_id, title, content)
+    logging.info(f"User {user_id} created note in workspace {workspace_id}")
+    return jsonify({'status': True, 'note': note})
+
 
 @app.route('/api/workspace/<int:item_id>', methods=['DELETE'])
 def workspace_remove(item_id):
@@ -425,8 +524,9 @@ def workspace_items():
     if not user_id:
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
     
-    items = db.get_workspace_items(user_id) or []
-    logging.info(f"User {user_id} viewed workspace items")
+    workspace_id = request.args.get('workspace_id', type=int)
+    items = db.get_workspace_items(user_id, workspace_id) or []
+    logging.info(f"User {user_id} viewed workspace items for workspace {workspace_id or 'default'}")
     return jsonify({'status': True, 'items': items})
 
 @app.route('/api/citations/generate', methods=['POST'])
