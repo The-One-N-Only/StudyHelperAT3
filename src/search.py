@@ -1,3 +1,5 @@
+import os
+import re
 import requests
 from urllib.parse import quote
 import json
@@ -5,36 +7,76 @@ import src.whitelist as whitelist
 import src.db as db
 
 USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
+GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
+GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY", "")
+GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID", "")
+
 
 def wikipedia(query, num_results, *, user_id):
-    url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(query)}"
+    search_url = "https://en.wikipedia.org/w/api.php"
     headers = {"User-Agent": USER_AGENT}
+    params = {
+        "action": "query",
+        "list": "search",
+        "srsearch": query,
+        "srlimit": num_results,
+        "srprop": "snippet",
+        "format": "json"
+    }
     try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
+        resp = requests.get(search_url, params=params, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return []
+
+        search_data = resp.json()
+        search_results = search_data.get("query", {}).get("search", [])
+        if not search_results:
+            return []
+
+        page_ids = "|".join(str(item.get("pageid")) for item in search_results if item.get("pageid"))
+        page_info = {}
+        if page_ids:
+            info_params = {
+                "action": "query",
+                "pageids": page_ids,
+                "prop": "info|pageimages",
+                "inprop": "url",
+                "pithumbsize": 200,
+                "format": "json"
+            }
+            info_resp = requests.get(search_url, params=info_params, headers=headers, timeout=10)
+            if info_resp.status_code == 200:
+                page_info = info_resp.json().get("query", {}).get("pages", {})
+
+        results = []
+        for item in search_results:
+            pageid = str(item.get("pageid", ""))
+            page = page_info.get(pageid, {})
+            source_url = page.get("fullurl") or f"https://en.wikipedia.org/?curid={pageid}"
+            description = re.sub(r"<[^>]+>", "", item.get("snippet", "")).strip()
             item_data = {
-                "title": data.get("title", ""),
-                "description": data.get("extract", ""),
-                "thumb_url": data.get("thumbnail", {}).get("source", ""),
-                "thumb_mime": data.get("thumbnail", {}).get("mime", "image/jpeg"),
-                "thumb_height": data.get("thumbnail", {}).get("height", 100),
-                "source_url": data.get("content_urls", {}).get("desktop", {}).get("page", ""),
+                "title": item.get("title", ""),
+                "description": description,
+                "thumb_url": page.get("thumbnail", {}).get("source", ""),
+                "thumb_mime": page.get("thumbnail", {}).get("mime", "image/jpeg"),
+                "thumb_height": page.get("thumbnail", {}).get("height", 100),
+                "source_url": source_url,
                 "source_name": "wikipedia",
-                "source_id": str(data.get("pageid", ""))
+                "source_id": pageid
             }
             if item_data["source_url"] and whitelist.is_allowed(item_data["source_url"]):
-                return [db.get_item_by_source("wikipedia", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True)]
-        return []
-    except:
+                results.append(db.get_item_by_source("wikipedia", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+        return results
+    except Exception:
         return []
 
 def gbooks(query, num_results, filters, *, user_id):
     params = {
         "q": query,
-        "maxResults": num_results,
-        "key": ""  # No key needed for basic search
+        "maxResults": num_results
     }
+    if GOOGLE_BOOKS_API_KEY:
+        params["key"] = GOOGLE_BOOKS_API_KEY
     if filters.get("download") == "epub":
         params["download"] = "epub"
     if filters.get("available") in ["partial", "free-ebooks", "full"]:
@@ -65,5 +107,57 @@ def gbooks(query, num_results, filters, *, user_id):
                     results.append(db.get_item_by_source("gbooks", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
             return results
         return []
+    except:
+        return []
+
+
+def google_scholar(query, num_results, *, user_id):
+    """
+    Search Google Scholar for academic papers.
+    Note: This is a simplified implementation. Google Scholar doesn't have a public API,
+    so this would need to be implemented using scraping or Google Custom Search API.
+    """
+    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
+        return []
+    
+    try:
+        # Use Google Custom Search API configured to search scholar.google.com
+        url = "https://www.googleapis.com/customsearch/v1"
+        params = {
+            "key": GOOGLE_SEARCH_API_KEY,
+            "cx": GOOGLE_SEARCH_ENGINE_ID,  # Custom search engine ID configured for academic sites
+            "q": query,
+            "num": min(num_results, 10)  # API limit is 10 per request
+        }
+        
+        headers = {"User-Agent": USER_AGENT}
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        
+        if resp.status_code != 200:
+            return []
+        
+        data = resp.json()
+        results = []
+        
+        for item in data.get("items", []):
+            # Only include results from whitelisted domains
+            link = item.get("link", "")
+            if not whitelist.is_allowed(link):
+                continue
+                
+            item_data = {
+                "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+                "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+                "thumb_url": "",
+                "thumb_mime": "image/jpeg",
+                "thumb_height": 0,
+                "source_url": link,
+                "source_name": "scholar",
+                "source_id": link  # Use URL as ID since no unique ID from search
+            }
+            
+            results.append(db.get_item_by_source("scholar", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+            
+        return results
     except:
         return []

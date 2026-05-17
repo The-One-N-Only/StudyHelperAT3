@@ -8,15 +8,16 @@ let currentFilters = {};
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const goBtn = document.getElementById('goBtn');
-    const resultsContainer = document.getElementById('resultsContainer');
     const atnInput = document.getElementById('atnInput');
     const clearAtnBtn = document.getElementById('clearAtnBtn');
     
     // Load filters from JSON
-    fetch('/static/src/filters.json').then(r => r.json()).then(data => {
+    fetch('/api/filters').then(r => r.json()).then(data => {
         currentFilters = data.filters;
         renderFilters();
         updateModeBadge();
+    }).catch(() => {
+        showToast('Unable to load search filters', 'danger');
     });
     
     goBtn.addEventListener('click', performSearch);
@@ -28,6 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
     clearAtnBtn.addEventListener('click', () => {
         atnInput.value = '';
         updateModeBadge();
+    });
+    
+    document.addEventListener('change', (event) => {
+        if (event.target && event.target.name === 'source') {
+            renderFilters();
+        }
     });
 });
 
@@ -47,6 +54,16 @@ function renderFilters() {
             </div>
         `;
         filterContainer.appendChild(card);
+    });
+
+    document.querySelectorAll('input[type="range"]').forEach(range => {
+        const valueLabel = document.getElementById(`${range.id}Value`);
+        if (valueLabel) {
+            valueLabel.textContent = range.value;
+            range.addEventListener('input', () => {
+                valueLabel.textContent = range.value;
+            });
+        }
     });
 }
 
@@ -105,7 +122,7 @@ function performSearch() {
         body: JSON.stringify({query, source, num_results: numResults, filters})
     }).then(r => r.json()).then(result => {
         if (result.status) {
-            renderResults(result.results);
+            renderResults(result.results, query);
         } else {
             resultsContainer.innerHTML = '<div class="text-center"><i class="bi bi-search display-4 text-muted"></i><h5>No results found</h5></div>';
         }
@@ -114,10 +131,16 @@ function performSearch() {
     });
 }
 
-function renderResults(results) {
+function renderResults(results, query) {
     const resultsContainer = document.getElementById('resultsContainer');
     resultsContainer.innerHTML = '';
     
+    const summaryBox = document.getElementById('aiSummaryBox');
+    if (summaryBox) {
+        summaryBox.classList.remove('d-none');
+        summaryBox.querySelector('.ai-summary-text').innerHTML = `A high-level summary of the search results for <strong>${escapeHtml(query)}</strong> will appear here once AI summarisation is available.`;
+    }
+
     if (results.length === 0) {
         resultsContainer.innerHTML = '<div class="text-center"><i class="bi bi-search display-4 text-muted"></i><h5>No results found</h5></div>';
         return;
@@ -132,4 +155,10 @@ function renderResults(results) {
         row.appendChild(col);
     });
     resultsContainer.appendChild(row);
+}
+
+function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value;
+    return div.innerHTML;
 }

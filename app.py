@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import io
 import src.db as db
 import src.search as search
+import src.pubmed as pubmed
 import src.summarise as summarise
 import src.proxy as proxy
 import src.citations as citations
@@ -17,6 +18,7 @@ import mimetypes
 import secrets
 import time
 import re
+import concurrent.futures
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 import logging
@@ -222,20 +224,121 @@ def logout():
 def browse_search():
     data = request.json
     query = data['query']
-    source = data['source']
+    source = data.get('source')
+    sources = data.get('sources')  # New: array of sources
     num_results = data['num_results']
     filters = data.get('filters', {})
     user_id = session.get('user_id')
-    
-    if source == 'wikipedia':
-        results = search.wikipedia(query, num_results, user_id=user_id)
-    elif source == 'gbooks':
-        results = search.gbooks(query, num_results, filters, user_id=user_id)
+
+    # If specific source provided (backward compatible)
+    if source:
+        if source == 'wikipedia':
+            results = search.wikipedia(query, num_results, user_id=user_id)
+        elif source == 'gbooks':
+            results = search.gbooks(query, num_results, filters, user_id=user_id)
+        elif source == 'pubmed':
+            mesh_terms = filters.get('mesh_terms', [])
+            min_date = filters.get('min_date', None)
+            max_date = filters.get('max_date', None)
+            results = pubmed.search(query, num_results, mesh_terms=mesh_terms, min_date=min_date, max_date=max_date, user_id=user_id)
+        else:
+            results = []
+        logging.info(f"User {user_id} searched for '{query}' on {source}")
+
+    # If multiple sources provided (new: filter-based search)
+    elif sources:
+        results = []
+        for source in sources:
+            source_results = []
+            try:
+                if source == 'wikipedia':
+                    source_results = search.wikipedia(query, num_results, user_id=user_id)
+                elif source == 'gbooks':
+                    source_results = search.gbooks(query, num_results, filters, user_id=user_id)
+                elif source == 'pubmed':
+                    mesh_terms = filters.get('mesh_terms', [])
+                    min_date = filters.get('min_date', None)
+                    max_date = filters.get('max_date', None)
+                    source_results = pubmed.search(query, num_results, mesh_terms=mesh_terms, min_date=min_date, max_date=max_date, user_id=user_id)
+                results.extend(source_results or [])
+            except Exception as e:
+                logging.error(f"Failed to search {source}: {str(e)}")
+
+        logging.info(f"User {user_id} searched for '{query}' on sources: {sources}")
+
     else:
         results = []
-    
-    logging.info(f"User {user_id} searched for '{query}' on {source}")
+
     return jsonify({'status': True, 'results': results})
+
+@app.route('/api/browse/search-all', methods=['POST'])
+def browse_search_all():
+    """Search all sources in parallel and return mixed results."""
+    data = request.json
+    query = data['query']
+    num_results = data.get('num_results', 20)
+    sources = data.get('sources', ['wikipedia', 'gbooks', 'pubmed'])
+    filters = data.get('filters', {})
+    user_id = session.get('user_id')
+
+    if not query or not sources:
+        return jsonify({'status': False, 'error': 'Query and sources required'}), 400
+
+    # Define search tasks
+    search_tasks = {
+        'wikipedia': (search.wikipedia, (query, num_results)),
+        'gbooks': (search.gbooks, (query, num_results, filters)),
+        'pubmed': (pubmed.search, (query, num_results, filters.get('mesh_terms', []), filters.get('min_date'), filters.get('max_date')))
+    }
+
+    # Execute searches in parallel
+    all_results = []
+    source_counts = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {}
+
+        # Submit each selected source as a separate task
+        for source in sources:
+            if source in search_tasks:
+                func, args = search_tasks[source]
+                # Create a lambda that includes user_id as keyword argument
+                futures[source] = executor.submit(func, *args, user_id=user_id)
+
+        # Collect results as they complete (or timeout)
+        for source in futures:
+            try:
+                source_results = futures[source].result(timeout=15)
+                all_results.extend(source_results or [])
+                source_counts[source] = len(source_results) if source_results else 0
+            except concurrent.futures.TimeoutError:
+                logging.warning(f"Search timeout for source: {source}")
+                source_counts[source] = 0
+            except Exception as e:
+                logging.error(f"Search failed for {source}: {str(e)}")
+                source_counts[source] = 0
+
+    logging.info(f"User {user_id} performed multi-source search for '{query}' across {len(sources)} sources")
+
+    return jsonify({
+        'status': True,
+        'results': all_results,
+        'source_counts': source_counts
+    })
+
+@app.route('/api/filters')
+def api_filters():
+    return send_file(os.path.join(os.path.dirname(__file__), 'src', 'filters.json'), mimetype='application/json')
+
+@app.route('/api/pubmed/mesh-suggestions')
+def pubmed_mesh_suggestions():
+    query = request.args.get('q', '')
+    if not query or len(query) < 2:
+        return jsonify({'status': False, 'error': 'Query too short'}), 400
+
+    terms = pubmed.get_mesh_terms(query, num_results=10)
+    logging.info(f"User {session.get('user_id', 'anonymous')} requested MeSH suggestions for '{query}'")
+    return jsonify({'status': True, 'suggestions': terms})
 
 @app.route('/api/proxy/source')
 def proxy_source():
@@ -328,6 +431,10 @@ def workspace_items():
 
 @app.route('/api/citations/generate', methods=['POST'])
 def generate_citations():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
     data = request.json
     items = data['items']
     format_type = data['format']

@@ -39,6 +39,14 @@ class Item(Base):
     source_url: Mapped[str] = mapped_column(String(1023), nullable=False)
     source_name: Mapped[str] = mapped_column(String(64), nullable=False)
     source_id: Mapped[str] = mapped_column(String(16), nullable=False, unique=True)
+    # PubMed and academic metadata
+    abstract: Mapped[str] = mapped_column(Text, nullable=True)
+    authors: Mapped[str] = mapped_column(Text, nullable=True)
+    journal: Mapped[str] = mapped_column(String(255), nullable=True)
+    year: Mapped[str] = mapped_column(String(4), nullable=True)
+    volume: Mapped[str] = mapped_column(String(32), nullable=True)
+    issue: Mapped[str] = mapped_column(String(32), nullable=True)
+    doi: Mapped[str] = mapped_column(String(255), nullable=True)
 
     # Relationships
     saved_by = relationship("UserToSaved", back_populates="item")
@@ -126,10 +134,31 @@ class Note(Base):
 def setup_db():
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
+        # Add password_hash if missing
         result = conn.execute(text("PRAGMA table_info(users)"))
         columns = [row[1] for row in result]
         if 'password_hash' not in columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+
+        # Add PubMed metadata columns if missing
+        result = conn.execute(text("PRAGMA table_info(items)"))
+        columns = [row[1] for row in result]
+
+        new_columns = {
+            'abstract': 'TEXT',
+            'authors': 'TEXT',
+            'journal': 'VARCHAR(255)',
+            'year': 'VARCHAR(4)',
+            'volume': 'VARCHAR(32)',
+            'issue': 'VARCHAR(32)',
+            'doi': 'VARCHAR(255)'
+        }
+
+        for col_name, col_type in new_columns.items():
+            if col_name not in columns:
+                conn.execute(text(f"ALTER TABLE items ADD COLUMN {col_name} {col_type}"))
+
+        conn.commit()
 
 def get_or_create_user(email, platform, platform_id, *, name=None, username=None):
     with SessionLocal() as session:
@@ -212,7 +241,14 @@ def get_item_by_source(source_name, source_id, user_id, add_to_recent_search):
                 "thumb_height": item.thumb_height,
                 "source_url": item.source_url,
                 "source_name": item.source_name,
-                "source_id": item.source_id
+                "source_id": item.source_id,
+                "abstract": item.abstract,
+                "authors": item.authors,
+                "journal": item.journal,
+                "year": item.year,
+                "volume": item.volume,
+                "issue": item.issue,
+                "doi": item.doi
             }
         return None
 
@@ -233,7 +269,14 @@ def create_item(item_data, user_id, add_to_recent_search):
             "thumb_height": new_item.thumb_height,
             "source_url": new_item.source_url,
             "source_name": new_item.source_name,
-            "source_id": new_item.source_id
+            "source_id": new_item.source_id,
+            "abstract": new_item.abstract,
+            "authors": new_item.authors,
+            "journal": new_item.journal,
+            "year": new_item.year,
+            "volume": new_item.volume,
+            "issue": new_item.issue,
+            "doi": new_item.doi
         }
 
 def get_saved_items(user_id):
@@ -251,6 +294,13 @@ def get_saved_items(user_id):
             "source_url": item.source_url,
             "source_name": item.source_name,
             "source_id": item.source_id,
+            "abstract": item.abstract,
+            "authors": item.authors,
+            "journal": item.journal,
+            "year": item.year,
+            "volume": item.volume,
+            "issue": item.issue,
+            "doi": item.doi,
             "saved_at": uts.time_inserted
         } for uts, item in saved]
 
@@ -288,6 +338,13 @@ def get_recently_viewed(user_id):
             "source_url": item.source_url,
             "source_name": item.source_name,
             "source_id": item.source_id,
+            "abstract": item.abstract,
+            "authors": item.authors,
+            "journal": item.journal,
+            "year": item.year,
+            "volume": item.volume,
+            "issue": item.issue,
+            "doi": item.doi,
             "viewed_at": rtv.time_inserted
         } for rtv, item in viewed]
 
@@ -306,6 +363,13 @@ def get_recently_searched(user_id):
             "source_url": item.source_url,
             "source_name": item.source_name,
             "source_id": item.source_id,
+            "abstract": item.abstract,
+            "authors": item.authors,
+            "journal": item.journal,
+            "year": item.year,
+            "volume": item.volume,
+            "issue": item.issue,
+            "doi": item.doi,
             "searched_at": rts.time_inserted
         } for rts, item in searched]
 
@@ -357,7 +421,14 @@ def get_workspace_items(user_id):
             "thumb_height": item.thumb_height,
             "source_url": item.source_url,
             "source_name": item.source_name,
-            "source_id": item.source_id
+            "source_id": item.source_id,
+            "abstract": item.abstract,
+            "authors": item.authors,
+            "journal": item.journal,
+            "year": item.year,
+            "volume": item.volume,
+            "issue": item.issue,
+            "doi": item.doi
         } for wi, item in items]
 
 def add_to_workspace(user_id, item_id, summary, bullets, relevance, atn_used, citation_apa, citation_harvard):

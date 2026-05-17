@@ -1,14 +1,15 @@
 {
   "filters": [
     {
-      "title": "Source",
-      "id": "sourceRadio",
-      "name": "source",
-      "default": "wikipedia",
-      "type": "radio",
+      "title": "Sources",
+      "id": "sourcesCheck",
+      "name": "sources",
+      "type": "checkbox",
       "options": [
-        {"id": "wikipedia", "name": "Wikipedia"},
-        {"id": "gbooks", "name": "Google Books"}
+        {"id": "wikipedia", "name": "Wikipedia", "checked": true},
+        {"id": "gbooks", "name": "Google Books", "checked": true},
+        {"id": "pubmed", "name": "PubMed", "checked": false},
+        {"id": "scholar", "name": "Google Scholar", "checked": false}
       ],
       "shown_source": null
     },

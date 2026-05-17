@@ -69,9 +69,12 @@
 
     {% block content %}{% endblock %}
 
+    <div id="toastContainer" class="position-fixed top-0 end-0 p-3" style="z-index:1200;"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
     <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/page-loader.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
