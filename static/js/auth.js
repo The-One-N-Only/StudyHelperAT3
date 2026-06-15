@@ -1,6 +1,6 @@
 "use strict";
 
-import { showToast } from './main.js';
+import { showToast } from './toast.js';
 
 const CLIENT_ID = "21b089d7-aa3e-478f-a992-9aa757adc73f";
 const REDIRECT_URI = `${window.location.origin}/api/oidc/redirect`;

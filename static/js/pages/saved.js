@@ -1,6 +1,7 @@
 "use strict";
 
-import { showToast } from '../main.js';
+import { showToast } from '../toast.js';
+import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } from '../workspace-selector.js';
 
 let pageRoot = null;
 let savedItems = [];
@@ -64,11 +65,17 @@ function createSavedCard(item) {
             <button class="btn btn-outline-secondary btn-sm w-50 view-btn" data-item-id="${item.id}">View</button>
             <button class="btn btn-primary btn-sm w-50 add-btn" data-item-id="${item.id}">Add</button>
         </div>
+        <div class="d-flex align-items-center gap-2 mt-2">
+            <select class="workspace-select form-select form-select-sm"></select>
+        </div>
     `;
+
+    const workspaceSelect = card.querySelector('.workspace-select');
+    hydrateWorkspaceSelect(workspaceSelect);
 
     card.querySelector('.unsave-btn').addEventListener('click', () => toggleSave(item.id, card));
     card.querySelector('.view-btn').addEventListener('click', () => viewItem(item));
-    card.querySelector('.add-btn').addEventListener('click', () => addToWorkspace(item));
+    card.querySelector('.add-btn').addEventListener('click', () => addToWorkspace(item, workspaceSelect));
     return card;
 }
 
@@ -93,36 +100,49 @@ function toggleSave(itemId, card) {
 }
 
 function viewItem(item) {
-    if (window.openViewer) window.openViewer(item);
+    if (window.openViewer) {
+        window.openViewer(item);
+    } else {
+        showToast('Viewer unavailable. Please refresh the page.', 'warning');
+    }
 }
 
-function addToWorkspace(item) {
-    fetch('/api/summarise', {
+function addToWorkspace(item, workspaceSelect) {
+    if (!item.source_url) {
+        showToast('Unable to add item: missing source URL', 'danger');
+        return;
+    }
+
+    const workspace_id = getSelectedWorkspaceId(workspaceSelect);
+    if (!workspace_id) {
+        showToast('Please select a workspace before adding', 'warning');
+        return;
+    }
+
+    fetch('/api/workspace/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: item.source_url, title: item.title })
+        body: JSON.stringify({
+            item_id: item.id,
+            summary: '',
+            bullets: [],
+            relevance: '',
+            citation_apa: 'APA citation',
+            citation_harvard: 'Harvard citation',
+            workspace_id: workspace_id
+        })
     })
         .then((r) => r.json())
-        .then((result) => {
-            if (result.status) {
-                fetch('/api/workspace/add', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        item_id: item.id,
-                        summary: result.summary,
-                        bullets: result.bullets,
-                        relevance: result.relevance,
-                        citation_apa: 'APA citation',
-                        citation_harvard: 'Harvard citation'
-                    })
-                }).then((r) => r.json()).then((addResult) => {
-                    if (addResult.status) {
-                        showToast('Added to workspace', 'success');
-                    }
-                });
+        .then((addResult) => {
+            if (addResult.status) {
+                showToast('Added to workspace', 'success');
+                clearWorkspaceCache();
             } else {
-                showToast('Summarisation failed', 'danger');
+                showToast('Failed to add to workspace: ' + (addResult.error || 'Unknown error'), 'danger');
             }
+        })
+        .catch((error) => {
+            console.error('Add to workspace error:', error);
+            showToast('Error adding to workspace', 'danger');
         });
 }

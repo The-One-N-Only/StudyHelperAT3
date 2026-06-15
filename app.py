@@ -804,4 +804,4 @@ def handle_exception(e):
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8010, debug=False)
+    app.run(host='0.0.0.0', port=8010, debug=True)

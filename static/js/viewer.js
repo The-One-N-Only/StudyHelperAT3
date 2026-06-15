@@ -1,34 +1,86 @@
 "use strict";
 
-import { showToast } from './main.js';
+import { showToast } from './toast.js';
+import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
 
 let viewerOffcanvas;
 
-document.addEventListener('DOMContentLoaded', () => {
-    viewerOffcanvas = new bootstrap.Offcanvas(document.getElementById('viewerOffcanvas'));
-});
+function ensureViewerOffcanvas() {
+    if (!viewerOffcanvas) {
+        const offcanvasElement = document.getElementById('viewerOffcanvas');
+        if (!offcanvasElement) {
+            throw new Error('Viewer offcanvas markup not found');
+        }
+        viewerOffcanvas = new bootstrap.Offcanvas(offcanvasElement);
+    }
+    return viewerOffcanvas;
+}
 
 export function openViewer(item) {
     const header = document.getElementById('viewerHeader');
     const body = document.getElementById('viewerBody');
-    
+    const addBtn = document.getElementById('addToWorkspaceBtn');
+
+    if (!header || !body || !addBtn) {
+        showToast('Viewer markup not available', 'danger');
+        return;
+    }
+
     header.innerHTML = `
-        <h6 class="fw-semibold text-truncate me-2">${item.title}</h6>
-        <span class="badge bg-secondary rounded-pill">${item.source_name}</span>
-        <small class="text-muted text-truncate">${item.source_url}</small>
-        <a href="${item.source_url}" target="_blank" class="btn btn-link btn-sm p-0 ms-auto">
-            <i class="bi bi-box-arrow-up-right"></i>
-        </a>
+        <div class="d-flex align-items-center gap-2">
+            <div class="flex-grow-1">
+                <h6 class="fw-semibold text-truncate mb-1">${item.title}</h6>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <span class="badge bg-secondary rounded-pill">${item.source_name}</span>
+                    <small class="text-muted text-truncate">${item.source_url}</small>
+                </div>
+            </div>
+            <a href="${item.source_url}" target="_blank" class="btn btn-link btn-sm p-0 ms-auto">
+                <i class="bi bi-box-arrow-up-right"></i>
+            </a>
+        </div>
     `;
-    
-    body.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Loading source...</p></div>';
-    viewerOffcanvas.show();
-    
+
+    const actionRow = document.createElement('div');
+    actionRow.className = 'mb-2 d-flex align-items-center gap-2';
+    actionRow.innerHTML = `
+        <select id="viewerWorkspaceSelect" class="form-select form-select-sm"></select>
+    `;
+    header.appendChild(actionRow);
+
+    const workspaceSelect = actionRow.querySelector('#viewerWorkspaceSelect');
+    hydrateWorkspaceSelect(workspaceSelect);
+
+    addBtn.onclick = () => addToWorkspaceFromViewer(item, workspaceSelect);
+
+    body.innerHTML = '<div class="text-center py-5"><div class="spinner-border" role="status"></div><p>Loading source...</p></div>';
+    try {
+        ensureViewerOffcanvas().show();
+    } catch (error) {
+        showToast('Failed to open viewer', 'danger');
+        console.error(error);
+        return;
+    }
+
     fetch(`/api/proxy/source?url=${encodeURIComponent(item.source_url)}`)
         .then(r => r.json())
         .then(result => {
             if (result.status) {
-                body.innerHTML = `<iframe srcdoc="${result.html.replace(/"/g, '&quot;')}" class="viewer-iframe"></iframe>`;
+                body.innerHTML = '';
+                const mode = result.mode || 'iframe';
+
+                if (mode === 'iframe') {
+                    const iframe = document.createElement('iframe');
+                    iframe.className = 'viewer-iframe';
+                    iframe.srcdoc = result.html;
+                    body.appendChild(iframe);
+                } else if (mode === 'reader') {
+                    body.classList.add('viewer-mode-reader');
+                    body.innerHTML = `<div class="viewer-reader">${result.html}</div>`;
+                } else {
+                    body.classList.remove('viewer-mode-reader');
+                    body.innerHTML = result.html;
+                }
             } else {
                 body.innerHTML = `
                     <div class="alert alert-warning m-3">
@@ -43,37 +95,38 @@ export function openViewer(item) {
             body.innerHTML = '<div class="alert alert-danger m-3">Failed to load source</div>';
             showToast('Failed to load source', 'danger');
         });
-    
-    // Add to workspace button
-    document.getElementById('addToWorkspaceBtn').onclick = () => addToWorkspaceFromViewer(item);
+
+    addBtn.onclick = () => addToWorkspaceFromViewer(item, workspaceSelect);
 }
 
-function addToWorkspaceFromViewer(item) {
-    fetch('/api/summarise', {
+function addToWorkspaceFromViewer(item, workspaceSelect) {
+    const workspace_id = getSelectedWorkspaceId(workspaceSelect);
+    if (!workspace_id) {
+        showToast('Please select a workspace before adding', 'warning');
+        return;
+    }
+    fetch('/api/workspace/add', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({url: item.source_url, title: item.title})
-    }).then(r => r.json()).then(result => {
-        if (result.status) {
-            fetch('/api/workspace/add', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    item_id: item.id,
-                    summary: result.summary,
-                    bullets: result.bullets,
-                    relevance: result.relevance,
-                    citation_apa: 'APA citation',
-                    citation_harvard: 'Harvard citation'
-                })
-            }).then(r => r.json()).then(addResult => {
-                if (addResult.status) {
-                    showToast('Added to workspace', 'success');
-                    viewerOffcanvas.hide();
-                }
-            });
+        body: JSON.stringify({
+            item_id: item.id,
+            summary: '',
+            bullets: [],
+            relevance: '',
+            citation_apa: 'APA citation',
+            citation_harvard: 'Harvard citation'
+            , workspace_id: workspace_id
+        })
+    }).then(r => r.json()).then(addResult => {
+        if (addResult.status) {
+            showToast('Added to workspace', 'success');
+            clearWorkspaceCache();
+            viewerOffcanvas.hide();
         } else {
-            showToast('Summarisation failed', 'danger');
+            showToast('Failed to add to workspace: ' + (addResult.error || 'Unknown error'), 'danger');
         }
+    }).catch((error) => {
+        console.error('Add to workspace error:', error);
+        showToast('Error adding to workspace', 'danger');
     });
 }

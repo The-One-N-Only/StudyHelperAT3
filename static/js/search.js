@@ -1,6 +1,6 @@
 "use strict";
 
-import { showToast } from './main.js';
+import { showToast } from './toast.js';
 import { createCard } from './card.js';
 
 let currentFilters = {};

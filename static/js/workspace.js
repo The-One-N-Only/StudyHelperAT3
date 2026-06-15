@@ -1,6 +1,6 @@
 "use strict";
 
-import { showToast } from './main.js';
+import { showToast } from './toast.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     attachWorkspaceListeners();

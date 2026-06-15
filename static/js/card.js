@@ -1,6 +1,7 @@
 "use strict";
 
-import { showToast } from './main.js';
+import { showToast } from './toast.js';
+import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
 
 export function createCard(item) {
     const card = document.createElement('div');
@@ -21,15 +22,21 @@ export function createCard(item) {
             <button class="btn btn-outline-secondary btn-sm w-50 view-btn" data-item-id="${item.id}">View</button>
             <button class="btn btn-primary btn-sm w-50 add-btn" data-item-id="${item.id}">Add</button>
         </div>
+        <div class="d-flex align-items-center gap-2 mt-2">
+            <select class="workspace-select form-select form-select-sm"></select>
+        </div>
     `;
     
+    const workspaceSelect = card.querySelector('.workspace-select');
+    hydrateWorkspaceSelect(workspaceSelect);
+
     // Event listeners
     card.querySelector('.save-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         toggleSave(item.id);
     });
     card.querySelector('.view-btn').addEventListener('click', () => viewItem(item));
-    card.querySelector('.add-btn').addEventListener('click', () => addToWorkspace(item));
+    card.querySelector('.add-btn').addEventListener('click', () => addToWorkspace(item, workspaceSelect));
     
     return card;
 }
@@ -54,38 +61,30 @@ function viewItem(item) {
     if (window.openViewer) window.openViewer(item);
 }
 
-function addToWorkspace(item) {
+function addToWorkspace(item, workspaceSelect) {
     if (!item.source_url) {
         showToast('Unable to add item: missing source URL', 'danger');
         return;
     }
-    
-    // Summarise and add
-    fetch('/api/summarise', {
+
+    const workspace_id = getSelectedWorkspaceId(workspaceSelect);
+    if (!workspace_id) {
+        showToast('Please select a workspace before adding', 'warning');
+        return;
+    }
+
+    fetch('/api/workspace/add', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({url: item.source_url, title: item.title || 'Untitled'})
-    })
-    .then(r => r.json())
-    .then(result => {
-        if (result.status) {
-            // Add to workspace (will auto-create default workspace if needed)
-            return fetch('/api/workspace/add', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    item_id: item.id,
-                    summary: result.summary || '',
-                    bullets: Array.isArray(result.bullets) ? result.bullets : [],
-                    relevance: result.relevance || '',
-                    citation_apa: 'APA citation',
-                    citation_harvard: 'Harvard citation'
-                })
-            });
-        } else {
-            showToast('Summarisation failed: ' + (result.error || 'Unknown error'), 'danger');
-            throw new Error('Summarisation failed');
-        }
+        body: JSON.stringify({
+            item_id: item.id,
+            summary: '',
+            bullets: [],
+            relevance: '',
+            citation_apa: 'APA citation',
+            citation_harvard: 'Harvard citation',
+            workspace_id: workspace_id
+        })
     })
     .then(r => r.json())
     .then(addResult => {
