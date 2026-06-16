@@ -161,3 +161,51 @@ def google_scholar(query, num_results, *, user_id):
         return results
     except:
         return []
+
+
+def whitelist_search(query, num_results, *, user_id):
+    """Search across approved whitelisted academic domains using Google Custom Search."""
+    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
+        return []
+
+    scope = whitelist.get_whitelist_search_scope()
+    if not scope:
+        return []
+
+    q = f"{query} {scope}"
+    try:
+        url = "https://www.googleapis.com/customsearch/v1"
+        params = {
+            "key": GOOGLE_SEARCH_API_KEY,
+            "cx": GOOGLE_SEARCH_ENGINE_ID,
+            "q": q,
+            "num": min(num_results, 10)
+        }
+
+        headers = {"User-Agent": USER_AGENT}
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return []
+
+        data = resp.json()
+        results = []
+        for item in data.get("items", []):
+            link = item.get("link", "")
+            if not whitelist.is_allowed(link):
+                continue
+
+            item_data = {
+                "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+                "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+                "thumb_url": "",
+                "thumb_mime": "image/jpeg",
+                "thumb_height": 0,
+                "source_url": link,
+                "source_name": "whitelist",
+                "source_id": link
+            }
+            results.append(db.get_item_by_source("whitelist", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+
+        return results
+    except:
+        return []

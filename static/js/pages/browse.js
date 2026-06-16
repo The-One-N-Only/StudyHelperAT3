@@ -3,7 +3,8 @@
 import { showToast } from '../toast.js';
 import { createCard } from '../card.js';
 
-const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed', 'scholar'];
+const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist'];
+const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 let pageRoot = null;
 let currentSearchResults = [];
 
@@ -39,6 +40,10 @@ export function initBrowse(root) {
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" id="filterScholar" value="scholar">
                                         <label class="form-check-label" for="filterScholar">Google Scholar</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="filterWhitelist" value="whitelist" checked>
+                                        <label class="form-check-label" for="filterWhitelist">All whitelisted sites</label>
                                     </div>
                                 </div>
                                 <div class="mb-3">
@@ -89,6 +94,7 @@ export function initBrowse(root) {
 
     registerEvents();
     renderSidebar();
+    restoreBrowseState();
 }
 
 function registerEvents() {
@@ -171,6 +177,65 @@ function buildFilters() {
     return filters;
 }
 
+function getBrowseState() {
+    const searchInput = pageRoot.querySelector('#searchInput');
+    return {
+        query: searchInput?.value.trim() || '',
+        sources: getSelectedSources(),
+        filters: {
+            min_date: pageRoot.querySelector('#filterYearFrom').value.trim(),
+            max_date: pageRoot.querySelector('#filterYearTo').value.trim(),
+            content_type: pageRoot.querySelector('#filterContentType').value,
+            sorting: pageRoot.querySelector('#filterSorting').value
+        },
+        results: currentSearchResults
+    };
+}
+
+function saveBrowseState() {
+    const state = getBrowseState();
+    try {
+        localStorage.setItem(BROWSE_STORAGE_KEY, JSON.stringify(state));
+    } catch (err) {
+        console.warn('Unable to save browse state', err);
+    }
+}
+
+function restoreBrowseState() {
+    try {
+        const stateString = localStorage.getItem(BROWSE_STORAGE_KEY);
+        if (!stateString) return;
+        const state = JSON.parse(stateString);
+        if (!state || typeof state !== 'object') return;
+
+        const searchInput = pageRoot.querySelector('#searchInput');
+        const yearFromEl = pageRoot.querySelector('#filterYearFrom');
+        const yearToEl = pageRoot.querySelector('#filterYearTo');
+        const contentTypeEl = pageRoot.querySelector('#filterContentType');
+        const sortingEl = pageRoot.querySelector('#filterSorting');
+        const sourceCheckboxes = pageRoot.querySelectorAll('input[type="checkbox"][value]');
+
+        if (searchInput && state.query) searchInput.value = state.query;
+        if (yearFromEl && state.filters?.min_date) yearFromEl.value = state.filters.min_date;
+        if (yearToEl && state.filters?.max_date) yearToEl.value = state.filters.max_date;
+        if (contentTypeEl && state.filters?.content_type) contentTypeEl.value = state.filters.content_type;
+        if (sortingEl && state.filters?.sorting) sortingEl.value = state.filters.sorting;
+
+        if (sourceCheckboxes.length && Array.isArray(state.sources)) {
+            sourceCheckboxes.forEach((checkbox) => {
+                checkbox.checked = state.sources.includes(checkbox.value);
+            });
+        }
+
+        if (Array.isArray(state.results) && state.results.length > 0) {
+            currentSearchResults = state.results;
+            renderResults(sortResults(currentSearchResults, state.filters?.sorting || ''));
+        }
+    } catch (err) {
+        console.warn('Unable to restore browse state', err);
+    }
+}
+
 function sortResults(results, sortingCriteria) {
     if (!sortingCriteria) return results;
 
@@ -226,6 +291,7 @@ function performSearch() {
         .then((result) => {
             if (result.status) {
                 currentSearchResults = result.results || [];
+                saveBrowseState();
                 renderResults(currentSearchResults);
             } else {
                 showNoResults();

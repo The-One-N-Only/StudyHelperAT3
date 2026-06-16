@@ -2,7 +2,13 @@ import requests
 from bs4 import BeautifulSoup
 import src.whitelist as whitelist
 
-USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1"
+}
 READER_DOMAINS = {"web.md", "pubmed.ncbi.nlm.nih.gov"}
 GOOGLE_BOOKS_DOMAINS = {"books.google.com"}
 READER_DOMAIN_SUFFIXES = (
@@ -38,8 +44,10 @@ def fetch_source(url):
         raise ValueError("URL not allowed")
     
     try:
-        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=5)
+        resp = requests.get(url, headers=DEFAULT_HEADERS, timeout=10)
         if resp.status_code != 200:
+            if resp.status_code in (403, 429):
+                return {"status": False, "error": "Source blocked by the remote site. Open it directly in a new tab.", "fallback_url": url}
             return {"status": False, "error": "Failed to load source"}
         
         soup = BeautifulSoup(resp.content, 'html.parser')
@@ -89,6 +97,9 @@ def fetch_source(url):
             }
 
         cleaned_text = text.lower()
+        if 'checking your browser before accessing' in cleaned_text or 'just a moment' in cleaned_text or 'cf-ray' in cleaned_text or 'cloudflare' in cleaned_text:
+            return {"status": False, "error": "Source blocked by remote site protection. Open it directly in a new tab.", "fallback_url": url}
+
         paywall_indicators = [
             'paywall',
             'access denied',

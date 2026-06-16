@@ -62,6 +62,20 @@ export function openViewer(item) {
         return;
     }
 
+    const isPubMed = item.source_name?.toLowerCase() === 'pubmed' || item.source_url?.includes('pubmed.ncbi.nlm.nih.gov');
+    if (isPubMed) {
+        body.innerHTML = `
+            <div class="alert alert-warning m-3">
+                <i class="bi bi-exclamation-triangle"></i>
+                PubMed pages are not displayed inside StudyHelper because NCBI blocks proxy access.
+                <div class="mt-3">
+                    <a href="${item.source_url}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">Open PubMed in new tab</a>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
     fetch(`/api/proxy/source?url=${encodeURIComponent(item.source_url)}`)
         .then(r => r.json())
         .then(result => {
@@ -82,11 +96,14 @@ export function openViewer(item) {
                     body.innerHTML = result.html;
                 }
             } else {
+                const fallback = result.fallback_url || item.source_url;
                 body.innerHTML = `
                     <div class="alert alert-warning m-3">
                         <i class="bi bi-exclamation-triangle"></i>
                         ${result.error}
-                        <a href="${item.source_url}" target="_blank" class="btn btn-outline-primary btn-sm ms-2">Open in new tab</a>
+                        <div class="mt-3">
+                            <a href="${fallback}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">Open directly in new tab</a>
+                        </div>
                     </div>
                 `;
             }

@@ -255,6 +255,8 @@ def browse_search():
             min_date = filters.get('min_date', None)
             max_date = filters.get('max_date', None)
             results = pubmed.search(query, num_results, mesh_terms=mesh_terms, min_date=min_date, max_date=max_date, user_id=user_id)
+        elif source == 'whitelist':
+            results = search.whitelist_search(query, num_results, user_id=user_id)
         else:
             results = []
         logging.info(f"User {user_id} searched for '{query}' on {source}")
@@ -291,7 +293,7 @@ def browse_search_all():
     data = request.json
     query = data['query']
     num_results = data.get('num_results', 20)
-    sources = data.get('sources', ['wikipedia', 'gbooks', 'pubmed'])
+    sources = data.get('sources', ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist'])
     filters = data.get('filters', {})
     user_id = session.get('user_id')
 
@@ -303,7 +305,8 @@ def browse_search_all():
         'wikipedia': (search.wikipedia, (query, num_results)),
         'gbooks': (search.gbooks, (query, num_results, filters)),
         'pubmed': (pubmed.search, (query, num_results, filters.get('mesh_terms', []), filters.get('min_date'), filters.get('max_date'))),
-        'scholar': (search.google_scholar, (query, num_results,))
+        'scholar': (search.google_scholar, (query, num_results,)),
+        'whitelist': (search.whitelist_search, (query, num_results,))
     }
 
     # Execute searches in parallel
