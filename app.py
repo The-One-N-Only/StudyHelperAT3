@@ -119,9 +119,15 @@ def inject_user():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
+        # Capture submitted form values so we can re-populate the form
+        form_values = {
+            'name': request.form.get('name', '').strip(),
+            'email': request.form.get('email', '').strip(),
+            'username': request.form.get('username', '').strip()
+        }
         if session.get('login_lockout_until') and time.time() < session['login_lockout_until']:
             flash('Too many registration attempts. Please try again later.', 'warning')
-            return render_template('register.html')
+            return render_template('register.html', form_values=form_values)
 
         token = request.form.get('csrf_token')
         if not token or token != session.get('_csrf_token'):
@@ -135,32 +141,39 @@ def register():
 
         if not email or not username or not password:
             flash('Email, username and password are required.', 'danger')
-            return render_template('register.html')
+            form_values = {'name': name, 'email': email, 'username': username}
+            return render_template('register.html', form_values=form_values)
 
         if len(password) < 8:
             flash('Password must be at least 8 characters.', 'danger')
-            return render_template('register.html')
+            form_values = {'name': name, 'email': email, 'username': username}
+            return render_template('register.html', form_values=form_values)
 
         if password != confirm_password:
             flash('Passwords do not match.', 'danger')
-            return render_template('register.html')
+            form_values = {'name': name, 'email': email, 'username': username}
+            return render_template('register.html', form_values=form_values)
 
         if not re.match(r'^[A-Za-z0-9_.-]{3,30}$', username):
             flash('Username may only contain letters, numbers, dots, underscores, or hyphens.', 'danger')
-            return render_template('register.html')
+            form_values = {'name': name, 'email': email, 'username': username}
+            return render_template('register.html', form_values=form_values)
 
         if '@' not in email or len(email) > 254:
             flash('Please enter a valid email address.', 'danger')
-            return render_template('register.html')
+            form_values = {'name': name, 'email': email, 'username': username}
+            return render_template('register.html', form_values=form_values)
 
         existing_email = db.get_user_by_email(email)
         existing_username = db.get_user_by_username(username)
         if existing_email:
             flash('Email is already registered.', 'danger')
-            return render_template('register.html')
+            form_values = {'name': name, 'email': email, 'username': username}
+            return render_template('register.html', form_values=form_values)
         if existing_username:
             flash('Username already exists.', 'danger')
-            return render_template('register.html')
+            form_values = {'name': name, 'email': email, 'username': username}
+            return render_template('register.html', form_values=form_values)
 
         password_hash = generate_password_hash(password)
         user = db.create_local_user(email, username, password_hash, name=name)
