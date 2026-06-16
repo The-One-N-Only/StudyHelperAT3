@@ -302,7 +302,8 @@ def browse_search_all():
     search_tasks = {
         'wikipedia': (search.wikipedia, (query, num_results)),
         'gbooks': (search.gbooks, (query, num_results, filters)),
-        'pubmed': (pubmed.search, (query, num_results, filters.get('mesh_terms', []), filters.get('min_date'), filters.get('max_date')))
+        'pubmed': (pubmed.search, (query, num_results, filters.get('mesh_terms', []), filters.get('min_date'), filters.get('max_date'))),
+        'scholar': (search.google_scholar, (query, num_results,))
     }
 
     # Execute searches in parallel

@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import src.whitelist as whitelist
 
 USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
-READER_DOMAINS = {"web.md"}
+READER_DOMAINS = {"web.md", "pubmed.ncbi.nlm.nih.gov"}
 GOOGLE_BOOKS_DOMAINS = {"books.google.com"}
 READER_DOMAIN_SUFFIXES = (
     ".gov.uk",

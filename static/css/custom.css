@@ -29,6 +29,57 @@ button, .btn, a, input, select, textarea {
     max-width: 200px;
 }
 
+/* Browse results should fill available column space */
+[data-page="browse"] .card.card-fixed {
+    min-width: auto;
+    max-width: none;
+    width: 100%;
+}
+
+/* Limit browse card width so four cards fit in a row comfortably */
+.browse-results-row .col {
+    min-width: 220px;
+}
+
+/* Search bar full width and responsive layout */
+.browse-search-group {
+    display: flex;
+    width: 100%;
+}
+
+.browse-search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+}
+
+.browse-search-group .input-group-text,
+.browse-search-group .btn {
+    flex: 0 0 auto;
+}
+
+.browse-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+    display: none;
+    z-index: 1200;
+    background-color: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.browse-dropdown-menu.show {
+    display: block;
+}
+
+/* Ensure sidebar remains readable with a fixed minimum width */
+#sidebarContainer {
+    min-width: 320px;
+    max-width: 360px;
+}
+
 /* Drag-and-drop upload zone */
 .upload-zone {
     border: 2px dashed var(--bs-border-color);

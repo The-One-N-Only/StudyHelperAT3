@@ -3,51 +3,79 @@
 import { showToast } from '../toast.js';
 import { createCard } from '../card.js';
 
-let currentFilters = [];
+const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed', 'scholar'];
 let pageRoot = null;
+let currentSearchResults = [];
 
 export function initBrowse(root) {
     pageRoot = root;
     pageRoot.innerHTML = `
         <div class="bg-body-tertiary border-bottom p-3 mb-3">
             <div class="container-fluid">
-                <div class="row g-3 align-items-end">
-                    <div class="col">
-                        <div class="input-group input-group-lg">
-                            <span class="input-group-text"><i class="bi bi-search"></i></span>
-                            <input type="text" class="form-control" id="searchInput" placeholder="Search verified academic sources...">
-                            <button class="btn btn-primary" id="goBtn">Go</button>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <label for="atnInput" class="form-label">Assessment Task (optional)</label>
-                        <div class="input-group">
-                            <input type="text" class="form-control" id="atnInput" placeholder="Enter your assessment task...">
-                            <button class="btn btn-outline-secondary" id="clearAtnBtn" type="button">×</button>
-                        </div>
-                        <div class="mt-1">
-                            <span class="badge bg-secondary" id="modeBadge">Search Mode</span>
+                <div class="row g-3 align-items-center">
+                    <div class="col-12">
+                        <div class="dropdown d-inline-block w-100 position-relative">
+                            <div class="input-group input-group-lg browse-search-group w-100">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control browse-search-input" id="searchInput" placeholder="Search verified academic sources...">
+                                <button class="btn btn-primary" id="goBtn">Go</button>
+                                <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="filtersDropdown">Filters</button>
+                            </div>
+                            <div class="browse-dropdown-menu p-3" aria-labelledby="filtersDropdown" style="min-width: 320px;">
+                                <div class="mb-3">
+                                    <label class="form-label mb-2">Sources</label>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="filterWikipedia" value="wikipedia" checked>
+                                        <label class="form-check-label" for="filterWikipedia">Wikipedia</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="filterGBooks" value="gbooks" checked>
+                                        <label class="form-check-label" for="filterGBooks">Google Books</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="filterPubMed" value="pubmed" checked>
+                                        <label class="form-check-label" for="filterPubMed">PubMed</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="filterScholar" value="scholar">
+                                        <label class="form-check-label" for="filterScholar">Google Scholar</label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label mb-2">Year range</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="filterYearFrom" placeholder="From" min="1900" max="2030">
+                                        <input type="number" class="form-control" id="filterYearTo" placeholder="To" min="1900" max="2030">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label mb-2">Content type</label>
+                                    <select class="form-select" id="filterContentType">
+                                        <option value="">Any</option>
+                                        <option value="review">Review article</option>
+                                        <option value="survey">Survey</option>
+                                        <option value="case study">Case study</option>
+                                        <option value="full text">Full text</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label mb-2">Sorting</label>
+                                    <select class="form-select" id="filterSorting">
+                                        <option value="">Default</option>
+                                        <option value="recent">Most recent</option>
+                                        <option value="highly_cited">Highly cited</option>
+                                        <option value="open_access">Open access</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
         <div class="d-flex" style="height: calc(100vh - 200px);">
-            <div class="border-end p-3" style="width: 250px; overflow-y: auto;" id="filterContainer"></div>
+            <div class="border-end p-3 flex-shrink-0" style="width: 320px; min-width: 320px; overflow-y: auto;" id="sidebarContainer"></div>
             <div class="flex-grow-1 p-3 overflow-y-auto">
-                <div id=\"aiSummaryBox\" class=\"card mb-4 d-none\" style=\"max-width: 600px;\">
-                    <div class=\"card-header p-2\" style=\"cursor: pointer;\" data-bs-toggle=\"collapse\" data-bs-target=\"#aiSummaryContent\">
-                        <h6 class=\"mb-0\">
-                            <i class=\"bi bi-chevron-down me-2\" id=\"summaryChevron\"></i>
-                            <strong>AI Overview</strong>
-                        </h6>
-                    </div>
-                    <div class=\"collapse show\" id=\"aiSummaryContent\">
-                        <div class=\"card-body p-3\">
-                            <p class=\"card-text text-muted ai-summary-text small mb-0\">Generating summary...</p>
-                        </div>
-                    </div>
-                </div>
                 <div id="resultsContainer">
                     <div class="text-center py-5">
                         <i class="bi bi-mortarboard display-4 text-muted"></i>
@@ -60,122 +88,119 @@ export function initBrowse(root) {
     `;
 
     registerEvents();
-    loadFilters();
+    renderSidebar();
 }
 
 function registerEvents() {
     const searchInput = pageRoot.querySelector('#searchInput');
     const goBtn = pageRoot.querySelector('#goBtn');
-    const atnInput = pageRoot.querySelector('#atnInput');
-    const clearAtnBtn = pageRoot.querySelector('#clearAtnBtn');
+    const filtersDropdown = pageRoot.querySelector('#filtersDropdown');
+    const dropdownMenu = pageRoot.querySelector('.browse-dropdown-menu');
+    const sortingSelect = pageRoot.querySelector('#filterSorting');
 
     goBtn.addEventListener('click', performSearch);
     searchInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') performSearch();
     });
 
-    atnInput.addEventListener('input', updateModeBadge);
-    clearAtnBtn.addEventListener('click', () => {
-        atnInput.value = '';
-        updateModeBadge();
+    filtersDropdown?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (!dropdownMenu) return;
+        const open = dropdownMenu.classList.toggle('show');
+        filtersDropdown.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
 
-    pageRoot.addEventListener('change', (event) => {
-        if (event.target && event.target.name === 'sources') {
-            renderFilters();
+    dropdownMenu?.addEventListener('click', (event) => {
+        event.stopPropagation();
+    });
+
+    document.addEventListener('click', () => {
+        if (!dropdownMenu) return;
+        dropdownMenu.classList.remove('show');
+        filtersDropdown?.setAttribute('aria-expanded', 'false');
+    });
+
+    sortingSelect?.addEventListener('change', () => {
+        if (currentSearchResults.length > 0) {
+            const sortedResults = sortResults(currentSearchResults, sortingSelect.value);
+            renderResults(sortedResults);
         }
     });
 }
 
-function loadFilters() {
-    fetch('/api/filters')
-        .then((r) => r.json())
-        .then((data) => {
-            currentFilters = data.filters || [];
-            renderFilters();
-            updateModeBadge();
-        })
-        .catch(() => {
-            showToast('Unable to load search filters', 'danger');
-        });
-}
-
-function renderFilters() {
-    const filterContainer = pageRoot.querySelector('#filterContainer');
-    filterContainer.innerHTML = '';
-
-    const selectedSources = getSelectedSources();
-
-    currentFilters.forEach((filter) => {
-        if (filter.shown_source && !selectedSources.includes(filter.shown_source)) return;
-
-        const card = document.createElement('div');
-        card.className = 'card mb-3';
-        card.innerHTML = `
-            <div class="card-header">${filter.title}</div>
-            <div class="card-body">
-                ${renderFilterControl(filter)}
+function renderSidebar() {
+    const sidebar = pageRoot.querySelector('#sidebarContainer');
+    sidebar.innerHTML = `
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">AI Overview</h5>
             </div>
-        `;
-        filterContainer.appendChild(card);
-    });
-
-    pageRoot.querySelectorAll('input[type="range"]').forEach((range) => {
-        const valueLabel = pageRoot.querySelector(`#${range.id}Value`);
-        if (valueLabel) {
-            valueLabel.textContent = range.value;
-            range.addEventListener('input', () => {
-                valueLabel.textContent = range.value;
-            });
-        }
-    });
+            <div class="card-body">
+                <p class="text-muted small mb-0">AI search insights will appear here after you run a search. For now, results are gathered from trusted academic sources across the full whitelist.</p>
+            </div>
+        </div>
+    `;
 }
 
-function renderFilterControl(filter) {
-    if (filter.type === 'radio') {
-        return filter.options
-            .map(
-                (opt) => `
-            <div class="form-check">
-                <input class="form-check-input" type="radio" name="${filter.name}" id="${opt.id}" value="${opt.id}" ${filter.default === opt.id ? 'checked' : ''}>
-                <label class="form-check-label" for="${opt.id}">${opt.name}</label>
-            </div>`
-            )
-            .join('');
-    }
-    if (filter.type === 'checkbox') {
-        return filter.options
-            .map(
-                (opt) => `
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" name="${filter.name}" id="${opt.id}" value="${opt.id}" ${opt.checked ? 'checked' : ''}>
-                <label class="form-check-label" for="${opt.id}">${opt.name}</label>
-            </div>`
-            )
-            .join('');
-    }
-    if (filter.type === 'range') {
-        return `
-            <label for="${filter.id}" class="form-label">${filter.name}: <span id="${filter.id}Value">${filter.default}</span></label>
-            <input type="range" class="form-range" id="${filter.id}" min="${filter.min}" max="${filter.max}" step="${filter.step}" value="${filter.default}">`;
-    }
-    return '';
+function appendQueryTerm(term) {
+    const searchInput = pageRoot.querySelector('#searchInput');
+    const current = searchInput.value.trim();
+    searchInput.value = current ? `${current} ${term}` : term;
+    searchInput.focus();
 }
 
 function getSelectedSources() {
-    return Array.from(pageRoot.querySelectorAll('input[name="sources"]:checked')).map(cb => cb.value);
+    const dropdownToggle = pageRoot.querySelector('#filtersDropdown');
+    const dropdownMenu = dropdownToggle?.closest('.dropdown')?.querySelector('.dropdown-menu');
+    const checkedInputs = dropdownMenu
+        ? dropdownMenu.querySelectorAll('input[type="checkbox"]:checked')
+        : pageRoot.querySelectorAll('input[type="checkbox"]:checked');
+    return Array.from(checkedInputs).map((checkbox) => checkbox.value);
 }
 
-function updateModeBadge() {
-    const badge = pageRoot.querySelector('#modeBadge');
-    const atn = pageRoot.querySelector('#atnInput').value.trim();
-    if (atn) {
-        badge.className = 'badge bg-primary';
-        badge.textContent = 'ATN Mode';
-    } else {
-        badge.className = 'badge bg-secondary';
-        badge.textContent = 'Search Mode';
+function buildFilters() {
+    const filters = {};
+    const yearFrom = pageRoot.querySelector('#filterYearFrom').value.trim();
+    const yearTo = pageRoot.querySelector('#filterYearTo').value.trim();
+    const contentType = pageRoot.querySelector('#filterContentType').value;
+
+    if (yearFrom) filters.min_date = yearFrom;
+    if (yearTo) filters.max_date = yearTo;
+    if (contentType) filters.content_type = contentType;
+
+    return filters;
+}
+
+function sortResults(results, sortingCriteria) {
+    if (!sortingCriteria) return results;
+
+    const sorted = [...results];
+    switch (sortingCriteria) {
+        case 'recent':
+            sorted.sort((a, b) => {
+                const dateA = new Date(a.date || a.publication_date || 0);
+                const dateB = new Date(b.date || b.publication_date || 0);
+                return dateB - dateA;
+            });
+            break;
+        case 'highly_cited':
+            sorted.sort((a, b) => {
+                const citesA = a.citations || a.citation_count || 0;
+                const citesB = b.citations || b.citation_count || 0;
+                return citesB - citesA;
+            });
+            break;
+        case 'open_access':
+            sorted.sort((a, b) => {
+                const accessA = a.is_open_access || a.open_access ? 1 : 0;
+                const accessB = b.is_open_access || b.open_access ? 1 : 0;
+                return accessB - accessA;
+            });
+            break;
+        default:
+            break;
     }
+    return sorted;
 }
 
 function performSearch() {
@@ -188,26 +213,20 @@ function performSearch() {
         return;
     }
 
-    const numResults = parseInt(pageRoot.querySelector('#resultsSlider').value, 10);
-    const filters = {};
-    if (sources.includes('gbooks')) {
-        filters.download = pageRoot.querySelector('input[name="download"]:checked')?.value;
-        filters.available = pageRoot.querySelector('input[name="available"]:checked')?.value;
-        filters.print = pageRoot.querySelector('input[name="print"]:checked')?.value;
-    }
-
+    const filters = buildFilters();
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
     resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Searching...</p></div>';
 
     fetch('/api/browse/search-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, sources, num_results: numResults, filters })
+        body: JSON.stringify({ query, sources, num_results: 10, filters })
     })
         .then((r) => r.json())
         .then((result) => {
             if (result.status) {
-                renderResults(result.results, query);
+                currentSearchResults = result.results || [];
+                renderResults(currentSearchResults);
             } else {
                 showNoResults();
             }
@@ -218,21 +237,17 @@ function performSearch() {
         });
 }
 
-function renderResults(results, query) {
+function renderResults(results) {
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
     resultsContainer.innerHTML = '';
 
-    const summaryBox = pageRoot.querySelector('#aiSummaryBox');
-    summaryBox.classList.remove('d-none');
-    summaryBox.querySelector('.ai-summary-text').innerHTML = `Generating summary for <strong>${escapeHtml(query)}</strong>...`;
-
-    if (results.length === 0) {
+    if (!results || results.length === 0) {
         showNoResults();
         return;
     }
 
     const row = document.createElement('div');
-    row.className = 'row row-cols-2 row-cols-md-3 row-cols-xl-4 g-3';
+    row.className = 'row row-cols-1 row-cols-sm-2 row-cols-md-4 row-cols-lg-4 g-2 browse-results-row';
     results.forEach((item) => {
         const col = document.createElement('div');
         col.className = 'col';
@@ -240,46 +255,9 @@ function renderResults(results, query) {
         row.appendChild(col);
     });
     resultsContainer.appendChild(row);
-
-    const atn = pageRoot.querySelector('#atnInput').value.trim();
-    summarizeSearchResults(query, results, atn);
-}
-
-function summarizeSearchResults(query, results, atn) {
-    const summaryBox = pageRoot.querySelector('#aiSummaryBox');
-    const trimmedResults = results.slice(0, 8).map((item) => ({
-        title: item.title || '',
-        description: item.description || '',
-        source_name: item.source_name || '',
-        source_url: item.source_url || ''
-    }));
-
-    fetch('/api/browse/summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, results: trimmedResults, atn })
-    })
-        .then((r) => r.json())
-        .then((result) => {
-            if (result.status) {
-                const text = result.summary.replace(/^\*\*|\*\*$/g, '').trim();
-                summaryBox.querySelector('.ai-summary-text').textContent = text;
-            } else {
-                summaryBox.querySelector('.ai-summary-text').textContent = 'AI summarisation is currently unavailable.';
-            }
-        })
-        .catch(() => {
-            summaryBox.querySelector('.ai-summary-text').textContent = 'AI summarisation failed. Please try again later.';
-        });
 }
 
 function showNoResults() {
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
     resultsContainer.innerHTML = '<div class="text-center"><i class="bi bi-search display-4 text-muted"></i><h5>No results found</h5></div>';
-}
-
-function escapeHtml(value) {
-    const div = document.createElement('div');
-    div.textContent = value;
-    return div.innerHTML;
 }
