@@ -194,6 +194,9 @@ def whitelist_search(query, num_results, *, user_id):
             if not whitelist.is_allowed(link):
                 continue
 
+            domain = whitelist.get_domain(link)
+            source_name = whitelist.get_display_name_for_domain(domain)
+            
             item_data = {
                 "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
                 "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
@@ -201,7 +204,7 @@ def whitelist_search(query, num_results, *, user_id):
                 "thumb_mime": "image/jpeg",
                 "thumb_height": 0,
                 "source_url": link,
-                "source_name": "whitelist",
+                "source_name": source_name,
                 "source_id": link
             }
             results.append(db.get_item_by_source("whitelist", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))

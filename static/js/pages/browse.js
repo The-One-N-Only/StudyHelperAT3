@@ -7,6 +7,24 @@ const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist'
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 let pageRoot = null;
 let currentSearchResults = [];
+let whitelistDomains = [];
+let lastSearchQuery = null;
+let lastSearchSources = null;
+let lastSearchFilters = null;
+let isLoadingMore = false;
+
+// Load whitelisted domains
+async function loadWhitelistDomains() {
+    try {
+        const response = await fetch('/static/whitelist.json');
+        if (response.ok) {
+            const whitelist = await response.json();
+            whitelistDomains = whitelist.domains || [];
+        }
+    } catch (err) {
+        console.warn('Unable to load whitelist domains', err);
+    }
+}
 
 export function initBrowse(root) {
     pageRoot = root;
@@ -41,10 +59,7 @@ export function initBrowse(root) {
                                         <input class="form-check-input" type="checkbox" id="filterScholar" value="scholar">
                                         <label class="form-check-label" for="filterScholar">Google Scholar</label>
                                     </div>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="filterWhitelist" value="whitelist" checked>
-                                        <label class="form-check-label" for="filterWhitelist">All whitelisted sites</label>
-                                    </div>
+                                    <div id="whitelistCheckboxes" class="ps-2 border-start mt-2"></div>
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label mb-2">Year range</label>
@@ -91,6 +106,10 @@ export function initBrowse(root) {
             </div>
         </div>
     `;
+
+    loadWhitelistDomains().then(() => {
+        renderWhitelistCheckboxes();
+    });
 
     registerEvents();
     renderSidebar();
@@ -148,6 +167,51 @@ function renderSidebar() {
     `;
 }
 
+function getDisplayNameForDomain(domain) {
+    const domainNames = {
+        'en.wikipedia.org': 'Wikipedia',
+        'web.md': 'WebMD',
+        'scholar.google.com': 'Google Scholar',
+        'pubmed.ncbi.nlm.nih.gov': 'PubMed',
+        'www.jstor.org': 'JSTOR',
+        'eric.ed.gov': 'ERIC',
+        'www.sciencedirect.com': 'ScienceDirect',
+        'link.springer.com': 'Springer',
+        'www.researchgate.net': 'ResearchGate',
+        'www.academia.edu': 'Academia',
+        'books.google.com': 'Google Books',
+        'www.britannica.com': 'Britannica',
+        'www.bbc.co.uk': 'BBC',
+        'www.nationalgeographic.com': 'National Geographic',
+    };
+    
+    if (domainNames[domain]) {
+        return domainNames[domain];
+    }
+    
+    return domain.replace('www.', '').replace('.com', '').replace('.org', '').replace('.net', '').replace('.edu', '');
+}
+
+function renderWhitelistCheckboxes() {
+    const container = pageRoot.querySelector('#whitelistCheckboxes');
+    if (!container || !whitelistDomains || whitelistDomains.length === 0) return;
+    
+    let html = '<label class="form-label mb-2 small">Whitelisted Sites</label>';
+    
+    whitelistDomains.forEach((domain, idx) => {
+        const displayName = getDisplayNameForDomain(domain);
+        const checkId = `filterWhitelist_${idx}`;
+        html += `
+            <div class="form-check">
+                <input class="form-check-input whitelist-domain-checkbox" type="checkbox" id="${checkId}" value="whitelist_${domain}" checked>
+                <label class="form-check-label" for="${checkId}">${displayName}</label>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
 function appendQueryTerm(term) {
     const searchInput = pageRoot.querySelector('#searchInput');
     const current = searchInput.value.trim();
@@ -156,12 +220,22 @@ function appendQueryTerm(term) {
 }
 
 function getSelectedSources() {
-    const dropdownToggle = pageRoot.querySelector('#filtersDropdown');
-    const dropdownMenu = dropdownToggle?.closest('.dropdown')?.querySelector('.dropdown-menu');
-    const checkedInputs = dropdownMenu
-        ? dropdownMenu.querySelectorAll('input[type="checkbox"]:checked')
+    const browseDropdownMenu = pageRoot.querySelector('.browse-dropdown-menu');
+    const checkedInputs = browseDropdownMenu
+        ? browseDropdownMenu.querySelectorAll('input[type="checkbox"]:checked')
         : pageRoot.querySelectorAll('input[type="checkbox"]:checked');
-    return Array.from(checkedInputs).map((checkbox) => checkbox.value);
+    
+    const sources = new Set();
+    Array.from(checkedInputs).forEach((checkbox) => {
+        const value = checkbox.value;
+        if (value.startsWith('whitelist_')) {
+            sources.add('whitelist');
+        } else {
+            sources.add(value);
+        }
+    });
+    
+    return Array.from(sources);
 }
 
 function buildFilters() {
@@ -223,7 +297,11 @@ function restoreBrowseState() {
 
         if (sourceCheckboxes.length && Array.isArray(state.sources)) {
             sourceCheckboxes.forEach((checkbox) => {
-                checkbox.checked = state.sources.includes(checkbox.value);
+                if (checkbox.value.startsWith('whitelist_')) {
+                    checkbox.checked = state.sources.includes('whitelist');
+                } else {
+                    checkbox.checked = state.sources.includes(checkbox.value);
+                }
             });
         }
 
@@ -282,6 +360,12 @@ function performSearch() {
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
     resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Searching...</p></div>';
 
+    // Save search parameters for "load more" functionality
+    lastSearchQuery = query;
+    lastSearchSources = sources;
+    lastSearchFilters = filters;
+    isLoadingMore = false;
+
     fetch('/api/browse/search-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -321,6 +405,82 @@ function renderResults(results) {
         row.appendChild(col);
     });
     resultsContainer.appendChild(row);
+
+    // Add "Load More" button if there are results
+    if (results.length > 0) {
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'text-center mt-4 mb-3';
+        buttonContainer.innerHTML = `
+            <button class="btn btn-outline-primary" id="loadMoreBtn">
+                <span id="loadMoreText">Load More Results</span>
+                <span id="loadMoreSpinner" class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true" style="display: none;"></span>
+            </button>
+        `;
+        resultsContainer.appendChild(buttonContainer);
+
+        const loadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
+        if (loadMoreBtn) {
+            loadMoreBtn.addEventListener('click', loadMoreResults);
+        }
+    }
+}
+
+function loadMoreResults() {
+    if (isLoadingMore || !lastSearchQuery || !lastSearchSources) {
+        return;
+    }
+
+    isLoadingMore = true;
+    const loadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
+    const loadMoreText = pageRoot.querySelector('#loadMoreText');
+    const loadMoreSpinner = pageRoot.querySelector('#loadMoreSpinner');
+
+    if (loadMoreBtn) {
+        loadMoreBtn.disabled = true;
+    }
+    if (loadMoreText) {
+        loadMoreText.textContent = 'Loading...';
+    }
+    if (loadMoreSpinner) {
+        loadMoreSpinner.style.display = 'inline-block';
+    }
+
+    fetch('/api/browse/search-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            query: lastSearchQuery,
+            sources: lastSearchSources,
+            num_results: 20,
+            filters: lastSearchFilters || {}
+        })
+    })
+        .then((r) => r.json())
+        .then((result) => {
+            if (result.status && result.results) {
+                const newResults = result.results || [];
+                currentSearchResults = currentSearchResults.concat(newResults);
+                saveBrowseState();
+                renderResults(currentSearchResults);
+            } else {
+                showToast('No more results available', 'info');
+            }
+        })
+        .catch(() => {
+            showToast('Failed to load more results', 'danger');
+        })
+        .finally(() => {
+            isLoadingMore = false;
+            if (loadMoreBtn) {
+                loadMoreBtn.disabled = false;
+            }
+            if (loadMoreText) {
+                loadMoreText.textContent = 'Load More Results';
+            }
+            if (loadMoreSpinner) {
+                loadMoreSpinner.style.display = 'none';
+            }
+        });
 }
 
 function showNoResults() {
