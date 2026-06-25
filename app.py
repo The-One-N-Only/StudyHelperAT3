@@ -807,6 +807,11 @@ def api_note(note_id):
         logging.info(f"User {user_id} deleted note {note_id}")
         return jsonify({'status': True})
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logging.error(f"Unhandled exception: {str(e)}")
+    return render_template('error.html'), e
+
 @app.errorhandler(404)
 def not_found(error):
     return render_template('404.html'), 404
@@ -815,10 +820,6 @@ def not_found(error):
 def internal_error(error):
     return render_template('500.html'), 500
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    logging.error(f"Unhandled exception: {str(e)}")
-    return render_template('500.html'), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8010, debug=True)
