@@ -219,48 +219,77 @@ def google_scholar(query, num_results, *, user_id):
         return []
 
 
-def _search_whitelist_site(query, num_results, domain, *, user_id):
-    """Search a specific whitelisted domain and return up to `num_results` items."""
-    if not domain:
+def _normalize_search_result(link, title, description):
+    normalized_link = (link or "").strip()
+    if not normalized_link:
+        return None
+    if not whitelist.is_allowed(normalized_link):
+        return None
+    return {
+        "title": (title or "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+        "description": (description or "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+        "thumb_url": "",
+        "thumb_mime": "image/jpeg",
+        "thumb_height": 0,
+        "source_url": normalized_link,
+        "source_name": "whitelist",
+        "source_id": normalized_link,
+    }
+
+
+def _search_with_google_cse(query, num_results):
+    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
         return []
 
-    scope = whitelist.get_whitelist_search_scope()
-    if not scope:
+    scopes = whitelist.get_whitelist_search_scope()
+    if not scopes:
         return []
 
-    q = f"{query} {scope}"
-    try:
-        url = "https://www.googleapis.com/customsearch/v1"
-        params = {
-            "key": GOOGLE_SEARCH_API_KEY,
-            "cx": GOOGLE_SEARCH_ENGINE_ID,
-            "q": q,
-            "num": min(num_results, 10)
-        }
+    results = []
+    seen_links = set()
+    per_domain_limit = max(1, min(num_results, 10))
 
-        headers = {"User-Agent": USER_AGENT}
-        resp = requests.get(url, params=params, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return []
+    for scope in scopes:
+        if len(results) >= num_results:
+            break
 
-        data = resp.json()
-        results = []
-        for item in data.get("items", []):
-            link = item.get("link", "")
-            if not whitelist.is_allowed(link):
+        q = f"{query} {scope}"
+        try:
+            url = "https://www.googleapis.com/customsearch/v1"
+            params = {
+                "key": GOOGLE_SEARCH_API_KEY,
+                "cx": GOOGLE_SEARCH_ENGINE_ID,
+                "q": q,
+                "num": per_domain_limit
+            }
+
+            headers = {"User-Agent": USER_AGENT}
+            resp = requests.get(url, params=params, headers=headers, timeout=10)
+            if resp.status_code != 200:
                 continue
 
-            item_data = {
-                "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-                "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-                "thumb_url": "",
-                "thumb_mime": "image/jpeg",
-                "thumb_height": 0,
-                "source_url": link,
-                "source_name": "whitelist",
-                "source_id": link
-            }
-            results.append(db.get_item_by_source("whitelist", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+            data = resp.json()
+            for item in data.get("items", []):
+                link = item.get("link", "")
+                if not whitelist.is_allowed(link) or link in seen_links:
+                    continue
+
+                seen_links.add(link)
+                item_data = {
+                    "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+                    "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+                    "thumb_url": "",
+                    "thumb_mime": "image/jpeg",
+                    "thumb_height": 0,
+                    "source_url": link,
+                    "source_name": "whitelist",
+                    "source_id": link
+                }
+                results.append(db.get_item_by_source("whitelist", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+                if len(results) >= num_results:
+                    break
+        except Exception:
+            continue
 
         return results
     except:

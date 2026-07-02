@@ -5,6 +5,9 @@ import json
 import src.db as db
 import src.whitelist as whitelist
 from xml.etree import ElementTree as ET
+from dotenv import load_dotenv
+
+load_dotenv()
 
 USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
 PUBMED_API_KEY = os.getenv("PUBMED_API_KEY", "")

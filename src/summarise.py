@@ -5,6 +5,9 @@ import logging
 import src.whitelist as whitelist
 import src.proxy as proxy
 import src.local_ai as local_ai
+from dotenv import load_dotenv
+
+load_dotenv()
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_SUMMARISE_MODEL = os.getenv("ANTHROPIC_SUMMARISE_MODEL", "claude-haiku-4-5-20251001")
