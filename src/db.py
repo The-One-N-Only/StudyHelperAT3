@@ -657,7 +657,7 @@ def delete_note(note_id, user_id):
 def get_user_workspaces(user_id):
     """Get all workspaces for a user"""
     with SessionLocal() as session:
-        workspaces = session.query(Workspace).filter_by(user_id=user_id).order_by(Workspace.time_created).all()
+        workspaces = session.query(Workspace).filter_by(user_id=user_id).order_by(Workspace.time_created.desc()).all()
         return [{
             "id": w.id,
             "name": w.name,
@@ -665,6 +665,20 @@ def get_user_workspaces(user_id):
             "item_count": len(w.items) if w.items else 0,
             "note_count": len(w.notes) if w.notes else 0
         } for w in workspaces]
+
+def get_workspace(user_id, workspace_id):
+    """Get a single workspace for a user"""
+    with SessionLocal() as session:
+        workspace = session.query(Workspace).filter_by(user_id=user_id, id=workspace_id).first()
+        if not workspace:
+            return None
+        return {
+            "id": workspace.id,
+            "name": workspace.name,
+            "time_created": workspace.time_created,
+            "item_count": len(workspace.items) if workspace.items else 0,
+            "note_count": len(workspace.notes) if workspace.notes else 0
+        }
 
 def create_workspace(user_id, name):
     """Create a new workspace"""

@@ -21,17 +21,12 @@ async function bootstrapPage() {
             }
             case 'workspace': {
                 const module = await import('./pages/workspace.js');
-                module.initWorkspace(root, data);
+                module.initWorkspace(root);
                 break;
             }
             case 'upload': {
                 const module = await import('./pages/upload.js');
                 module.initUpload(root);
-                break;
-            }
-            case 'saved': {
-                const module = await import('./pages/saved.js');
-                module.initSaved(root, data);
                 break;
             }
             default:

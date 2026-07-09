@@ -4,234 +4,279 @@ import { showToast } from '../toast.js';
 
 let pageRoot = null;
 let currentWorkspaceId = null;
-let workspaces = [];
 let currentWorkspaceItems = [];
 let currentNoteId = null;
+let selectedWorkspaceItemId = null;
+let jasonMessages = [
+    { role: 'agent', text: 'Hi, I’m Jason. I’m a placeholder assistant until AI integration is configured.' }
+];
 
-export function initWorkspace(root, data = {}) {
+export function initWorkspace(root) {
     pageRoot = root;
-    currentWorkspaceId = null;
-    loadWorkspaces();
-}
-
-function renderWorkspacePage() {
-    pageRoot.innerHTML = `
-        <div class="container-fluid py-4">
-            <!-- Workspace Selector -->
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">
-                        <i class="bi bi-folder me-2"></i>
-                        Workspaces
-                    </h5>
-                    <button class="btn btn-sm btn-primary" id="createWorkspaceBtn">
-                        <i class="bi bi-plus-lg me-1"></i>
-                        New Workspace
-                    </button>
-                </div>
-                <div class="card-body">
-                    <div id="workspaceList" class="row g-2"></div>
-                </div>
-            </div>
-
-            <!-- Current Workspace View -->
-            <div id="workspaceDetailContainer"></div>
-        </div>
-    `;
-
-    renderWorkspaceList();
-    attachCreateWorkspaceListener();
-
-    if (workspaces.length > 0) {
-        selectWorkspace(workspaces[0].id);
-    }
-}
-
-function renderWorkspaceList() {
-    const container = pageRoot.querySelector('#workspaceList');
-    container.innerHTML = '';
-
-    if (workspaces.length === 0) {
-        container.innerHTML = '<p class="text-muted">No workspaces yet. Create one to get started!</p>';
+    currentWorkspaceId = window.WORKSPACE_ID;
+    if (!currentWorkspaceId) {
+        window.location.href = '/';
         return;
     }
 
-    workspaces.forEach((workspace) => {
-        const isActive = workspace.id === currentWorkspaceId;
-        const btn = document.createElement('button');
-        btn.className = `btn btn-outline-primary position-relative ${isActive ? 'active' : ''}`;
-        btn.innerHTML = `
-            ${escapeHtml(workspace.name)}
-            <span class="badge bg-secondary ms-2">${workspace.item_count}</span>
-        `;
-        btn.addEventListener('click', () => selectWorkspace(workspace.id));
-
-        // Context menu
-        btn.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            showWorkspaceContextMenu(workspace, e);
-        });
-
-        container.appendChild(btn);
-    });
-}
-
-function showWorkspaceContextMenu(workspace, event) {
-    const menu = document.createElement('div');
-    menu.className = 'dropdown-menu show';
-    menu.style.position = 'fixed';
-    menu.style.left = event.pageX + 'px';
-    menu.style.top = event.pageY + 'px';
-    menu.innerHTML = `
-        <button class="dropdown-item rename-workspace-btn" data-id="${workspace.id}">
-            <i class="bi bi-pencil me-2"></i>Rename
-        </button>
-        <button class="dropdown-item text-danger delete-workspace-btn" data-id="${workspace.id}">
-            <i class="bi bi-trash me-2"></i>Delete
-        </button>
-    `;
-
-    document.body.appendChild(menu);
-
-    menu.querySelector('.rename-workspace-btn').addEventListener('click', () => {
-        document.body.removeChild(menu);
-        renameWorkspaceDialog(workspace);
-    });
-
-    menu.querySelector('.delete-workspace-btn').addEventListener('click', () => {
-        document.body.removeChild(menu);
-        deleteWorkspaceDialog(workspace);
-    });
-
-    document.addEventListener('click', () => {
-        if (document.body.contains(menu)) document.body.removeChild(menu);
-    }, { once: true });
-}
-
-function selectWorkspace(workspaceId) {
-    currentWorkspaceId = workspaceId;
     loadWorkspaceDetails();
 }
 
-function loadWorkspaceDetails() {
-    fetch(`/api/workspace/items?workspace_id=${currentWorkspaceId}`)
-        .then(r => r.json())
-        .then(data => {
-            currentWorkspaceItems = data.items || [];
-            renderWorkspaceDetail();
-        })
-        .catch(() => showToast('Failed to load workspace items', 'danger'));
-}
-
 function renderWorkspaceDetail() {
-    const workspace = workspaces.find(w => w.id === currentWorkspaceId);
-    if (!workspace) return;
+    const workspaceName = window.WORKSPACE_NAME || 'Workspace';
 
-    const container = pageRoot.querySelector('#workspaceDetailContainer');
-    container.innerHTML = `
-        <div class="row g-4">
-            <div class="col-lg-8">
-                <div class="row g-3">
-                    <div class="col-12">
-                        <h4>${escapeHtml(workspace.name)} - Compilation</h4>
-                    </div>
-                    <div class="col-12">
-                        <div id="workspaceItemsContainer"></div>
-                    </div>
+    pageRoot.innerHTML = `
+        <div class="container-fluid py-4">
+            <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-4">
+                <div>
+                    <h3 class="mb-1">${escapeHtml(workspaceName)}</h3>
+                    <p class="text-muted mb-0">Use the workspace page to take notes, preview your selected source, and manage your studio.</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary btn-sm" id="renameWorkspaceBtn">Rename</button>
+                    <button class="btn btn-primary btn-sm" id="refreshWorkspaceBtn">Refresh</button>
                 </div>
             </div>
-            <div class="col-lg-4">
-                <div class="card sticky-top">
-                    <div class="card-header">
-                        <i class="bi bi-gear me-2"></i>
-                        Compilation Settings
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <label for="atnInput" class="form-label">Assessment Task</label>
-                            <input type="text" class="form-control" id="atnInput" placeholder="Optional assessment task...">
-                            <div class="form-text">This will be included in the exported document</div>
+
+            <div class="row g-4">
+                <div class="col-lg-7">
+                    <div class="card h-100 workspace-main-panel">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">Workspace Notes</h5>
+                                <small class="text-muted">Draft ideas and explore the current source here.</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" id="saveQuickNoteBtn">Save quick note</button>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Citation Format</label>
-                            <div class="btn-group w-100" role="group">
-                                <input type="radio" class="btn-check" name="citationFormat" id="apaRadio" value="apa" checked>
-                                <label class="btn btn-outline-primary" for="apaRadio">APA</label>
-                                <input type="radio" class="btn-check" name="citationFormat" id="harvardRadio" value="harvard">
-                                <label class="btn btn-outline-primary" for="harvardRadio">Harvard</label>
+                        <div class="card-body d-flex flex-column gap-4">
+                            <div>
+                                <textarea id="quickNoteInput" class="form-control h-100" rows="10" placeholder="Write your thoughts, outline key ideas, or summarise the selected source..."></textarea>
+                            </div>
+                            <div>
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <div>
+                                        <h6 class="mb-0">Selected source preview</h6>
+                                        <small class="text-muted">Choose a source from the studio and review it inline.</small>
+                                    </div>
+                                    <span id="sourceBadge" class="badge bg-secondary">${currentWorkspaceItems.length} sources</span>
+                                </div>
+                                <div id="selectedSourceViewer" class="border rounded p-2 bg-body-secondary" style="min-height: 320px;"></div>
                             </div>
                         </div>
-                        <hr>
-                        <button class="btn btn-outline-danger w-100 mb-2" id="exportPdfBtn">
-                            <i class="bi bi-file-pdf me-2"></i>
-                            Export PDF
-                        </button>
-                        <button class="btn btn-outline-primary w-100 mb-3" id="exportDocxBtn">
-                            <i class="bi bi-file-word me-2"></i>
-                            Export DOCX
-                        </button>
-                        <hr>
-                        <h6>Notes for this Workspace</h6>
-                        <div id="notesListContainer" class="mb-3"></div>
-                        <button class="btn btn-sm btn-primary w-100" id="createNoteBtn">
-                            <i class="bi bi-plus-lg me-1"></i>
-                            Add Note
-                        </button>
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <div class="card h-100 workspace-right-panel resizable-panel">
+                        <div class="card-body d-flex flex-column h-100">
+                            <div class="d-flex align-items-center justify-content-between mb-3">
+                                <div>
+                                    <h6 class="mb-0">Workspace Studio</h6>
+                                    <small class="text-muted">Sources, notes, and Jason chat.</small>
+                                </div>
+                            </div>
+                            <div class="workspace-tabs nav nav-pills mb-3" id="studioTabList" role="tablist">
+                                <button class="nav-link active" id="studio-sources-tab" data-bs-toggle="pill" data-bs-target="#studio-sources" type="button" role="tab">Sources</button>
+                                <button class="nav-link" id="studio-notes-tab" data-bs-toggle="pill" data-bs-target="#studio-notes" type="button" role="tab">Notes</button>
+                                <button class="nav-link" id="studio-chat-tab" data-bs-toggle="pill" data-bs-target="#studio-chat" type="button" role="tab">Jason</button>
+                            </div>
+
+                            <div class="tab-content flex-grow-1 overflow-hidden" id="studioTabContent">
+                                <div class="tab-pane fade show active h-100" id="studio-sources" role="tabpanel">
+                                    <div class="h-100 d-flex flex-column">
+                                        <div id="sourcesListContainer" class="list-group list-group-flush overflow-auto"></div>
+                                    </div>
+                                </div>
+                                <div class="tab-pane fade h-100" id="studio-notes" role="tabpanel">
+                                    <div class="d-flex flex-column h-100">
+                                        <div class="mb-3 d-flex align-items-center justify-content-between">
+                                            <h6 class="mb-0">Past notes</h6>
+                                            <button class="btn btn-sm btn-outline-primary" id="createNoteBtn">Add note</button>
+                                        </div>
+                                        <div id="notesListContainer" class="overflow-auto"></div>
+                                    </div>
+                                </div>
+                                <div class="tab-pane fade h-100" id="studio-chat" role="tabpanel">
+                                    <div class="d-flex flex-column h-100">
+                                        <div id="jasonChatMessages" class="border rounded p-3 mb-3 overflow-auto" style="min-height: 220px;"></div>
+                                        <div class="input-group">
+                                            <input id="jasonChatInput" type="text" class="form-control" placeholder="Ask Jason a question...">
+                                            <button class="btn btn-primary" id="jasonSendBtn" type="button">Send</button>
+                                        </div>
+                                        <small class="text-muted mt-2">Jason is a local placeholder until your AI key is configured.</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
+            <div id="noteEditorModal"></div>
         </div>
-        <div id="noteEditorModal"></div>
     `;
 
-    renderWorkspaceItems();
+    renderSelectedSource();
+    renderSourcesList();
     loadWorkspaceNotes();
     attachWorkspaceDetailListeners();
+    renderJasonMessages();
 }
 
-function renderWorkspaceItems() {
-    const container = pageRoot.querySelector('#workspaceItemsContainer');
+function attachWorkspaceDetailListeners() {
+    const saveQuickNoteBtn = pageRoot.querySelector('#saveQuickNoteBtn');
+    const createNoteBtn = pageRoot.querySelector('#createNoteBtn');
+    const refreshWorkspaceBtn = pageRoot.querySelector('#refreshWorkspaceBtn');
+    const jasonSendBtn = pageRoot.querySelector('#jasonSendBtn');
+    const renameWorkspaceBtn = pageRoot.querySelector('#renameWorkspaceBtn');
+
+    if (saveQuickNoteBtn) saveQuickNoteBtn.addEventListener('click', saveQuickNote);
+    if (createNoteBtn) createNoteBtn.addEventListener('click', createNote);
+    if (refreshWorkspaceBtn) refreshWorkspaceBtn.addEventListener('click', loadWorkspaceDetails);
+    if (jasonSendBtn) jasonSendBtn.addEventListener('click', sendJasonMessage);
+    if (renameWorkspaceBtn) renameWorkspaceBtn.addEventListener('click', renameWorkspaceDialog);
+
+    const chatInput = pageRoot.querySelector('#jasonChatInput');
+    if (chatInput) {
+        chatInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendJasonMessage();
+            }
+        });
+    }
+}
+
+function loadWorkspaceDetails() {
+    currentWorkspaceId = window.WORKSPACE_ID;
+    if (!currentWorkspaceId) {
+        window.location.href = '/';
+        return;
+    }
+
+    Promise.all([
+        fetch(`/api/workspaces/${currentWorkspaceId}`).then((r) => r.json()),
+        fetch(`/api/workspace/items?workspace_id=${currentWorkspaceId}`).then((r) => r.json())
+    ]).then(([workspaceData, itemsData]) => {
+        if (!workspaceData.status) {
+            throw new Error('Workspace not found');
+        }
+
+        const workspace = workspaceData.workspace;
+        window.WORKSPACE_NAME = workspace.name;
+        currentWorkspaceItems = itemsData.items || [];
+        selectedWorkspaceItemId = currentWorkspaceItems.length > 0 ? currentWorkspaceItems[0].id : null;
+        renderWorkspaceDetail();
+    }).catch(() => {
+        showToast('Failed to load workspace', 'danger');
+        window.location.href = '/';
+    });
+}
+
+function renderSourcesList() {
+    const container = pageRoot.querySelector('#sourcesListContainer');
+    if (!container) return;
     if (!currentWorkspaceItems || currentWorkspaceItems.length === 0) {
-        container.innerHTML = `<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No items in this workspace yet. Add sources from the Browse page.</div>`;
+        container.innerHTML = `<div class="text-muted small p-3">No sources have been added to this workspace yet.</div>`;
         return;
     }
 
     container.innerHTML = '';
     currentWorkspaceItems.forEach((item) => {
-        const card = document.createElement('div');
-        card.className = 'card mb-3';
-        card.innerHTML = `
-            <div class="card-header d-flex align-items-center">
-                <h6 class="fw-semibold mb-0 text-truncate">${escapeHtml(item.title)}</h6>
-                <span class="badge bg-secondary ms-2">${escapeHtml(item.source_name)}</span>
-                <button class="btn btn-outline-danger btn-sm ms-auto remove-btn" data-id="${item.id}">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </div>
-            <div class="card-body">
-                <p>${escapeHtml(item.summary)}</p>
-                <button class="btn btn-link btn-sm p-0 toggle-bullets" data-bs-toggle="collapse" data-bs-target="#bullets-${item.id}">
-                    Key Points ▾
-                </button>
-                <div class="collapse mt-2" id="bullets-${item.id}">
-                    <ul>
-                        ${Array.isArray(item.bullets)
-                            ? item.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')
-                            : ''}
-                    </ul>
+        const itemButton = document.createElement('button');
+        itemButton.type = 'button';
+        itemButton.className = `list-group-item list-group-item-action text-start ${item.id === selectedWorkspaceItemId ? 'active' : ''}`;
+        itemButton.innerHTML = `
+            <div class="d-flex w-100 justify-content-between">
+                <div class="pe-2">
+                    <h6 class="mb-1 text-truncate">${escapeHtml(item.title)}</h6>
+                    <p class="mb-0 text-muted small text-truncate">${escapeHtml(item.summary || '')}</p>
                 </div>
-                ${item.relevance ? `<div class="alert alert-info mt-2"><i class="bi bi-lightbulb"></i> ${escapeHtml(item.relevance)}</div>` : ''}
-            </div>
-            <div class="card-footer bg-transparent">
-                <small class="font-monospace text-muted">${escapeHtml(item.citation_apa)}</small>
+                <small class="text-muted align-self-start">${escapeHtml(item.source_name)}</small>
             </div>
         `;
-        container.appendChild(card);
+        itemButton.addEventListener('click', () => {
+            selectedWorkspaceItemId = item.id;
+            renderSelectedSource();
+            renderSourcesList();
+        });
+        container.appendChild(itemButton);
     });
+}
 
-    container.querySelectorAll('.remove-btn').forEach(btn => {
-        btn.addEventListener('click', () => removeFromWorkspace(btn.dataset.id));
-    });
+function renderSelectedSource() {
+    const viewer = pageRoot.querySelector('#selectedSourceViewer');
+    if (!viewer) return;
+
+    if (!currentWorkspaceItems || currentWorkspaceItems.length === 0) {
+        viewer.innerHTML = `<div class="p-4 text-muted">No source selected. Add sources to your workspace and tap a source to preview it here.</div>`;
+        return;
+    }
+
+    const item = currentWorkspaceItems.find((it) => it.id === selectedWorkspaceItemId) || currentWorkspaceItems[0];
+    if (!item) {
+        viewer.innerHTML = `<div class="p-4 text-muted">No source selected.</div>`;
+        return;
+    }
+
+    selectedWorkspaceItemId = item.id;
+    viewer.innerHTML = `
+        <div class="mb-3">
+            <div class="d-flex align-items-start justify-content-between gap-3">
+                <div>
+                    <h5 class="mb-1 text-truncate">${escapeHtml(item.title)}</h5>
+                    <p class="text-muted small mb-0">${escapeHtml(item.source_name)} • ${escapeHtml(item.source_url || '')}</p>
+                </div>
+                ${item.source_url ? `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm">Open</a>` : ''}
+            </div>
+        </div>
+        <div id="selectedSourcePreview" class="rounded overflow-hidden border bg-white" style="min-height: 320px;"></div>
+    `;
+
+    renderSelectedSourcePreview(item);
+}
+
+function renderSelectedSourcePreview(item) {
+    const previewContainer = pageRoot.querySelector('#selectedSourcePreview');
+    if (!previewContainer) return;
+
+    const url = item.source_url;
+    if (!url) {
+        previewContainer.innerHTML = `<div class="p-4 text-muted">No preview available for this source.</div>`;
+        return;
+    }
+
+    previewContainer.innerHTML = `<div class="d-flex justify-content-center align-items-center h-100 p-3"><div class="spinner-border" role="status"></div></div>`;
+
+    const fileExtension = (url.split('.').pop() || '').toLowerCase();
+    const directPreviewExtensions = ['pdf', 'htm', 'html'];
+    if (directPreviewExtensions.includes(fileExtension) || url.includes('/static/uploads/')) {
+        const iframe = document.createElement('iframe');
+        iframe.className = 'w-100 h-100';
+        iframe.style.minHeight = '320px';
+        iframe.style.border = 'none';
+        iframe.src = url;
+        previewContainer.innerHTML = '';
+        previewContainer.appendChild(iframe);
+        return;
+    }
+
+    fetch(`/api/proxy/source?url=${encodeURIComponent(url)}`)
+        .then((response) => response.json())
+        .then((result) => {
+            if (result.status && result.html) {
+                previewContainer.innerHTML = '';
+                const iframe = document.createElement('iframe');
+                iframe.className = 'w-100 h-100';
+                iframe.style.minHeight = '320px';
+                iframe.style.border = 'none';
+                iframe.srcdoc = result.html;
+                previewContainer.appendChild(iframe);
+            } else {
+                previewContainer.innerHTML = `<div class="p-4 text-muted">Preview unavailable. <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open source</a></div>`;
+            }
+        })
+        .catch(() => {
+            previewContainer.innerHTML = `<div class="p-4 text-muted">Failed to load preview. <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open source</a></div>`;
+        });
 }
 
 function loadWorkspaceNotes() {
@@ -239,133 +284,31 @@ function loadWorkspaceNotes() {
         .then(r => r.json())
         .then(data => {
             if (data.status) {
-                renderWorkspaceNotes(data.notes || []);
+                renderNotesTab(data.notes || []);
             }
         })
         .catch(() => showToast('Failed to load notes', 'danger'));
 }
 
-function renderWorkspaceNotes(notes) {
+function renderNotesTab(notes) {
     const container = pageRoot.querySelector('#notesListContainer');
+    if (!container) return;
     container.innerHTML = '';
 
     if (notes.length === 0) {
-        container.innerHTML = '<p class="text-muted small">No notes yet</p>';
+        container.innerHTML = '<div class="p-3 text-muted small">No notes yet. Add a note to save important highlights.</div>';
         return;
     }
 
     notes.forEach((note) => {
         const noteBtn = document.createElement('button');
-        noteBtn.className = 'btn btn-sm btn-outline-secondary w-100 text-start mb-2 text-truncate edit-note-btn';
+        noteBtn.className = 'btn btn-sm btn-outline-secondary w-100 text-start mb-2 text-truncate';
         noteBtn.dataset.id = note.id;
         noteBtn.title = note.title;
         noteBtn.textContent = '📝 ' + note.title;
-        container.appendChild(noteBtn);
-
         noteBtn.addEventListener('click', () => editNote(note.id));
+        container.appendChild(noteBtn);
     });
-}
-
-function attachWorkspaceDetailListeners() {
-    const exportPdfBtn = pageRoot.querySelector('#exportPdfBtn');
-    const exportDocxBtn = pageRoot.querySelector('#exportDocxBtn');
-    const createNoteBtn = pageRoot.querySelector('#createNoteBtn');
-
-    if (exportPdfBtn) exportPdfBtn.addEventListener('click', () => exportWorkspace('pdf'));
-    if (exportDocxBtn) exportDocxBtn.addEventListener('click', () => exportWorkspace('docx'));
-    if (createNoteBtn) createNoteBtn.addEventListener('click', () => createNote());
-}
-
-function attachCreateWorkspaceListener() {
-    const btn = pageRoot.querySelector('#createWorkspaceBtn');
-    if (btn) btn.addEventListener('click', createWorkspaceDialog);
-}
-
-function removeFromWorkspace(itemId) {
-    if (!confirm('Remove from workspace?')) return;
-    fetch(`/api/workspace/${itemId}`, { method: 'DELETE' })
-        .then(r => r.json())
-        .then(result => {
-            if (result.status) {
-                showToast('Removed', 'success');
-                loadWorkspaceDetails();
-            }
-        });
-}
-
-function exportWorkspace(format) {
-    const atn = pageRoot.querySelector('#atnInput')?.value || '';
-    const citation_format = pageRoot.querySelector('input[name="citationFormat"]:checked')?.value || 'apa';
-
-    fetch(`/api/export/${format}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: currentWorkspaceItems, citation_format, atn })
-    })
-    .then(r => r.blob())
-    .then(blob => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `StudyLib_Compilation.${format}`;
-        a.click();
-        URL.revokeObjectURL(url);
-        showToast(`Exported as ${format.toUpperCase()}`, 'success');
-    })
-    .catch(() => showToast('Export failed', 'danger'));
-}
-
-function createWorkspaceDialog() {
-    const name = prompt('Enter workspace name:', 'New Workspace');
-    if (!name) return;
-
-    fetch('/api/workspaces', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-    })
-    .then(r => r.json())
-    .then(result => {
-        if (result.status) {
-            showToast('Workspace created', 'success');
-            loadWorkspaces();
-        }
-    })
-    .catch(() => showToast('Failed to create workspace', 'danger'));
-}
-
-function renameWorkspaceDialog(workspace) {
-    const newName = prompt('Enter new name:', workspace.name);
-    if (!newName) return;
-
-    fetch(`/api/workspaces/${workspace.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName })
-    })
-    .then(r => r.json())
-    .then(result => {
-        if (result.status) {
-            showToast('Workspace renamed', 'success');
-            loadWorkspaces();
-        }
-    })
-    .catch(() => showToast('Failed to rename workspace', 'danger'));
-}
-
-function deleteWorkspaceDialog(workspace) {
-    if (!confirm(`Delete "${workspace.name}" and all its items?`)) return;
-
-    fetch(`/api/workspaces/${workspace.id}`, { method: 'DELETE' })
-        .then(r => r.json())
-        .then(result => {
-            if (result.status) {
-                showToast('Workspace deleted', 'success');
-                currentWorkspaceId = null;
-                loadWorkspaces();
-            }
-        })
-        .catch(() => showToast('Failed to delete workspace', 'danger'));
 }
 
 function createNote() {
@@ -377,7 +320,7 @@ function editNote(noteId) {
     fetch(`/api/workspaces/${currentWorkspaceId}/notes`)
         .then(r => r.json())
         .then(data => {
-            const note = data.notes.find(n => n.id === parseInt(noteId));
+            const note = data.notes.find((n) => n.id === parseInt(noteId, 10));
             if (note) {
                 currentNoteId = noteId;
                 showNoteEditor(note.title, note.content);
@@ -422,37 +365,25 @@ function saveNote() {
         return;
     }
 
-    if (currentNoteId) {
-        fetch(`/api/notes/${currentNoteId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, content })
-        })
-        .then(r => r.json())
-        .then(result => {
-            if (result.status) {
-                showToast('Note updated', 'success');
-                closeNoteEditor();
-                loadWorkspaceNotes();
-            }
-        })
-        .catch(() => showToast('Failed to update note', 'danger'));
-    } else {
-        fetch(`/api/workspaces/${currentWorkspaceId}/notes`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, content })
-        })
-        .then(r => r.json())
-        .then(result => {
-            if (result.status) {
-                showToast('Note created', 'success');
-                closeNoteEditor();
-                loadWorkspaceNotes();
-            }
-        })
-        .catch(() => showToast('Failed to create note', 'danger'));
-    }
+    const url = currentNoteId ? `/api/notes/${currentNoteId}` : `/api/workspaces/${currentWorkspaceId}/notes`;
+    const method = currentNoteId ? 'PUT' : 'POST';
+
+    fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status) {
+            showToast(currentNoteId ? 'Note updated' : 'Note created', 'success');
+            closeNoteEditor();
+            loadWorkspaceNotes();
+        } else {
+            showToast(result.error || 'Unable to save note', 'danger');
+        }
+    })
+    .catch(() => showToast('Failed to save note', 'danger'));
 }
 
 function closeNoteEditor() {
@@ -461,16 +392,104 @@ function closeNoteEditor() {
     currentNoteId = null;
 }
 
-function loadWorkspaces() {
-    fetch('/api/workspaces')
-        .then(r => r.json())
-        .then(data => {
-            if (data.status) {
-                workspaces = data.workspaces || [];
-                renderWorkspacePage();
-            }
-        })
-        .catch(() => showToast('Failed to load workspaces', 'danger'));
+function saveQuickNote() {
+    const content = pageRoot.querySelector('#quickNoteInput')?.value.trim();
+    if (!content) {
+        showToast('Add some quick notes before saving.', 'warning');
+        return;
+    }
+
+    const title = `Quick note ${new Date().toLocaleString()}`;
+    fetch(`/api/workspaces/${currentWorkspaceId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status) {
+            showToast('Quick note saved', 'success');
+            pageRoot.querySelector('#quickNoteInput').value = '';
+            loadWorkspaceNotes();
+        } else {
+            showToast(result.error || 'Unable to save note', 'danger');
+        }
+    })
+    .catch(() => showToast('Failed to save quick note', 'danger'));
+}
+
+function renameWorkspaceDialog() {
+    const workspaceName = window.WORKSPACE_NAME || '';
+    const newName = prompt('Enter a new name for this workspace:', workspaceName);
+    if (!newName || !newName.trim()) return;
+
+    fetch(`/api/workspaces/${currentWorkspaceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status) {
+            showToast('Workspace renamed', 'success');
+            window.WORKSPACE_NAME = result.workspace.name;
+            document.title = `${window.WORKSPACE_NAME} - StudyLib`;
+            renderWorkspaceDetail();
+        } else {
+            showToast(result.error || 'Unable to rename workspace', 'danger');
+        }
+    })
+    .catch(() => showToast('Failed to rename workspace', 'danger'));
+}
+
+function sendJasonMessage() {
+    const input = pageRoot.querySelector('#jasonChatInput');
+    const value = input?.value.trim();
+    if (!value) {
+        return;
+    }
+
+    jasonMessages.push({ role: 'user', text: value });
+    renderJasonMessages();
+    input.value = '';
+    setTimeout(() => {
+        jasonMessages.push({ role: 'agent', text: 'Jason is offline right now, but your workspace is ready.' });
+        renderJasonMessages();
+    }, 600);
+}
+
+function renderJasonMessages() {
+    const container = pageRoot.querySelector('#jasonChatMessages');
+    if (!container) return;
+    container.innerHTML = '';
+    jasonMessages.forEach((message) => {
+        const messageEl = document.createElement('div');
+        messageEl.className = `mb-3 p-3 rounded ${message.role === 'agent' ? 'bg-light text-dark' : 'bg-primary text-white'}`;
+        messageEl.innerHTML = `<strong>${message.role === 'agent' ? 'Jason' : 'You'}</strong><div class="mt-1">${escapeHtml(message.text)}</div>`;
+        container.appendChild(messageEl);
+    });
+    container.scrollTop = container.scrollHeight;
+}
+
+function createWorkspaceDialog() {
+    const name = prompt('Enter workspace name:', 'New Workspace');
+    if (!name) return;
+
+    fetch('/api/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.status) {
+            showToast('Workspace created', 'success');
+            window.location.href = `/workspace/${result.workspace.id}`;
+        } else {
+            showToast(result.error || 'Unable to create workspace', 'danger');
+        }
+    })
+    .catch(() => showToast('Failed to create workspace', 'danger'));
 }
 
 function escapeHtml(text) {

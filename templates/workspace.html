@@ -2,16 +2,13 @@
 
 {% block title %}Workspace - StudyLib{% endblock %}
 
-{% block active_workspace %}active{% endblock %}
-
 {% block content %}
 <div id="pageRoot" data-page="workspace"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-window.PAGE_DATA = {
-    workspace_items: {{ workspace_items|tojson }}
-};
+window.WORKSPACE_ID = {{ workspace_id }};
+window.WORKSPACE_NAME = {{ workspace_name|tojson }};
 </script>
 {% endblock %}

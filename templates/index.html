@@ -2,18 +2,6 @@
 
 {% block title %}Home - StudyLib{% endblock %}
 
-{% block active_home %}active{% endblock %}
-
 {% block content %}
 <div id="pageRoot" data-page="home"></div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-window.PAGE_DATA = {
-    saved: {{ user_data.saved|tojson }},
-    recently_viewed: {{ user_data.recently_viewed|tojson }},
-    recently_searched: {{ user_data.recently_searched|tojson }}
-};
-</script>
 {% endblock %}

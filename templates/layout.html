@@ -12,44 +12,24 @@
     {% block head %}{% endblock %}
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom shadow-sm sticky-top">
+    <nav class="navbar bg-body-tertiary border-bottom shadow-sm sticky-top">
         <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center gap-2" href="/">
-                <i class="bi bi-journal-bookmark-fill"></i>
-                StudyLib
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link {% block active_home %}{% endblock %}" href="/">HOME</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% block active_browse %}{% endblock %}" href="/browse">BROWSE</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% block active_workspace %}{% endblock %}" href="/workspace">WORKSPACE</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% block active_upload %}{% endblock %}" href="/upload">UPLOAD</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% block active_saved %}{% endblock %}" href="/saved">SAVED</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-2">
-                    <button class="btn btn-link p-1" id="themeToggle">
-                        <i class="bi bi-moon-stars-fill"></i>
-                    </button>
-                    {% if logged_in %}
-                        <span class="text-muted d-none d-lg-inline">Hi, {{ current_username }}</span>
-                        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('logout') }}">LOGOUT</a>
-                    {% else %}
-                        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('login') }}">LOGIN</a>
-                    {% endif %}
-                </div>
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-link p-1" id="navMenuButton" type="button" aria-label="Open menu">
+                    <i class="bi bi-list fs-4"></i>
+                </button>
+                <a class="navbar-brand mb-0" href="/">StudyLib</a>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-link p-1" id="themeToggle" type="button">
+                    <i class="bi bi-moon-stars-fill"></i>
+                </button>
+                {% if logged_in %}
+                    <span class="text-muted d-none d-lg-inline">Hi, {{ current_username }}</span>
+                    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('logout') }}">LOGOUT</a>
+                {% else %}
+                    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('login') }}">LOGIN</a>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -70,6 +50,24 @@
     {% block content %}{% endblock %}
 
     <div id="toastContainer" class="position-fixed top-0 end-0 p-3" style="z-index:1200;"></div>
+
+    <div id="navSidebarOverlay" class="nav-sidebar-overlay d-none">
+        <div class="nav-sidebar">
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <div>
+                    <h5 class="mb-0">Menu</h5>
+                    <p class="text-muted small mb-0">Quick navigation</p>
+                </div>
+                <button class="btn btn-link text-reset" id="closeNavSidebarBtn" type="button" aria-label="Close menu">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="list-group">
+                <a class="list-group-item list-group-item-action" href="/browse">Browse</a>
+                <a class="list-group-item list-group-item-action" href="/upload">Upload</a>
+            </div>
+        </div>
+    </div>
 
     <div class="offcanvas offcanvas-end" tabindex="-1" id="viewerOffcanvas" aria-labelledby="viewerOffcanvasLabel">
         <div class="offcanvas-header">

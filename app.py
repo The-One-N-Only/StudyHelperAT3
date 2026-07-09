@@ -56,18 +56,8 @@ def require_login():
 @app.route('/')
 def index():
     user_id = session['user_id']
-    saved = db.get_saved_items(user_id) or []
-    recently_viewed = db.get_recently_viewed(user_id) or []
-    recently_searched = db.get_recently_searched(user_id) or []
-    for item in saved:
-        item['saved'] = True
-    user_data = {
-        'saved': saved,
-        'recently_viewed': recently_viewed,
-        'recently_searched': recently_searched
-    }
     logging.info(f"User {user_id} accessed home page")
-    return render_template('index.html', user_data=user_data)
+    return render_template('index.html')
 
 @app.route('/browse')
 def browse():
@@ -75,13 +65,21 @@ def browse():
     return render_template('browse.html')
 
 @app.route('/workspace')
-def workspace():
+def workspace_redirect():
+    return redirect(url_for('index'))
+
+@app.route('/workspace/<int:workspace_id>')
+def workspace(workspace_id):
     if not session.get('user_id'):
-        return redirect('/')
+        return redirect(url_for('login'))
     user_id = session['user_id']
-    workspace_items = db.get_workspace_items(user_id) or []
-    logging.info(f"User {user_id} accessed workspace page")
-    return render_template('workspace.html', workspace_items=workspace_items)
+    workspace = db.get_workspace(user_id, workspace_id)
+    if not workspace:
+        logging.info(f"User {user_id} tried to access missing workspace {workspace_id}")
+        return redirect(url_for('index'))
+
+    logging.info(f"User {user_id} accessed workspace {workspace_id}")
+    return render_template('workspace.html', workspace_id=workspace_id, workspace_name=workspace['name'])
 
 @app.route('/upload')
 def upload():
@@ -89,17 +87,6 @@ def upload():
         return redirect('/')
     logging.info(f"User {session['user_id']} accessed upload page")
     return render_template('upload.html')
-
-@app.route('/saved')
-def saved():
-    if not session.get('user_id'):
-        return redirect('/')
-    user_id = session['user_id']
-    saved_items = db.get_saved_items(user_id) or []
-    for item in saved_items:
-        item['saved'] = True
-    logging.info(f"User {user_id} accessed saved page")
-    return render_template('saved.html', saved_items=saved_items)
 
 def get_csrf_token():
     token = session.get('_csrf_token')
@@ -445,6 +432,18 @@ def get_workspaces():
     
     workspaces = db.get_user_workspaces(user_id)
     return jsonify({'status': True, 'workspaces': workspaces})
+
+@app.route('/api/workspaces/<int:workspace_id>', methods=['GET'])
+def get_workspace():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
+    workspace = db.get_workspace(user_id, workspace_id)
+    if not workspace:
+        return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+
+    return jsonify({'status': True, 'workspace': workspace})
 
 @app.route('/api/workspaces', methods=['POST'])
 def create_workspace():
