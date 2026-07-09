@@ -5,6 +5,7 @@ from urllib.parse import quote
 import json
 import src.whitelist as whitelist
 import src.db as db
+import src.pubmed as pubmed
 
 USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
@@ -152,63 +153,86 @@ def google_scholar(query, num_results, *, user_id):
                 "thumb_mime": "image/jpeg",
                 "thumb_height": 0,
                 "source_url": link,
-                "source_name": "scholar",
+                "source_name": whitelist.get_display_name_for_domain('scholar.google.com'),
                 "source_id": link  # Use URL as ID since no unique ID from search
             }
             
-            results.append(db.get_item_by_source("scholar", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+            results.append(db.get_item_by_source(item_data["source_name"], item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
             
         return results
     except:
         return []
 
 
-def whitelist_search(query, num_results, *, user_id):
-    """Search across approved whitelisted academic domains using Google Custom Search."""
-    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
+def _search_whitelist_site(query, num_results, domain, *, user_id):
+    """Search a specific whitelisted domain and return up to `num_results` items."""
+    if not domain:
         return []
 
-    scope = whitelist.get_whitelist_search_scope()
-    if not scope:
-        return []
+    display_name = whitelist.get_display_name_for_domain(domain)
+    if GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
+        try:
+            q = f"{query} site:{domain}"
+            url = "https://www.googleapis.com/customsearch/v1"
+            params = {
+                "key": GOOGLE_SEARCH_API_KEY,
+                "cx": GOOGLE_SEARCH_ENGINE_ID,
+                "q": q,
+                "num": min(num_results, 10)
+            }
+            headers = {"User-Agent": USER_AGENT}
+            resp = requests.get(url, params=params, headers=headers, timeout=10)
+            if resp.status_code != 200:
+                return []
 
-    q = f"{query} {scope}"
-    try:
-        url = "https://www.googleapis.com/customsearch/v1"
-        params = {
-            "key": GOOGLE_SEARCH_API_KEY,
-            "cx": GOOGLE_SEARCH_ENGINE_ID,
-            "q": q,
-            "num": min(num_results, 10)
-        }
+            data = resp.json()
+            results = []
+            for item in data.get("items", []):
+                link = item.get("link", "")
+                if not link or not whitelist.is_allowed(link):
+                    continue
 
-        headers = {"User-Agent": USER_AGENT}
-        resp = requests.get(url, params=params, headers=headers, timeout=10)
-        if resp.status_code != 200:
+                item_data = {
+                    "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+                    "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
+                    "thumb_url": "",
+                    "thumb_mime": "image/jpeg",
+                    "thumb_height": 0,
+                    "source_url": link,
+                    "source_name": display_name,
+                    "source_id": link
+                }
+                results.append(db.get_item_by_source(item_data["source_name"], item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+            return results
+        except Exception:
             return []
 
-        data = resp.json()
-        results = []
-        for item in data.get("items", []):
-            link = item.get("link", "")
-            if not whitelist.is_allowed(link):
-                continue
+    # Fallback search implementations for popular whitelisted domains.
+    if domain == 'en.wikipedia.org':
+        return wikipedia(query, min(num_results, 1), user_id=user_id)
+    if domain == 'pubmed.ncbi.nlm.nih.gov':
+        return pubmed.search(query, min(num_results, 1), mesh_terms=None, min_date=None, max_date=None, user_id=user_id)
+    if domain == 'books.google.com':
+        return gbooks(query, min(num_results, 1), {}, user_id=user_id)
+    if domain == 'scholar.google.com':
+        return google_scholar(query, min(num_results, 1), user_id=user_id)
 
-            domain = whitelist.get_domain(link)
-            source_name = whitelist.get_display_name_for_domain(domain)
-            
-            item_data = {
-                "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-                "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-                "thumb_url": "",
-                "thumb_mime": "image/jpeg",
-                "thumb_height": 0,
-                "source_url": link,
-                "source_name": source_name,
-                "source_id": link
-            }
-            results.append(db.get_item_by_source("whitelist", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+    return []
 
-        return results
-    except:
+
+def whitelist_search(query, num_results, domains=None, *, user_id):
+    """Search across approved whitelisted academic domains using Google Custom Search."""
+    if domains is None:
+        domains = whitelist.get_whitelisted_domains()
+
+    if not domains:
         return []
+
+    # Ensure each domain contributes at most one result to avoid overwhelming the UI.
+    results = []
+    for domain in domains:
+        site_results = _search_whitelist_site(query, min(num_results, 1), domain, user_id=user_id)
+        if site_results:
+            results.extend(site_results[:1])
+
+    return results

@@ -15,3 +15,10 @@ def test_malformed_url():
 
 def test_get_domain():
     assert whitelist.get_domain("https://en.wikipedia.org/wiki/Test") == "en.wikipedia.org"
+
+
+def test_get_whitelisted_domains():
+    domains = whitelist.get_whitelisted_domains()
+    assert isinstance(domains, list)
+    assert 'en.wikipedia.org' in domains
+    assert 'pubmed.ncbi.nlm.nih.gov' in domains

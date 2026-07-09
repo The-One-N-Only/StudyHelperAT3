@@ -7,6 +7,7 @@ const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist'
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 let pageRoot = null;
 let currentSearchResults = [];
+let currentSourceCounts = {};
 let whitelistDomains = [];
 let lastSearchQuery = null;
 let lastSearchSources = null;
@@ -153,18 +154,89 @@ function registerEvents() {
     });
 }
 
-function renderSidebar() {
+function getDisplayNameForSource(source) {
+    if (source === 'wikipedia') return 'Wikipedia';
+    if (source === 'gbooks') return 'Google Books';
+    if (source === 'pubmed') return 'PubMed';
+    if (source === 'scholar') return 'Google Scholar';
+    if (source === 'whitelist') return 'Whitelisted Sources';
+    if (source.startsWith('whitelist_')) {
+        const domain = source.split('_', 2)[1];
+        return getDisplayNameForDomain(domain) || domain;
+    }
+    return source.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function itemMatchesSource(item, source) {
+    if (!item || !item.source_name) return false;
+    const sourceName = item.source_name.toLowerCase();
+    if (source === 'wikipedia') {
+        return sourceName === 'wikipedia';
+    }
+    if (source === 'gbooks') {
+        return sourceName === 'gbooks' || sourceName === 'google books';
+    }
+    if (source === 'pubmed') {
+        return sourceName === 'pubmed';
+    }
+    if (source === 'scholar') {
+        return sourceName === 'scholar' || sourceName === 'google scholar';
+    }
+    if (source === 'whitelist') {
+        return !['wikipedia', 'pubmed', 'gbooks', 'scholar'].includes(sourceName);
+    }
+    if (source.startsWith('whitelist_')) {
+        const domain = source.split('_', 2)[1];
+        return item.source_url && item.source_url.includes(domain);
+    }
+    return sourceName.includes(source.toLowerCase());
+}
+
+function renderSidebar(sourceCounts = {}, results = []) {
     const sidebar = pageRoot.querySelector('#sidebarContainer');
-    sidebar.innerHTML = `
-        <div class="card mb-3">
-            <div class="card-header">
-                <h5 class="card-title mb-0">AI Overview</h5>
+    const selectedSources = lastSearchSources || [];
+    if (!selectedSources.length) {
+        sidebar.innerHTML = `
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">AI Overview</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-0">AI search insights will appear here after you run a search. For now, results are gathered from trusted academic sources across the full whitelist.</p>
+                </div>
             </div>
-            <div class="card-body">
-                <p class="text-muted small mb-0">AI search insights will appear here after you run a search. For now, results are gathered from trusted academic sources across the full whitelist.</p>
-            </div>
-        </div>
-    `;
+        `;
+        return;
+    }
+
+    let html = '<div class="card mb-3">';
+    html += '<div class="card-header"><h5 class="card-title mb-0">Search sources</h5></div>';
+    html += '<div class="list-group list-group-flush">';
+
+    selectedSources.forEach((source) => {
+        const displayName = getDisplayNameForSource(source);
+        const count = sourceCounts[source] != null ? sourceCounts[source] : results.filter((item) => itemMatchesSource(item, source)).length;
+
+        const topItem = results.find((item) => itemMatchesSource(item, source));
+
+        html += `
+            <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong>${escapeHtml(displayName)}</strong>
+                    <span class="badge bg-primary rounded-pill">${count}</span>
+                </div>
+        `;
+        if (topItem) {
+            html += `<div class="small text-truncate"><strong>${escapeHtml(topItem.title)}</strong></div>`;
+            html += `<div class="small text-muted text-truncate">${escapeHtml(topItem.description || topItem.source_url || '')}</div>`;
+        } else {
+            html += `<div class="small text-muted">No results yet for this source.</div>`;
+        }
+        html += '</div>';
+    });
+
+    html += '</div></div>';
+    sidebar.innerHTML = html;
 }
 
 function getDisplayNameForDomain(domain) {
@@ -229,7 +301,7 @@ function getSelectedSources() {
     Array.from(checkedInputs).forEach((checkbox) => {
         const value = checkbox.value;
         if (value.startsWith('whitelist_')) {
-            sources.add('whitelist');
+            sources.add(value);
         } else {
             sources.add(value);
         }
@@ -307,7 +379,9 @@ function restoreBrowseState() {
 
         if (Array.isArray(state.results) && state.results.length > 0) {
             currentSearchResults = state.results;
+            lastSearchSources = Array.isArray(state.sources) ? state.sources : [];
             renderResults(sortResults(currentSearchResults, state.filters?.sorting || ''));
+            renderSidebar(currentSourceCounts, currentSearchResults);
         }
     } catch (err) {
         console.warn('Unable to restore browse state', err);
@@ -375,8 +449,10 @@ function performSearch() {
         .then((result) => {
             if (result.status) {
                 currentSearchResults = result.results || [];
+                currentSourceCounts = result.source_counts || {};
                 saveBrowseState();
                 renderResults(currentSearchResults);
+                renderSidebar(currentSourceCounts, currentSearchResults);
             } else {
                 showNoResults();
             }
@@ -460,8 +536,12 @@ function loadMoreResults() {
             if (result.status && result.results) {
                 const newResults = result.results || [];
                 currentSearchResults = currentSearchResults.concat(newResults);
+                if (result.source_counts) {
+                    currentSourceCounts = result.source_counts;
+                }
                 saveBrowseState();
                 renderResults(currentSearchResults);
+                renderSidebar(currentSourceCounts, currentSearchResults);
             } else {
                 showToast('No more results available', 'info');
             }

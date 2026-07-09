@@ -244,6 +244,9 @@ def browse_search():
             results = pubmed.search(query, num_results, mesh_terms=mesh_terms, min_date=min_date, max_date=max_date, user_id=user_id)
         elif source == 'whitelist':
             results = search.whitelist_search(query, num_results, user_id=user_id)
+        elif source.startswith('whitelist_'):
+            domain = source.split('_', 1)[1]
+            results = search.whitelist_search(query, num_results, domains=[domain], user_id=user_id)
         else:
             results = []
         logging.info(f"User {user_id} searched for '{query}' on {source}")
@@ -307,8 +310,10 @@ def browse_search_all():
         for source in sources:
             if source in search_tasks:
                 func, args = search_tasks[source]
-                # Create a lambda that includes user_id as keyword argument
                 futures[source] = executor.submit(func, *args, user_id=user_id)
+            elif source.startswith('whitelist_'):
+                domain = source.split('_', 1)[1]
+                futures[source] = executor.submit(search.whitelist_search, query, num_results, domains=[domain], user_id=user_id)
 
         # Collect results as they complete (or timeout)
         for source in futures:

@@ -32,16 +32,20 @@ def get_domain(url: str) -> str:
     except:
         return ''
 
+def get_whitelisted_domains() -> list[str]:
+    """Return the explicitly whitelisted domains from the whitelist configuration."""
+    return list(WHITELIST.get('domains', []))
+
 def get_whitelist_search_scope() -> str:
     """Generate a search scope string for Google Custom Search API using whitelisted domains."""
     scope_parts = []
     
     # Add exact domains
-    for domain in WHITELIST['domains']:
+    for domain in WHITELIST.get('domains', []):
         scope_parts.append(f"site:{domain}")
     
     # Add wildcard patterns (converting *.edu to *.edu pattern)
-    for pattern in WHITELIST['domain_patterns']:
+    for pattern in WHITELIST.get('domain_patterns', []):
         if pattern.startswith('*.'):
             # For patterns like *.edu, use site pattern for Google Custom Search
             scope_parts.append(f"site:{pattern}")

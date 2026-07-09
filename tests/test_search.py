@@ -1,0 +1,46 @@
+import pytest
+
+import src.search as search
+import src.whitelist as whitelist
+
+
+def test_whitelist_search_calls_per_domain(monkeypatch):
+    recorded = []
+
+    def fake_search_site(query, num_results, domain, *, user_id):
+        recorded.append((query, num_results, domain, user_id))
+        return [{
+            "title": f"Result from {domain}",
+            "description": "Test description",
+            "thumb_url": "",
+            "thumb_mime": "image/jpeg",
+            "thumb_height": 0,
+            "source_url": f"https://{domain}/result",
+            "source_name": domain,
+            "source_id": f"https://{domain}/result"
+        }]
+
+    monkeypatch.setattr(search, "_search_whitelist_site", fake_search_site)
+    monkeypatch.setattr(whitelist, "get_whitelisted_domains", lambda: ["en.wikipedia.org", "pubmed.ncbi.nlm.nih.gov"])
+
+    results = search.whitelist_search("test query", 1, user_id=1)
+
+    assert len(results) == 2
+    assert recorded == [
+        ("test query", 1, "en.wikipedia.org", 1),
+        ("test query", 1, "pubmed.ncbi.nlm.nih.gov", 1)
+    ]
+
+
+def test_whitelist_search_respects_domains_argument(monkeypatch):
+    called = []
+
+    def fake_search_site(query, num_results, domain, *, user_id):
+        called.append(domain)
+        return []
+
+    monkeypatch.setattr(search, "_search_whitelist_site", fake_search_site)
+
+    search.whitelist_search("example", 1, domains=["books.google.com"], user_id=2)
+
+    assert called == ["books.google.com"]
