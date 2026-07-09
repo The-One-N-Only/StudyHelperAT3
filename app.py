@@ -434,7 +434,7 @@ def get_workspaces():
     return jsonify({'status': True, 'workspaces': workspaces})
 
 @app.route('/api/workspaces/<int:workspace_id>', methods=['GET'])
-def get_workspace():
+def get_workspace(workspace_id):
     user_id = session.get('user_id')
     if not user_id:
         return jsonify({'status': False, 'error': 'Not logged in'}), 401

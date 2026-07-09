@@ -8,7 +8,7 @@
 
 {% block scripts %}
 <script>
-window.WORKSPACE_ID = {{ workspace_id }};
+window.WORKSPACE_ID = {{ workspace_id|tojson }};
 window.WORKSPACE_NAME = {{ workspace_name|tojson }};
 </script>
 {% endblock %}
