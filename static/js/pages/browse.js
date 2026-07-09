@@ -104,6 +104,7 @@ export function initBrowse(root) {
                         <p class="text-muted">Use the search bar above to find academic resources from trusted sources</p>
                     </div>
                 </div>
+                <div id="googleCseContainer" class="mt-4"></div>
             </div>
         </div>
     `;
@@ -114,7 +115,38 @@ export function initBrowse(root) {
 
     registerEvents();
     renderSidebar();
+    ensureGoogleCustomSearch();
     restoreBrowseState();
+}
+
+function ensureGoogleCustomSearch() {
+    const existingScript = document.getElementById('google-cse-script');
+    if (existingScript) {
+        if (window.google?.search?.cse?.element) {
+            window.google.search.cse.element.render({
+                div: 'googleCseContainer',
+                tag: 'search'
+            });
+        }
+        return;
+    }
+
+    window.__gcse = {
+        callback: function() {
+            if (window.google?.search?.cse?.element) {
+                window.google.search.cse.element.render({
+                    div: 'googleCseContainer',
+                    tag: 'search'
+                });
+            }
+        }
+    };
+
+    const script = document.createElement('script');
+    script.id = 'google-cse-script';
+    script.async = true;
+    script.src = 'https://cse.google.com/cse.js?cx=7675fc4c77c124dee';
+    document.body.appendChild(script);
 }
 
 function registerEvents() {
