@@ -255,7 +255,7 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None) -
         if USE_LOCAL_AI or not ANTHROPIC_API_KEY:
             response_text = local_ai.chat_with_context(messages, context_text, atn=atn)
         else:
-            system_prompt = """You are Jason, an academic research assistant for secondary school students.
+            system_prompt = """You are Alexander, an academic research assistant for secondary school students.
 You provide accurate, well-reasoned answers based on the information provided.
 You never fabricate information or cite sources not provided in the context.
 Engage naturally in conversation while maintaining academic rigor."""

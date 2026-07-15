@@ -8,8 +8,8 @@ let currentWorkspaceId = null;
 let currentWorkspaceItems = [];
 let currentNoteId = null;
 let selectedWorkspaceItemId = null;
-let jasonMessages = [
-    { role: 'agent', text: 'Hi, I’m Jason. Ask a question and I’ll answer using your workspace and available AI sources.' }
+let alexanderMessages = [
+    { role: 'agent', text: 'Hi, I’m Alexander. Ask a question and I’ll answer using your workspace and available AI sources.' }
 ];
 
 export function initWorkspace(root) {
@@ -72,13 +72,13 @@ function renderWorkspaceDetail() {
                             <div class="d-flex align-items-center justify-content-between mb-3">
                                 <div>
                                     <h6 class="mb-0">Workspace Studio</h6>
-                                    <small class="text-muted">Sources, notes, and Jason chat.</small>
+                                    <small class="text-muted">Sources, notes, and Alexander chat.</small>
                                 </div>
                             </div>
                             <div class="workspace-tabs nav nav-pills mb-3" id="studioTabList" role="tablist">
                                 <button class="nav-link active" id="studio-sources-tab" data-bs-toggle="pill" data-bs-target="#studio-sources" type="button" role="tab">Sources</button>
                                 <button class="nav-link" id="studio-notes-tab" data-bs-toggle="pill" data-bs-target="#studio-notes" type="button" role="tab">Notes</button>
-                                <button class="nav-link" id="studio-chat-tab" data-bs-toggle="pill" data-bs-target="#studio-chat" type="button" role="tab">Jason</button>
+                                <button class="nav-link" id="studio-chat-tab" data-bs-toggle="pill" data-bs-target="#studio-chat" type="button" role="tab">Alexander</button>
                             </div>
 
                             <div class="tab-content flex-grow-1 overflow-hidden" id="studioTabContent">
@@ -98,12 +98,12 @@ function renderWorkspaceDetail() {
                                 </div>
                                 <div class="tab-pane fade h-100" id="studio-chat" role="tabpanel">
                                     <div class="d-flex flex-column h-100">
-                                        <div id="jasonChatMessages" class="border rounded p-3 mb-3 overflow-auto" style="min-height: 220px;"></div>
+                                        <div id="alexanderChatMessages" class="border rounded p-3 mb-3 overflow-auto" style="min-height: 220px;"></div>
                                         <div class="input-group">
-                                            <input id="jasonChatInput" type="text" class="form-control" placeholder="Ask Jason a question...">
-                                            <button class="btn btn-primary" id="jasonSendBtn" type="button">Send</button>
+                                            <input id="alexanderChatInput" type="text" class="form-control" placeholder="Ask Alexander a question...">
+                                            <button class="btn btn-primary" id="alexanderSendBtn" type="button">Send</button>
                                         </div>
-                                        <small class="text-muted mt-2">Jason is a local placeholder until your AI key is configured.</small>
+                                        <small class="text-muted mt-2">Alexander is a local placeholder until your AI key is configured.</small>
                                     </div>
                                 </div>
                             </div>
@@ -119,28 +119,28 @@ function renderWorkspaceDetail() {
     renderSourcesList();
     loadWorkspaceNotes();
     attachWorkspaceDetailListeners();
-    renderJasonMessages();
+    renderAlexanderMessages();
 }
 
 function attachWorkspaceDetailListeners() {
     const saveQuickNoteBtn = pageRoot.querySelector('#saveQuickNoteBtn');
     const createNoteBtn = pageRoot.querySelector('#createNoteBtn');
     const refreshWorkspaceBtn = pageRoot.querySelector('#refreshWorkspaceBtn');
-    const jasonSendBtn = pageRoot.querySelector('#jasonSendBtn');
+    const alexanderSendBtn = pageRoot.querySelector('#alexanderSendBtn');
     const renameWorkspaceBtn = pageRoot.querySelector('#renameWorkspaceBtn');
 
     if (saveQuickNoteBtn) saveQuickNoteBtn.addEventListener('click', saveQuickNote);
     if (createNoteBtn) createNoteBtn.addEventListener('click', createNote);
     if (refreshWorkspaceBtn) refreshWorkspaceBtn.addEventListener('click', loadWorkspaceDetails);
-    if (jasonSendBtn) jasonSendBtn.addEventListener('click', sendJasonMessage);
+    if (alexanderSendBtn) alexanderSendBtn.addEventListener('click', sendAlexanderMessage);
     if (renameWorkspaceBtn) renameWorkspaceBtn.addEventListener('click', renameWorkspaceDialog);
 
-    const chatInput = pageRoot.querySelector('#jasonChatInput');
+    const chatInput = pageRoot.querySelector('#alexanderChatInput');
     if (chatInput) {
         chatInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
                 event.preventDefault();
-                sendJasonMessage();
+                sendAlexanderMessage();
             }
         });
     }
@@ -443,40 +443,40 @@ function renameWorkspaceDialog() {
     .catch(() => showToast('Failed to rename workspace', 'danger'));
 }
 
-async function sendJasonMessage() {
-    const input = pageRoot.querySelector('#jasonChatInput');
+async function sendAlexanderMessage() {
+    const input = pageRoot.querySelector('#alexanderChatInput');
     const value = input?.value.trim();
     if (!value) {
         return;
     }
 
-    jasonMessages.push({ role: 'user', text: value });
-    renderJasonMessages();
+    alexanderMessages.push({ role: 'user', text: value });
+    renderAlexanderMessages();
     input.value = '';
 
-    const loadingMessage = { role: 'agent', text: 'Jason is thinking...' };
-    jasonMessages.push(loadingMessage);
-    renderJasonMessages();
+    const loadingMessage = { role: 'agent', text: 'Alexander is thinking...' };
+    alexanderMessages.push(loadingMessage);
+    renderAlexanderMessages();
 
     const result = await studyHelperAI.chat(value);
-    jasonMessages = jasonMessages.filter((m) => m !== loadingMessage);
+    alexanderMessages = alexanderMessages.filter((m) => m !== loadingMessage);
 
     if (result.status) {
-        jasonMessages.push({ role: 'agent', text: result.response });
+        alexanderMessages.push({ role: 'agent', text: result.response });
     } else {
-        jasonMessages.push({ role: 'agent', text: `Jason could not answer right now: ${result.error}` });
+        alexanderMessages.push({ role: 'agent', text: `Alexander could not answer right now: ${result.error}` });
     }
-    renderJasonMessages();
+    renderAlexanderMessages();
 }
 
-function renderJasonMessages() {
-    const container = pageRoot.querySelector('#jasonChatMessages');
+function renderAlexanderMessages() {
+    const container = pageRoot.querySelector('#alexanderChatMessages');
     if (!container) return;
     container.innerHTML = '';
-    jasonMessages.forEach((message) => {
+    alexanderMessages.forEach((message) => {
         const messageEl = document.createElement('div');
         messageEl.className = `mb-3 p-3 rounded ${message.role === 'agent' ? 'bg-light text-dark' : 'bg-primary text-white'}`;
-        messageEl.innerHTML = `<strong>${message.role === 'agent' ? 'Jason' : 'You'}</strong><div class="mt-1">${escapeHtml(message.text)}</div>`;
+        messageEl.innerHTML = `<strong>${message.role === 'agent' ? 'Alexander' : 'You'}</strong><div class="mt-1">${escapeHtml(message.text)}</div>`;
         container.appendChild(messageEl);
     });
     container.scrollTop = container.scrollHeight;
