@@ -181,7 +181,7 @@ class StudyHelperAI {
 }
 
 // Initialize globally
-const studyHelperAI = new StudyHelperAI();
+export const studyHelperAI = new StudyHelperAI();
 
 /**
  * Example usage in HTML

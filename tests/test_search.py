@@ -44,3 +44,38 @@ def test_whitelist_search_respects_domains_argument(monkeypatch):
     search.whitelist_search("example", 1, domains=["books.google.com"], user_id=2)
 
     assert called == ["books.google.com"]
+
+
+def test_whitelist_search_uses_serpapi_when_key_set(monkeypatch):
+    monkeypatch.setattr(search, "SERP_API_KEY", "test-key")
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert url == "https://serpapi.com/search"
+        assert params["api_key"] == "test-key"
+        assert params["engine"] == "google"
+        assert "site:en.wikipedia.org" in params["q"]
+        class FakeResponse:
+            status_code = 200
+            def json(self_non):
+                return {
+                    "organic_results": [
+                        {
+                            "link": "https://en.wikipedia.org/wiki/Test",
+                            "title": "Test Title",
+                            "snippet": "Test snippet"
+                        }
+                    ]
+                }
+        return FakeResponse()
+
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    monkeypatch.setattr(search.whitelist, "is_allowed", lambda url: True)
+    monkeypatch.setattr(search.whitelist, "get_display_name_for_domain", lambda domain: "Wikipedia")
+    monkeypatch.setattr(search.whitelist, "get_domain", lambda url: "en.wikipedia.org")
+    monkeypatch.setattr(search.db, "get_item_by_source", lambda source_name, source_id, user_id, add_to_recent_search: None)
+    monkeypatch.setattr(search.db, "create_item", lambda item_data, user_id, add_to_recent_search: item_data)
+
+    results = search.whitelist_search("test query", 1, user_id=1)
+
+    assert len(results) == 1
+    assert results[0]["source_url"] == "https://en.wikipedia.org/wiki/Test"

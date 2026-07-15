@@ -101,7 +101,7 @@ def test_claude_api():
         client = anthropic.Anthropic(api_key=api_key)
         
         message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model=os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8"),
             max_tokens=10,
             messages=[
                 {"role": "user", "content": "Say OK"}

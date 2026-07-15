@@ -1,6 +1,7 @@
 "use strict";
 
 import { showToast } from '../toast.js';
+import { studyHelperAI } from '../ai-prompt.js';
 
 let pageRoot = null;
 let currentWorkspaceId = null;
@@ -8,7 +9,7 @@ let currentWorkspaceItems = [];
 let currentNoteId = null;
 let selectedWorkspaceItemId = null;
 let jasonMessages = [
-    { role: 'agent', text: 'Hi, I’m Jason. I’m a placeholder assistant until AI integration is configured.' }
+    { role: 'agent', text: 'Hi, I’m Jason. Ask a question and I’ll answer using your workspace and available AI sources.' }
 ];
 
 export function initWorkspace(root) {
@@ -442,7 +443,7 @@ function renameWorkspaceDialog() {
     .catch(() => showToast('Failed to rename workspace', 'danger'));
 }
 
-function sendJasonMessage() {
+async function sendJasonMessage() {
     const input = pageRoot.querySelector('#jasonChatInput');
     const value = input?.value.trim();
     if (!value) {
@@ -452,10 +453,20 @@ function sendJasonMessage() {
     jasonMessages.push({ role: 'user', text: value });
     renderJasonMessages();
     input.value = '';
-    setTimeout(() => {
-        jasonMessages.push({ role: 'agent', text: 'Jason is offline right now, but your workspace is ready.' });
-        renderJasonMessages();
-    }, 600);
+
+    const loadingMessage = { role: 'agent', text: 'Jason is thinking...' };
+    jasonMessages.push(loadingMessage);
+    renderJasonMessages();
+
+    const result = await studyHelperAI.chat(value);
+    jasonMessages = jasonMessages.filter((m) => m !== loadingMessage);
+
+    if (result.status) {
+        jasonMessages.push({ role: 'agent', text: result.response });
+    } else {
+        jasonMessages.push({ role: 'agent', text: `Jason could not answer right now: ${result.error}` });
+    }
+    renderJasonMessages();
 }
 
 function renderJasonMessages() {

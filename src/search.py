@@ -1,8 +1,6 @@
 import os
 import re
 import requests
-from urllib.parse import quote
-import json
 import src.whitelist as whitelist
 import src.db as db
 import src.pubmed as pubmed
@@ -11,6 +9,7 @@ USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
 GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY", "")
 GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID", "")
+SERP_API_KEY = os.getenv("SERP_API_KEY", "")
 
 
 def wikipedia(query, num_results, *, user_id):
@@ -112,6 +111,57 @@ def gbooks(query, num_results, filters, *, user_id):
         return []
 
 
+def _search_serpapi(query, num_results, scope, *, user_id):
+    """Search whitelisted academic sites using SerpApi."""
+    if not SERP_API_KEY or not scope:
+        return []
+
+    try:
+        q = f"{query} ({scope})".strip()
+        params = {
+            "q": q,
+            "num": min(num_results, 10),
+            "api_key": SERP_API_KEY,
+            "engine": "google"
+        }
+        headers = {"User-Agent": USER_AGENT}
+        resp = requests.get(
+            "https://serpapi.com/search",
+            params=params,
+            headers=headers,
+            timeout=10
+        )
+        if resp.status_code != 200:
+            return []
+
+        data = resp.json()
+        results = []
+        for item in data.get("organic_results", []):
+            link = item.get("link", "")
+            if not link or not whitelist.is_allowed(link):
+                continue
+
+            domain = whitelist.get_domain(link)
+            item_data = {
+                "title": item.get("title", ""),
+                "description": item.get("snippet", ""),
+                "thumb_url": "",
+                "thumb_mime": "image/jpeg",
+                "thumb_height": 0,
+                "source_url": link,
+                "source_name": whitelist.get_display_name_for_domain(domain) if domain else "Whitelisted Source",
+                "source_id": link
+            }
+            results.append(
+                db.get_item_by_source(
+                    item_data["source_name"], item_data["source_id"], user_id, True
+                ) or db.create_item(item_data, user_id, True)
+            )
+        return results
+    except Exception:
+        return []
+
+
 def google_scholar(query, num_results, *, user_id):
     """
     Search Google Scholar for academic papers.
@@ -169,10 +219,14 @@ def _search_whitelist_site(query, num_results, domain, *, user_id):
     if not domain:
         return []
 
+    scope = f"site:{domain}"
+    if SERP_API_KEY:
+        return _search_serpapi(query, min(num_results, 10), scope, user_id=user_id)
+
     display_name = whitelist.get_display_name_for_domain(domain)
     if GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
         try:
-            q = f"{query} site:{domain}"
+            q = f"{query} {scope}"
             url = "https://www.googleapis.com/customsearch/v1"
             params = {
                 "key": GOOGLE_SEARCH_API_KEY,
@@ -221,16 +275,21 @@ def _search_whitelist_site(query, num_results, domain, *, user_id):
 
 
 def whitelist_search(query, num_results, domains=None, *, user_id):
-    """Search across approved whitelisted academic domains using Google Custom Search."""
-    if domains is None:
-        domains = whitelist.get_whitelisted_domains()
+    """Search across approved whitelisted academic domains using Google Custom Search or SerpApi."""
+    explicit_domains = domains
+    if explicit_domains is None:
+        explicit_domains = whitelist.get_whitelisted_domains()
 
-    if not domains:
+    if not explicit_domains:
         return []
+
+    if SERP_API_KEY and domains is None:
+        scope = whitelist.get_whitelist_search_scope()
+        return _search_serpapi(query, min(num_results, 10), scope, user_id=user_id)
 
     # Ensure each domain contributes at most one result to avoid overwhelming the UI.
     results = []
-    for domain in domains:
+    for domain in explicit_domains:
         site_results = _search_whitelist_site(query, min(num_results, 1), domain, user_id=user_id)
         if site_results:
             results.extend(site_results[:1])

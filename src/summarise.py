@@ -7,6 +7,7 @@ import src.proxy as proxy
 import src.local_ai as local_ai
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_SUMMARISE_MODEL = os.getenv("ANTHROPIC_SUMMARISE_MODEL", "claude-haiku-4-5-20251001")
 USE_LOCAL_AI = os.getenv("USE_LOCAL_AI", "1") != "0"
 
 
@@ -21,7 +22,7 @@ def _anthropic_request(prompt: str):
         "content-type": "application/json"
     }
     payload = {
-        "model": "claude-haiku-4-5-20251001",
+        "model": ANTHROPIC_SUMMARISE_MODEL,
         "max_tokens": 1024,
         "system": (
             "You are an academic research assistant for secondary school students. "
@@ -35,6 +36,22 @@ def _anthropic_request(prompt: str):
         raise ValueError("Summarisation failed")
     data = resp.json()
     return data["content"][0]["text"]
+
+
+def _parse_ai_json_response(content: str) -> dict:
+    """Try to parse a JSON object from model output robustly."""
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        # Attempt to extract a JSON object from anywhere in the text
+        start = content.find('{')
+        end = content.rfind('}')
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(content[start:end+1])
+            except json.JSONDecodeError:
+                pass
+    return {}
 
 
 def summarise_url(url, title, atn=None, user_id=None):
@@ -59,7 +76,9 @@ def summarise_url(url, title, atn=None, user_id=None):
 
     try:
         content = _anthropic_request(user_prompt)
-        result = json.loads(content)
+        result = _parse_ai_json_response(content)
+        if not result:
+            raise ValueError('Unable to parse model response')
         result["status"] = True
         logging.info(f"User {user_id} requested AI summary for {url}")
         return result
@@ -90,7 +109,9 @@ def summarise_file(file_id, user_id, atn=None):
 
     try:
         content = _anthropic_request(user_prompt)
-        result = json.loads(content)
+        result = _parse_ai_json_response(content)
+        if not result:
+            raise ValueError('Unable to parse model response')
         result["status"] = True
         logging.info(f"User {user_id} requested AI summary for file {file_id}")
         return result
@@ -98,3 +119,26 @@ def summarise_file(file_id, user_id, atn=None):
         return {"status": False, "error": "Summarisation timed out"}
     except Exception:
         return {"status": False, "error": "Summarisation error"}
+
+
+def summarise_search_results(query: str, results: list[dict], atn: str | None = None) -> str:
+    if _use_local():
+        return local_ai.summarize_search_results(query, results, atn)
+
+    prompt = "Briefly summarise these search results in 2-3 sentences. Be concise and factual.\n\n"
+    if atn:
+        prompt = f"For the following assessment task: {atn}\n\n" + prompt
+    prompt += "Search results:\n"
+    for result in results[:8]:
+        title = result.get('title', 'Untitled')
+        description = result.get('description', '').strip()
+        prompt += f"- {title}: {description}\n"
+    prompt += "\nSummary:"
+
+    try:
+        content = _anthropic_request(prompt)
+        return content.strip()
+    except requests.Timeout:
+        return "Failed to summarise search results: request timed out."
+    except Exception:
+        return "Failed to summarise search results."

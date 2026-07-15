@@ -6,12 +6,12 @@ import io
 import src.db as db
 import src.search as search
 import src.pubmed as pubmed
-# import src.summarise as summarise
+import src.summarise as summarise
 import src.proxy as proxy
 import src.citations as citations
 import src.files as files
 import src.export as export
-#import src.answer as answer
+import src.answer as answer
 import src.local_ai as local_ai
 import json
 import uuid
@@ -348,7 +348,7 @@ def browse_summary():
         return jsonify({'status': False, 'error': 'Query required'}), 400
 
     try:
-        summary = local_ai.summarize_search_results(query, results, atn)
+        summary = summarise.summarise_search_results(query, results, atn)
         logging.info(f"User {user_id} requested search summary for '{query}'")
         return jsonify({'status': True, 'summary': summary})
     except Exception as e:

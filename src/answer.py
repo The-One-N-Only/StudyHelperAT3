@@ -11,6 +11,7 @@ import src.whitelist as whitelist
 import src.pubmed as pubmed
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8")
 USE_LOCAL_AI = os.getenv("USE_LOCAL_AI", "1") != "0"
 
 if not USE_LOCAL_AI and ANTHROPIC_API_KEY:
@@ -199,7 +200,7 @@ Format your answer clearly with key points where appropriate."""
             user_message = f"{context_text}\n---\n\nQuestion: {prompt}\n\nPlease answer this question based on the above information."
             
             message = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model=ANTHROPIC_MODEL,
                 max_tokens=2048,
                 system=system_prompt,
                 messages=[
@@ -254,7 +255,7 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None) -
         if USE_LOCAL_AI or not ANTHROPIC_API_KEY:
             response_text = local_ai.chat_with_context(messages, context_text, atn=atn)
         else:
-            system_prompt = """You are an academic research assistant for secondary school students.
+            system_prompt = """You are Jason, an academic research assistant for secondary school students.
 You provide accurate, well-reasoned answers based on the information provided.
 You never fabricate information or cite sources not provided in the context.
 Engage naturally in conversation while maintaining academic rigor."""
@@ -266,7 +267,7 @@ Engage naturally in conversation while maintaining academic rigor."""
                 system_prompt += f"\n\nContext from your files:\n{context_text}"
             
             response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model=ANTHROPIC_MODEL,
                 max_tokens=2048,
                 system=system_prompt,
                 messages=messages

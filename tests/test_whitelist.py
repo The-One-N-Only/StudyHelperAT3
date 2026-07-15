@@ -22,3 +22,7 @@ def test_get_whitelisted_domains():
     assert isinstance(domains, list)
     assert 'en.wikipedia.org' in domains
     assert 'pubmed.ncbi.nlm.nih.gov' in domains
+
+
+def test_allowed_gov_wildcard_domain():
+    assert whitelist.is_allowed("https://www.usa.gov/page") == True
