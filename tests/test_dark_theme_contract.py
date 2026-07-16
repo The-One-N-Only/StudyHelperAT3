@@ -3198,3 +3198,38 @@ def test_task6_dark_contract_rejects_unscoped_visual_rule():
     assert_browse_css_contract(css)
     with pytest.raises(AssertionError, match="outside dark scope"):
         assert_browse_css_contract(css + "\n.result-card { color: red; }\n")
+
+
+def test_upload_view_uses_leather_file_components_and_safe_decorations():
+    upload = read_text("static/js/pages/upload.js")
+    css = read_text("static/css/custom.css")
+    soup = BeautifulSoup(assigned_template_markup(upload, "pageRoot"), "html.parser")
+    page = soup.select_one(".archive-page.archive-page-upload")
+    assert page is not None
+    decorations = page.find_all("span", recursive=False)
+    assert [item.get("class")[-1] for item in decorations] == [
+        "illustration-compass", "illustration-sextant", "illustration-flourish"
+    ]
+    assert all(item.get("aria-hidden") == "true" for item in decorations)
+    content = page.select_one(".container.py-4.archive-content.upload-content")
+    assert content.get("style") == "max-width: 700px;"
+    zone = content.select_one("#uploadZone.surface-leather.upload-zone")
+    assert {"card-body", "text-center", "p-5"}.issubset(zone.get("class", ()))
+    assert zone.select_one("#fileInput").get("style") == "display: none;"
+    upload_button = content.select_one("#uploadBtn")
+    assert {"btn", "btn-primary", "btn-brass", "w-100"}.issubset(upload_button.get("class", ()))
+    file_panel = content.select_one(".card.surface-leather.file-list-panel")
+    assert {"badge", "bg-primary", "archive-count-badge"}.issubset(file_panel.select_one("#fileCountBadge").get("class", ()))
+    for marker in (
+        "file-icon file-icon-${file.file_type} text-muted",
+        "btn btn-outline-danger btn-sm icon-button icon-button-danger delete-btn",
+        "progressBar.style.display = 'block'", "progressBar.style.display = 'none'",
+        "fetch('/api/files/upload'", "fetch('/api/files/list')",
+    ):
+        assert marker in upload
+    assert "result.files.length === 0" not in upload
+    assert "illustration-open-book" not in upload
+    empty_book = css_rule_group_declarations(css, ('[data-bs-theme="dark"] #filesList:empty::before',))
+    assert empty_book["mask-image"] == 'url("/static/img/illustrations/open-book.svg")'
+    assert css_rule_group_declarations(css, ('[data-bs-theme="dark"] #filesList:empty::after',))["content"] == '"No files uploaded yet."'
+    assert_task_selectors_are_dark_scoped(css, ("archive-page-upload", "upload-content", "upload-panel", "upload-actions", "file-list-panel", "file-icon", "file-size"), frozenset(), "Task 7", "a dark-only upload rule")

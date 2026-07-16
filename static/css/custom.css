@@ -671,6 +671,16 @@ body.nav-sidebar-open {
     [data-bs-theme="dark"] .workspace-card {
         min-height: 190px;
     }
+
+    [data-bs-theme="dark"] .upload-zone {
+        padding: 2.5rem 1.25rem !important;
+    }
+
+    [data-bs-theme="dark"] .archive-page-upload > .illustration-compass {
+        height: 120px;
+        left: -2rem;
+        width: 120px;
+    }
 }
 
 /* Candlelit Archive: browse and shared result cards */
@@ -819,5 +829,136 @@ body.nav-sidebar-open {
 
     [data-bs-theme="dark"] .browse-search-input {
         min-width: 0;
+    }
+}
+
+/* Candlelit Archive: upload and file library */
+[data-bs-theme="dark"] .upload-content {
+    margin-inline: auto;
+    max-width: 700px;
+}
+
+[data-bs-theme="dark"] .upload-panel {
+    background: transparent;
+    border: 0;
+}
+
+[data-bs-theme="dark"] .upload-zone {
+    border: 2px dashed hsl(35 50% 55% / 0.35);
+    border-radius: var(--radius-panel);
+}
+
+[data-bs-theme="dark"] .upload-zone:hover,
+[data-bs-theme="dark"] .upload-zone.dragover {
+    background-color: var(--surface-700);
+    border-color: var(--gold-300);
+    box-shadow: var(--shadow-warm-glow);
+}
+
+[data-bs-theme="dark"] .archive-upload-icon {
+    color: var(--gold-300) !important;
+    font-size: 3rem;
+}
+
+[data-bs-theme="dark"] .upload-actions {
+    color: var(--text-primary);
+}
+
+[data-bs-theme="dark"] .file-list-panel {
+    overflow: hidden;
+}
+
+[data-bs-theme="dark"] .file-list-panel .card-header,
+[data-bs-theme="dark"] .file-list-panel .list-group-item {
+    background: transparent;
+    border-color: hsl(35 40% 45% / 0.14);
+    color: var(--text-primary);
+}
+
+[data-bs-theme="dark"] .file-list-panel .flex-grow-1 {
+    min-width: 0;
+}
+
+[data-bs-theme="dark"] .file-icon {
+    color: var(--gold-300) !important;
+    flex: 0 0 auto;
+    font-size: 1.35rem;
+}
+
+[data-bs-theme="dark"] .file-icon-pdf {
+    color: var(--danger-rust) !important;
+}
+
+[data-bs-theme="dark"] .file-icon-docx,
+[data-bs-theme="dark"] .file-icon-image {
+    color: var(--info-slate) !important;
+}
+
+[data-bs-theme="dark"] .file-icon-xlsx,
+[data-bs-theme="dark"] .file-icon-xls {
+    color: var(--success-verdigris) !important;
+}
+
+[data-bs-theme="dark"] .file-size {
+    font-variant-numeric: tabular-nums;
+}
+
+[data-bs-theme="dark"] .file-list-panel .icon-button .bi {
+    color: inherit;
+}
+
+[data-bs-theme="dark"] #filesList:empty {
+    display: block;
+    min-height: 190px;
+    padding: 1.25rem;
+    text-align: center;
+}
+
+[data-bs-theme="dark"] #filesList:empty::before {
+    background-color: var(--gold-700);
+    content: "";
+    display: block;
+    height: 112px;
+    margin: 0 auto 0.5rem;
+    mask-image: url("/static/img/illustrations/open-book.svg");
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-size: contain;
+    opacity: 0.08;
+    pointer-events: none;
+    width: 160px;
+}
+
+[data-bs-theme="dark"] #filesList:empty::after {
+    color: var(--text-secondary);
+    content: "No files uploaded yet.";
+    display: block;
+}
+
+[data-bs-theme="dark"] .archive-page-upload .illustration-compass {
+    height: 180px;
+    left: 1rem;
+    top: 1rem;
+    width: 180px;
+}
+
+[data-bs-theme="dark"] .archive-page-upload .illustration-sextant {
+    height: 200px;
+    right: 1rem;
+    top: 24%;
+    width: 200px;
+}
+
+[data-bs-theme="dark"] .archive-page-upload > .illustration-flourish {
+    bottom: 0;
+    height: 180px;
+    right: 0;
+    transform: scaleX(-1);
+    width: 180px;
+}
+
+@media (max-width: 991.98px) {
+    [data-bs-theme="dark"] .archive-page-upload > .illustration-sextant {
+        display: none;
     }
 }

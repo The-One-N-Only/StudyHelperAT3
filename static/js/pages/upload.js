@@ -8,32 +8,37 @@ let selectedFile = null;
 export function initUpload(root) {
     pageRoot = root;
     pageRoot.innerHTML = `
-        <div class="container py-4" style="max-width: 700px;">
-            <div class="card p-0 mb-4">
-                <div class="card-body text-center p-5 upload-zone" id="uploadZone">
-                    <i class="bi bi-cloud-upload display-4 text-muted"></i>
-                    <h6 class="mt-3">Drag files here or click to browse</h6>
-                    <p class="small text-muted">Maximum 10MB</p>
-                    <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.gif,.webp,.xlsx,.xls" style="display: none;">
-                </div>
-                <div class="p-3 pt-0">
-                    <div class="mb-3">
-                        <p class="mb-2"><strong>Selected:</strong> <span id="selectedFile">No file selected</span></p>
+        <div class="archive-page archive-page-upload">
+            <span class="archive-illustration illustration-compass" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-sextant" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-flourish" aria-hidden="true"></span>
+            <div class="container py-4 archive-content upload-content" style="max-width: 700px;">
+                <div class="card p-0 mb-4 upload-panel">
+                    <div class="card-body text-center p-5 surface-leather upload-zone" id="uploadZone">
+                        <i class="bi bi-cloud-upload display-4 text-muted archive-upload-icon" aria-hidden="true"></i>
+                        <h6 class="mt-3">Drag files here or click to browse</h6>
+                        <p class="small text-muted">Maximum 10MB</p>
+                        <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.gif,.webp,.xlsx,.xls" style="display: none;">
                     </div>
-                    <div class="progress mb-3" style="display: none;" id="progressBar">
-                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    <div class="p-3 pt-0 upload-actions">
+                        <div class="mb-3">
+                            <p class="mb-2"><strong>Selected:</strong> <span id="selectedFile">No file selected</span></p>
+                        </div>
+                        <div class="progress mb-3" style="display: none;" id="progressBar">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <button class="btn btn-primary btn-brass w-100" id="uploadBtn" disabled>Upload File</button>
                     </div>
-                    <button class="btn btn-primary w-100" id="uploadBtn" disabled>Upload File</button>
                 </div>
-            </div>
-            <div class="card">
-                <div class="card-header d-flex align-items-center">
-                    <i class="bi bi-files me-2"></i>
-                    <h5 class="mb-0">Your Files</h5>
-                    <span class="badge bg-primary ms-2" id="fileCountBadge">0</span>
-                </div>
-                <div class="card-body p-0">
-                    <ul class="list-group list-group-flush" id="filesList"></ul>
+                <div class="card surface-leather file-list-panel">
+                    <div class="card-header d-flex align-items-center">
+                        <i class="bi bi-files me-2" aria-hidden="true"></i>
+                        <h5 class="mb-0">Your Files</h5>
+                        <span class="badge bg-primary archive-count-badge ms-2" id="fileCountBadge">0</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <ul class="list-group list-group-flush" id="filesList"></ul>
+                    </div>
                 </div>
             </div>
         </div>
@@ -151,13 +156,13 @@ function loadUploadedFiles() {
                 const item = document.createElement('li');
                 item.className = 'list-group-item d-flex align-items-center gap-3';
                 item.innerHTML = `
-                    <i class="bi bi-${icon} text-muted"></i>
+                    <i class="bi bi-${icon} file-icon file-icon-${file.file_type} text-muted" aria-hidden="true"></i>
                     <div class="flex-grow-1">
                         <div class="fw-semibold text-truncate">${file.filename}</div>
-                        <small class="text-muted">${(file.file_size / 1024).toFixed(1)} KB</small>
+                        <small class="text-muted file-size">${(file.file_size / 1024).toFixed(1)} KB</small>
                     </div>
-                    <button class="btn btn-outline-danger btn-sm delete-btn" data-id="${file.id}">
-                        <i class="bi bi-trash"></i>
+                    <button class="btn btn-outline-danger btn-sm icon-button icon-button-danger delete-btn" data-id="${file.id}" type="button" aria-label="Delete file">
+                        <i class="bi bi-trash" aria-hidden="true"></i>
                     </button>
                 `;
                 item.querySelector('.delete-btn').addEventListener('click', () => deleteFile(file.id));
