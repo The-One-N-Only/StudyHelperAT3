@@ -3241,41 +3241,58 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
 def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     workspace = read_text("static/js/pages/workspace.js")
     css = read_text("static/css/custom.css")
-    required = (
-        "archive-page archive-page-workspace",
-        "archive-page-title",
-        "archive-illustration illustration-books",
-        "archive-illustration illustration-flourish",
-        "surface-leather workspace-main-panel",
-        "surface-leather workspace-right-panel",
-        "btn-secondary-wood",
-        "archive-count-badge",
-        "quick-note-input",
-        "source-preview-shell",
-        "workspace-source-item",
-        "workspace-source-name",
-        "note-item",
-        "chat-messages",
-        "chat-row-agent",
-        "chat-row-user",
-        "chat-message-agent",
-        "chat-message-user",
-        "chat-avatar",
-        "btn-brass",
-    )
-    for marker in required:
+    for marker in (
+        "archive-page archive-page-workspace", "surface-leather workspace-main-panel",
+        "surface-leather workspace-right-panel", "workspace-source-item", "chat-messages",
+        '<i class="bi bi-file-earmark-text note-icon-dark d-none me-2" aria-hidden="true"></i><span class="note-icon-light">📝 </span>',
+    ):
         assert marker in workspace
-
     for preserved in (
-        "workspace-tabs nav nav-pills",
-        "loadWorkspaceDetails()",
-        "renderSelectedSource()",
-        "loadWorkspaceNotes()",
-        "sendAlexanderMessage",
-        "studyHelperAI.chat(value)",
+        "workspace-tabs nav nav-pills", "noteBtn.dataset.id = note.id",
+        "noteBtn.title = note.title", "editNote(note.id)", "escapeHtml(note.title)",
+        "message.role === 'agent'", "escapeHtml(message.text)", "studyHelperAI.chat(value)",
     ):
         assert preserved in workspace
+    exact_rules = (
+        ((('[data-bs-theme="dark"] .archive-page-workspace .workspace-main-panel', '[data-bs-theme="dark"] .archive-page-workspace .workspace-right-panel')), {"min-height": "680px"}),
+        ((('[data-bs-theme="dark"] .quick-note-input:focus',)), {"background": "transparent", "border-color": "var(--gold-500)", "box-shadow": "var(--shadow-warm-glow)"}),
+        ((('[data-bs-theme="dark"] .workspace-tabs .nav-link.active',)), {"background": "hsl(35 70% 55% / 0.14)", "color": "var(--gold-100)"}),
+        ((('[data-bs-theme="dark"] .workspace-source-item.active',)), {"background": "hsl(35 70% 55% / 0.1)", "border-left": "3px solid var(--gold-300)", "box-shadow": "var(--shadow-warm-glow)", "color": "var(--text-primary)"}),
+        ((('[data-bs-theme="dark"] .workspace-source-item h6',)), {"color": "var(--text-primary)"}),
+        ((('[data-bs-theme="dark"] .note-item',)), {"background-color": "var(--surface-700)", "background-image": "none", "color": "var(--text-primary)"}),
+        ((('[data-bs-theme="dark"] .note-icon-light',)), {"display": "none"}),
+        ((('[data-bs-theme="dark"] .note-icon-dark',)), {"color": "var(--gold-300)", "display": "inline-block !important"}),
+        ((('[data-bs-theme="dark"] .chat-message-agent',)), {"background": "var(--surface-600) !important", "border-radius": "18px 22px 16px 6px !important"}),
+        ((('[data-bs-theme="dark"] .chat-message-user',)), {"background": "linear-gradient(rgb(138 102 53 / 0.42), rgb(138 102 53 / 0.42)), var(--surface-700) !important", "border-radius": "22px 18px 6px 16px !important", "color": "var(--text-primary) !important"}),
+        ((('[data-bs-theme="dark"] .chat-avatar::before',)), {"align-items": "center", "background": "var(--surface-700)", "border": "1px solid var(--gold-500)", "border-radius": "50%", "bottom": "0", "color": "var(--gold-300)", "content": r'"\2699"', "display": "flex", "height": "2.25rem", "justify-content": "center", "left": "-2.9rem", "line-height": "1", "position": "absolute", "width": "2.25rem"}),
+        ((('[data-bs-theme="dark"] .chat-message-agent::after',)), {"border-color": "transparent var(--surface-600) transparent transparent", "border-width": "0.45rem 0.55rem 0.45rem 0", "left": "-0.5rem"}),
+    )
+    for selectors, expected in exact_rules:
+        assert css_rule_group_declarations(css, selectors) == expected
 
-    user_bubble_background = "#553D1F"
-    assert "rgb(138 102 53 / 0.42)" in css
-    assert contrast_ratio("#E7E1DA", user_bubble_background) >= 4.5
+    assert_task_selectors_are_dark_scoped(css, (
+        "archive-page-workspace", "workspace-main-panel", "workspace-right-panel", "quick-note-input",
+        "source-preview-shell", "source-preview-content", "workspace-tabs", "workspace-source-item",
+        "workspace-source-name", "note-item", "note-icon-light", "note-icon-dark", "chat-messages",
+        "chat-row-agent", "chat-row-user",
+    ), frozenset({(".workspace-tabs .nav-link",)}), "Task 8", "the existing neutral tab-radius rule")
+
+    desktop_header, mobile_header = "@media (max-width: 991.98px)", "@media (max-width: 575.98px)"
+    assert (css.count(desktop_header), css.count(mobile_header)) == (1, 1)
+    desktop, mobile = css_block_body(css, desktop_header), css_block_body(css, mobile_header)
+    panel_group = ('[data-bs-theme="dark"] .archive-page-workspace .workspace-main-panel', '[data-bs-theme="dark"] .archive-page-workspace .workspace-right-panel')
+    assert css_rule_group_declarations(desktop, panel_group) == {"min-height": "auto"}
+    assert css_rule_group_declarations(desktop, ('[data-bs-theme="dark"] .archive-page-workspace .resizable-panel',)) == {"max-width": "none", "min-width": "0", "resize": "none", "width": "100%"}
+    assert css_rule_group_declarations(mobile, ('[data-bs-theme="dark"] .chat-message',)) == {"max-width": "88%"}
+    assert css.index(desktop_header) > css.index(panel_group[0]) and css.index(mobile_header) > css.index('[data-bs-theme="dark"] .chat-message {')
+
+    tokens = css_rule_declarations(css, DARK_ROOT_SELECTOR)
+    user_rule = css_rule_group_declarations(css, ('[data-bs-theme="dark"] .chat-message-user',))
+    overlay = re.search(r"rgb\((\d+) (\d+) (\d+) / ([0-9.]+)\)", user_rule["background"])
+    assert overlay is not None
+    foreground, alpha = tuple(map(int, overlay.groups()[:3])), float(overlay.group(4))
+    surface = tuple(int(tokens["--surface-700"][index:index + 2], 16) for index in (1, 3, 5))
+    composite = "#" + "".join(f"{round(top * alpha + base * (1 - alpha)):02X}" for top, base in zip(foreground, surface))
+    user_tail = css_rule_group_declarations(css, ('[data-bs-theme="dark"] .chat-message-user::after',))
+    assert user_tail == {"border-color": f"transparent transparent transparent {composite}", "border-width": "0.45rem 0 0.45rem 0.55rem", "right": "-0.5rem"}
+    assert contrast_ratio(tokens["--text-primary"], composite) >= 4.5

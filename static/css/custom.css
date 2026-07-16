@@ -989,6 +989,10 @@ body.nav-sidebar-open {
     color: var(--text-primary);
 }
 
+[data-bs-theme="dark"] .workspace-source-item h6 {
+    color: var(--text-primary);
+}
+
 [data-bs-theme="dark"] .workspace-source-item:hover {
     background: var(--surface-700);
     color: var(--text-primary);
@@ -1010,6 +1014,15 @@ body.nav-sidebar-open {
     background-color: var(--surface-700);
     background-image: none;
     color: var(--text-primary);
+}
+
+[data-bs-theme="dark"] .note-icon-light {
+    display: none;
+}
+
+[data-bs-theme="dark"] .note-icon-dark {
+    color: var(--gold-300);
+    display: inline-block !important;
 }
 
 [data-bs-theme="dark"] .chat-messages {

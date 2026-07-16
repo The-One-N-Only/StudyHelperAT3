@@ -310,7 +310,7 @@ function renderNotesTab(notes) {
         noteBtn.className = 'btn btn-sm btn-outline-secondary btn-secondary-wood note-item w-100 text-start mb-2 text-truncate';
         noteBtn.dataset.id = note.id;
         noteBtn.title = note.title;
-        noteBtn.textContent = '📝 ' + note.title;
+        noteBtn.innerHTML = '<i class="bi bi-file-earmark-text note-icon-dark d-none me-2" aria-hidden="true"></i><span class="note-icon-light">📝 </span>' + escapeHtml(note.title);
         noteBtn.addEventListener('click', () => editNote(note.id));
         container.appendChild(noteBtn);
     });
