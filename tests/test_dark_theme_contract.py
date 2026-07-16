@@ -3232,4 +3232,7 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
     empty_book = css_rule_group_declarations(css, ('[data-bs-theme="dark"] #filesList:empty::before',))
     assert empty_book["mask-image"] == 'url("/static/img/illustrations/open-book.svg")'
     assert css_rule_group_declarations(css, ('[data-bs-theme="dark"] #filesList:empty::after',))["content"] == '"No files uploaded yet."'
+    mobile = css_block_body(css, "@media (max-width: 575.98px)")
+    assert css_rule_group_declarations(mobile, ('[data-bs-theme="dark"] .archive-page-upload > .illustration-compass',)) == {"height": "120px", "left": "-2rem", "width": "120px"}
+    assert css.index("@media (max-width: 575.98px)") > css.index('[data-bs-theme="dark"] .archive-page-upload .illustration-compass')
     assert_task_selectors_are_dark_scoped(css, ("archive-page-upload", "upload-content", "upload-panel", "upload-actions", "file-list-panel", "file-icon", "file-size"), frozenset(), "Task 7", "a dark-only upload rule")

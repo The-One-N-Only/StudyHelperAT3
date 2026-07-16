@@ -663,26 +663,6 @@ body.nav-sidebar-open {
     width: 180px;
 }
 
-@media (max-width: 575.98px) {
-    [data-bs-theme="dark"] .archive-page-title {
-        font-size: 1.65rem;
-    }
-
-    [data-bs-theme="dark"] .workspace-card {
-        min-height: 190px;
-    }
-
-    [data-bs-theme="dark"] .upload-zone {
-        padding: 2.5rem 1.25rem !important;
-    }
-
-    [data-bs-theme="dark"] .archive-page-upload > .illustration-compass {
-        height: 120px;
-        left: -2rem;
-        width: 120px;
-    }
-}
-
 /* Candlelit Archive: browse and shared result cards */
 [data-bs-theme="dark"] .archive-page-browse {
     padding: 0 0 2rem;
@@ -960,5 +940,25 @@ body.nav-sidebar-open {
 @media (max-width: 991.98px) {
     [data-bs-theme="dark"] .archive-page-upload > .illustration-sextant {
         display: none;
+    }
+}
+
+@media (max-width: 575.98px) {
+    [data-bs-theme="dark"] .archive-page-title {
+        font-size: 1.65rem;
+    }
+
+    [data-bs-theme="dark"] .workspace-card {
+        min-height: 190px;
+    }
+
+    [data-bs-theme="dark"] .upload-zone {
+        padding: 2.5rem 1.25rem !important;
+    }
+
+    [data-bs-theme="dark"] .archive-page-upload > .illustration-compass {
+        height: 120px;
+        left: -2rem;
+        width: 120px;
     }
 }
