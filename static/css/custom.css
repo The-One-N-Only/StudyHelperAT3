@@ -592,3 +592,78 @@ body.nav-sidebar-open {
     background: hsl(35 70% 55% / 0.1);
     color: var(--gold-100);
 }
+
+/* Candlelit Archive: workspace dashboard */
+[data-bs-theme="dark"] .archive-page {
+    min-height: calc(100vh - 58px);
+    overflow: hidden;
+    position: relative;
+}
+
+[data-bs-theme="dark"] .archive-content {
+    position: relative;
+    z-index: var(--z-content);
+}
+
+[data-bs-theme="dark"] .archive-page-title {
+    color: var(--gold-100);
+    font-family: var(--font-display);
+    font-size: var(--text-display-lg);
+    font-weight: 600;
+}
+
+[data-bs-theme="dark"] .home-search-group {
+    max-width: 560px;
+    width: 100%;
+}
+
+[data-bs-theme="dark"] .workspace-card {
+    min-height: 220px;
+    transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+[data-bs-theme="dark"] .workspace-card:not(.workspace-card-add):hover {
+    border-color: hsl(35 50% 55% / 0.35);
+    box-shadow: var(--shadow-warm-glow);
+    transform: translateY(-2px);
+}
+
+[data-bs-theme="dark"] .workspace-card-add {
+    background: transparent;
+    border: 2px dashed hsl(35 50% 55% / 0.35);
+    border-radius: var(--radius-panel);
+    color: var(--gold-300) !important;
+    cursor: pointer;
+}
+
+[data-bs-theme="dark"] .workspace-card-add:hover,
+[data-bs-theme="dark"] .workspace-card-add:focus-within {
+    background: hsl(35 70% 55% / 0.05);
+    border-color: var(--gold-300);
+    box-shadow: var(--shadow-warm-glow);
+}
+
+[data-bs-theme="dark"] .archive-page-home .illustration-books {
+    bottom: 0;
+    left: 0;
+    height: 160px;
+    width: 240px;
+}
+
+[data-bs-theme="dark"] .archive-page-home .illustration-flourish {
+    bottom: 0;
+    right: 0;
+    height: 180px;
+    transform: scaleX(-1);
+    width: 180px;
+}
+
+@media (max-width: 575.98px) {
+    [data-bs-theme="dark"] .archive-page-title {
+        font-size: 1.65rem;
+    }
+
+    [data-bs-theme="dark"] .workspace-card {
+        min-height: 190px;
+    }
+}

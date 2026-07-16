@@ -166,6 +166,22 @@ TASK4_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
         (".nav-sidebar .list-group-item",),
     }
 )
+TASK5_DASHBOARD_CLASSES = (
+    "archive-page",
+    "archive-page-home",
+    "archive-content",
+    "archive-page-title",
+    "home-search-group",
+    "workspace-card",
+    "workspace-card-add",
+)
+TASK5_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
+    {
+        (".workspace-card",),
+        (".workspace-card:hover",),
+        (".workspace-card-add",),
+    }
+)
 EXPECTED_DARK_ICON_COLORS = {
     '[data-bs-theme="dark"] .icon-button': "var(--gold-300) !important",
     '[data-bs-theme="dark"] .icon-button:hover': "var(--gold-100) !important",
@@ -427,6 +443,189 @@ dispatchDocument("keydown", { key: "Escape" });
 assertClosed("no focusable Escape");
 
 process.stdout.write("navigation runtime ok");
+""".strip()
+HOME_RUNTIME_HARNESS = r"""
+function invariant(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function escapeText(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+class FakeElement {
+  constructor(id = "") {
+    this.id = id;
+    this.className = "";
+    this.children = [];
+    this.listeners = new Map();
+    this.cardTarget = null;
+    this._innerHTML = "";
+    this._textContent = null;
+    this.value = "";
+  }
+
+  set innerHTML(value) {
+    this._innerHTML = String(value);
+    this._textContent = null;
+    this.children = [];
+  }
+
+  get innerHTML() {
+    return this._textContent === null ? this._innerHTML : escapeText(this._textContent);
+  }
+
+  set textContent(value) {
+    this._textContent = String(value);
+  }
+
+  get textContent() {
+    return this._textContent ?? "";
+  }
+
+  addEventListener(type, callback) {
+    const callbacks = this.listeners.get(type) || [];
+    callbacks.push(callback);
+    this.listeners.set(type, callbacks);
+  }
+
+  async dispatch(type, init = {}) {
+    const callbacks = this.listeners.get(type) || [];
+    invariant(callbacks.length > 0, `missing ${type} listener on ${this.id || "element"}`);
+    const event = { type, target: this, ...init };
+    for (const callback of callbacks) await callback(event);
+  }
+
+  querySelector(selector) {
+    if (selector === "#workspaceSearch") return searchInput;
+    if (selector === ".card") {
+      this.cardTarget ||= new FakeElement("workspaceCardTarget");
+      return this.cardTarget;
+    }
+    return null;
+  }
+
+  appendChild(child) {
+    this.children.push(child);
+    return child;
+  }
+}
+
+const root = new FakeElement("root");
+const searchInput = new FakeElement("workspaceSearch");
+const workspaceCards = new FakeElement("workspaceCards");
+const fetchCalls = [];
+globalThis.toastCalls = [];
+globalThis.window = { location: { href: "" } };
+globalThis.prompt = (message, defaultValue) => {
+  invariant(message === "Enter a name for the new workspace:", "prompt message changed");
+  invariant(defaultValue === "New Workspace", "prompt default changed");
+  return "New Workspace";
+};
+globalThis.document = {
+  getElementById(id) {
+    return id === "workspaceCards" ? workspaceCards : null;
+  },
+  createElement() {
+    return new FakeElement();
+  },
+};
+globalThis.fetch = async (url, options) => {
+  fetchCalls.push({ url, options });
+  if (options?.method === "POST") {
+    return {
+      async json() {
+        return {
+          status: true,
+          workspace: {
+            id: 8,
+            name: "Created <Workspace>",
+            time_created: 0,
+          },
+        };
+      },
+    };
+  }
+  return {
+    async json() {
+      return {
+        status: true,
+        workspaces: [{
+          id: 7,
+          name: "<unsafe & name>",
+          time_created: 0,
+          item_count: 3,
+          note_count: 0,
+        }],
+      };
+    },
+  };
+};
+
+const home = await import(process.argv[1]);
+home.initHome(root);
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+invariant(fetchCalls.length === 1, "initial load did not issue one request");
+invariant(fetchCalls[0].url === "/api/workspaces", "initial API URL changed");
+invariant(fetchCalls[0].options === undefined, "initial request options changed");
+invariant(searchInput.listeners.get("input")?.length === 1, "search listener missing");
+invariant(workspaceCards.children.length === 2, "initial cards did not render");
+
+let addCard = workspaceCards.children[0];
+invariant(addCard.innerHTML.includes("Create new workspace"), "add card label changed");
+invariant(addCard.querySelector(".card").listeners.get("click")?.length === 1, "add listener missing");
+
+let renderedCard = workspaceCards.children[1].innerHTML;
+invariant(renderedCard.includes("&lt;unsafe &amp; name&gt;"), "workspace title not escaped");
+invariant(!renderedCard.includes("<unsafe"), "unsafe workspace title rendered as markup");
+invariant(renderedCard.includes("3 sources"), "source metadata changed");
+invariant(renderedCard.includes("0 notes"), "note metadata changed");
+invariant(renderedCard.includes("Created on Unknown"), "created date changed");
+invariant(
+  renderedCard.includes('class="stretched-link" href="/workspace/7"'),
+  "workspace stretched link changed",
+);
+
+await searchInput.dispatch("input", { target: { value: "missing" } });
+invariant(workspaceCards.children.length === 2, "filtered empty state shape changed");
+invariant(
+  workspaceCards.children[1].innerHTML.includes("No workspaces match your search"),
+  "filtered empty state missing",
+);
+
+await searchInput.dispatch("input", { target: { value: "  UNSAFE  " } });
+invariant(workspaceCards.children.length === 2, "search trim/lowercase behavior changed");
+await searchInput.dispatch("input", { target: { value: "" } });
+
+addCard = workspaceCards.children[0];
+await addCard.querySelector(".card").dispatch("click");
+invariant(fetchCalls.length === 2, "create did not issue one request");
+const createCall = fetchCalls[1];
+invariant(createCall.url === "/api/workspaces", "create API URL changed");
+invariant(createCall.options.method === "POST", "create method changed");
+invariant(
+  createCall.options.headers["Content-Type"] === "application/json",
+  "create content type changed",
+);
+invariant(JSON.parse(createCall.options.body).name === "New Workspace", "create body changed");
+invariant(
+  JSON.stringify(globalThis.toastCalls) === JSON.stringify([["Workspace created", "success"]]),
+  "create toast changed",
+);
+invariant(window.location.href === "/workspace/8", "created workspace did not open");
+invariant(workspaceCards.children.length === 3, "created workspace not prepended");
+renderedCard = workspaceCards.children[1].innerHTML;
+invariant(renderedCard.includes("Created &lt;Workspace&gt;"), "created title not escaped");
+invariant(
+  renderedCard.includes('class="stretched-link" href="/workspace/8"'),
+  "created workspace stretched link changed",
+);
+
+process.stdout.write("home runtime ok");
 """.strip()
 EXPECTED_SHARED_RULES = (
     (
@@ -1156,21 +1355,24 @@ def assert_task3_selectors_are_dark_scoped(css: str) -> None:
             )
 
 
-def assert_navigation_selectors_are_scoped(css: str) -> None:
+def assert_task_selectors_are_dark_scoped(
+    css: str,
+    class_names: tuple[str, ...],
+    allowed_theme_neutral_groups: frozenset[tuple[str, ...]],
+    task_label: str,
+    neutral_rule_description: str,
+) -> None:
     for selectors in qualified_css_selector_groups(css):
         relevant_selectors = tuple(
             selector
             for selector in selectors
-            if any(
-                name in css_unescape(selector)
-                for name in TASK4_NAVIGATION_CLASSES
-            )
+            if any(name in css_unescape(selector) for name in class_names)
         )
         if not relevant_selectors:
             continue
 
         normalized_group = tuple(" ".join(selector.split()) for selector in selectors)
-        if normalized_group in TASK4_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS:
+        if normalized_group in allowed_theme_neutral_groups:
             continue
 
         for selector in relevant_selectors:
@@ -1179,23 +1381,33 @@ def assert_navigation_selectors_are_scoped(css: str) -> None:
                 semantic_selectors = soupsieve.compile(semantic_source).selectors.selectors
             except soupsieve.SelectorSyntaxError as error:
                 raise AssertionError(
-                    f"unsupported relevant Task 4 selector: {selector!r}"
+                    f"unsupported relevant {task_label} selector: {selector!r}"
                 ) from error
 
             for semantic_selector in semantic_selectors:
                 if isinstance(semantic_selector, SelectorNull):
                     raise AssertionError(
-                        f"unsupported relevant Task 4 selector: {selector!r}"
+                        f"unsupported relevant {task_label} selector: {selector!r}"
                     )
                 if not semantic_selector_targets_classes(
                     semantic_selector,
-                    TASK4_NAVIGATION_CLASSES,
+                    class_names,
                 ):
                     continue
                 assert semantic_selector_has_dark_ancestry(semantic_selector), (
-                    f"Task 4 selector {selector!r} is outside dark scope and is not "
-                    "an approved singleton theme-neutral baseline rule"
+                    f"{task_label} selector {selector!r} is outside dark scope and is not "
+                    f"{neutral_rule_description}"
                 )
+
+
+def assert_navigation_selectors_are_scoped(css: str) -> None:
+    assert_task_selectors_are_dark_scoped(
+        css,
+        TASK4_NAVIGATION_CLASSES,
+        TASK4_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS,
+        "Task 4",
+        "an approved singleton theme-neutral baseline rule",
+    )
 
 
 def assert_toast_runtime_contract(toast: str) -> None:
@@ -1256,6 +1468,29 @@ def assert_navigation_runtime_contract(main: str) -> None:
     assert result.stdout == "navigation runtime ok"
 
 
+def assert_home_runtime_contract(home: str) -> None:
+    toast_import = "import { showToast } from '../toast.js';"
+    assert home.count(toast_import) == 1, "expected one showToast import"
+    executable_home = home.replace(
+        toast_import,
+        "const showToast = (...args) => globalThis.toastCalls.push(args);",
+        1,
+    )
+    module_url = "data:text/javascript;base64," + base64.b64encode(
+        executable_home.encode("utf-8")
+    ).decode("ascii")
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", HOME_RUNTIME_HARNESS, module_url],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, f"home runtime harness failed: {result.stderr.strip()}"
+    assert result.stdout == "home runtime ok"
+
+
 def main_with_viewer_import(viewer_import: str) -> str:
     main = read_text("static/js/main.js")
     body_marker = "window.openViewer = openViewer;"
@@ -1277,6 +1512,145 @@ def assert_navigation_css_contract(css: str) -> None:
         *EXPECTED_NAVIGATION_DARK_RULES,
     ):
         assert css_rule_group_declarations(css, selectors) == expected_declarations
+
+
+def assert_dashboard_selectors_are_scoped(css: str) -> None:
+    assert_task_selectors_are_dark_scoped(
+        css,
+        TASK5_DASHBOARD_CLASSES,
+        TASK5_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS,
+        "Task 5",
+        "an unchanged light-mode dashboard baseline rule",
+    )
+
+
+def assert_dashboard_css_contract(css: str) -> None:
+    assert_dashboard_selectors_are_scoped(css)
+    expected_rules = (
+        (
+            (".workspace-card",),
+            {
+                "min-height": "200px",
+                "transition": "transform 0.2s ease, box-shadow 0.2s ease",
+            },
+        ),
+        (
+            (".workspace-card:hover",),
+            {
+                "transform": "translateY(-2px)",
+                "box-shadow": "0 20px 50px rgba(0, 0, 0, 0.08)",
+            },
+        ),
+        (
+            (".workspace-card-add",),
+            {"border": "1px dashed rgba(13, 110, 253, 0.5)"},
+        ),
+        (
+            ('[data-bs-theme="dark"] .archive-page',),
+            {
+                "min-height": "calc(100vh - 58px)",
+                "overflow": "hidden",
+                "position": "relative",
+            },
+        ),
+        (
+            ('[data-bs-theme="dark"] .archive-content',),
+            {"position": "relative", "z-index": "var(--z-content)"},
+        ),
+        (
+            ('[data-bs-theme="dark"] .archive-page-title',),
+            {
+                "color": "var(--gold-100)",
+                "font-family": "var(--font-display)",
+                "font-size": "var(--text-display-lg)",
+                "font-weight": "600",
+            },
+        ),
+        (
+            ('[data-bs-theme="dark"] .home-search-group',),
+            {"max-width": "560px", "width": "100%"},
+        ),
+        (
+            ('[data-bs-theme="dark"] .workspace-card',),
+            {
+                "min-height": "220px",
+                "transition": (
+                    "border-color 150ms ease, box-shadow 150ms ease, "
+                    "transform 150ms ease"
+                ),
+            },
+        ),
+        (
+            ('[data-bs-theme="dark"] .workspace-card:not(.workspace-card-add):hover',),
+            {
+                "border-color": "hsl(35 50% 55% / 0.35)",
+                "box-shadow": "var(--shadow-warm-glow)",
+                "transform": "translateY(-2px)",
+            },
+        ),
+        (
+            ('[data-bs-theme="dark"] .workspace-card-add',),
+            {
+                "background": "transparent",
+                "border": "2px dashed hsl(35 50% 55% / 0.35)",
+                "border-radius": "var(--radius-panel)",
+                "color": "var(--gold-300) !important",
+                "cursor": "pointer",
+            },
+        ),
+        (
+            (
+                '[data-bs-theme="dark"] .workspace-card-add:hover',
+                '[data-bs-theme="dark"] .workspace-card-add:focus-within',
+            ),
+            {
+                "background": "hsl(35 70% 55% / 0.05)",
+                "border-color": "var(--gold-300)",
+                "box-shadow": "var(--shadow-warm-glow)",
+            },
+        ),
+        (
+            ('[data-bs-theme="dark"] .archive-page-home .illustration-books',),
+            {
+                "bottom": "0",
+                "left": "0",
+                "height": "160px",
+                "width": "240px",
+            },
+        ),
+        (
+            ('[data-bs-theme="dark"] .archive-page-home .illustration-flourish',),
+            {
+                "bottom": "0",
+                "right": "0",
+                "height": "180px",
+                "transform": "scaleX(-1)",
+                "width": "180px",
+            },
+        ),
+    )
+    for selectors, declarations in expected_rules:
+        assert css_rule_group_declarations(css, selectors) == declarations
+
+    mobile = css_block_body(css, "@media (max-width: 575.98px)")
+    assert css_rule_group_declarations(
+        mobile,
+        ('[data-bs-theme="dark"] .archive-page-title',),
+    ) == {"font-size": "1.65rem"}
+    assert css_rule_group_declarations(
+        mobile,
+        ('[data-bs-theme="dark"] .workspace-card',),
+    ) == {"min-height": "190px"}
+
+
+def home_shell_markup(home: str) -> str:
+    matches = re.findall(
+        r"root\.innerHTML\s*=\s*`(?P<markup>.*?)`\s*;",
+        home,
+        flags=re.DOTALL,
+    )
+    assert len(matches) == 1, f"expected one home shell template, found {len(matches)}"
+    return matches[0]
 
 
 def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
@@ -1900,4 +2274,85 @@ def test_navigation_css_contract_rejects_grouped_neutral_selector_contamination(
     with pytest.raises(AssertionError):
         assert_navigation_selectors_are_scoped(
             css + "\n.archive-wordmark, .probe-decoy { color: red; }\n"
+        )
+
+
+def test_dashboard_has_archive_hooks_without_changing_data_flow():
+    home = read_text("static/js/pages/home.js")
+    required = (
+        "archive-page archive-page-home",
+        "archive-content",
+        "archive-page-title",
+        "archive-illustration illustration-books",
+        "archive-illustration illustration-flourish",
+        "surface-leather workspace-card",
+        "workspace-card-add",
+        "archive-category-badge",
+        ">WORKSPACE<",
+        "loadWorkspaces()",
+        "createWorkspaceDialog",
+        "fetch('/api/workspaces')",
+    )
+    for marker in required:
+        assert marker in home
+    assert "WORRSPACE" not in home
+
+
+def test_dashboard_shell_has_accessible_archive_structure():
+    soup = BeautifulSoup(home_shell_markup(read_text("static/js/pages/home.js")), "html.parser")
+    page = soup.select_one("div.container-fluid.archive-page.archive-page-home")
+    assert page is not None
+
+    direct_children = page.find_all(recursive=False)
+    assert [child.name for child in direct_children] == ["span", "span", "div"]
+    assert [set(child.get("class", ())) for child in direct_children] == [
+        {"archive-illustration", "illustration-books"},
+        {"archive-illustration", "illustration-flourish"},
+        {"archive-content"},
+    ]
+    for decoration in direct_children[:2]:
+        assert decoration.get("aria-hidden") == "true"
+
+    content = direct_children[2]
+    title = content.select_one("h1.archive-page-title")
+    assert title is not None
+    assert title.get_text(strip=True) == "Recent Workspaces"
+
+    search_group = content.select_one(".input-group.home-search-group")
+    assert search_group is not None
+    assert search_group.get("style") == "max-width: 560px; width: 100%;"
+    assert search_group.select_one('i.bi-search[aria-hidden="true"]') is not None
+    search = search_group.select_one("input#workspaceSearch")
+    assert search is not None
+    assert search.get("type") == "search"
+    assert search.get("autocomplete") == "off"
+
+    cards = content.select_one("#workspaceCards")
+    assert cards is not None
+    assert set(cards.get("class", ())) == {
+        "row",
+        "row-cols-1",
+        "row-cols-sm-2",
+        "row-cols-lg-3",
+        "g-3",
+    }
+    assert len(soup.select("#workspaceSearch")) == 1
+    assert len(soup.select("#workspaceCards")) == 1
+
+
+def test_dashboard_runtime_preserves_search_render_create_and_open_flow():
+    assert_home_runtime_contract(read_text("static/js/pages/home.js"))
+
+
+def test_dashboard_css_preserves_light_baseline_and_scopes_dark_visuals():
+    assert_dashboard_css_contract(read_text("static/css/custom.css"))
+
+
+def test_dashboard_css_contract_rejects_additive_unscoped_visual_rule():
+    css = read_text("static/css/custom.css")
+    assert_dashboard_css_contract(css)
+
+    with pytest.raises(AssertionError, match="outside dark scope"):
+        assert_dashboard_css_contract(
+            css + "\n.archive-page-title { color: red; }\n"
         )
