@@ -16,6 +16,13 @@ SVG_NAMES = (
 )
 DARK_ROOT_SELECTOR = '[data-bs-theme="dark"]'
 DARK_BODY_SELECTOR = '[data-bs-theme="dark"] body'
+DARK_THEME_ATTRIBUTE_PATTERN = re.compile(
+    r'''\[\s*data-bs-theme\s*=\s*(?:"dark"|'dark'|dark)\s*\]'''
+)
+FLAT_CSS_RULE_PATTERN = re.compile(
+    r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}",
+    flags=re.DOTALL,
+)
 APPROVED_FONT_STYLESHEET = (
     "https://fonts.googleapis.com/css2?family=Cinzel:wght@600"
     "&family=Crimson+Pro:wght@400;600&display=swap"
@@ -112,6 +119,19 @@ def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def parse_css_declarations(rule_body: str, context: str) -> dict[str, str]:
+    declarations = {}
+    for raw_declaration in rule_body.split(";"):
+        raw_declaration = raw_declaration.strip()
+        if not raw_declaration:
+            continue
+        property_name, value = raw_declaration.split(":", 1)
+        property_name = property_name.strip()
+        assert property_name not in declarations, f"duplicate {property_name!r} in {context}"
+        declarations[property_name] = " ".join(value.split())
+    return declarations
+
+
 def css_rule_match(css: str, selector: str):
     css_without_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     rule_pattern = re.compile(
@@ -125,17 +145,69 @@ def css_rule_match(css: str, selector: str):
 
 def css_rule_declarations(css: str, selector: str) -> dict[str, str]:
     rule_body = css_rule_match(css, selector).group("body")
+    return parse_css_declarations(rule_body, repr(selector))
 
-    declarations = {}
-    for raw_declaration in rule_body.split(";"):
-        raw_declaration = raw_declaration.strip()
-        if not raw_declaration:
+
+def css_rules(css: str):
+    css_without_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    for match in FLAT_CSS_RULE_PATTERN.finditer(css_without_comments):
+        selectors = tuple(selector.strip() for selector in match.group("selectors").split(","))
+        context = ", ".join(repr(selector) for selector in selectors)
+        yield selectors, parse_css_declarations(match.group("body"), context)
+
+
+def mark_dark_theme_attribute(selector: str) -> str | None:
+    marked_selector, replacements = DARK_THEME_ATTRIBUTE_PATTERN.subn("__dark_theme__", selector)
+    return marked_selector.strip() if replacements == 1 else None
+
+
+def selector_targets_dark_root(selector: str) -> bool:
+    marked_selector = mark_dark_theme_attribute(selector)
+    return marked_selector is not None and not re.search(r"[\s>+~]", marked_selector)
+
+
+def selector_targets_global_dark_body(selector: str) -> bool:
+    marked_selector = mark_dark_theme_attribute(selector)
+    if marked_selector is None:
+        return False
+
+    match = re.fullmatch(r"(?P<root>.+?)(?:\s*>\s*|\s+)body", marked_selector)
+    if match is None:
+        return False
+    return not re.search(r"[\s>+~]", match.group("root"))
+
+
+def assert_dark_root_contract(css: str) -> None:
+    assert css_rule_declarations(css, DARK_ROOT_SELECTOR) == EXPECTED_DARK_ROOT_DECLARATIONS
+
+    protected_properties = set(EXPECTED_DARK_ROOT_DECLARATIONS)
+    for selectors, declarations in css_rules(css):
+        for selector in selectors:
+            if not selector_targets_dark_root(selector):
+                continue
+            if selector == DARK_ROOT_SELECTOR and declarations == EXPECTED_DARK_ROOT_DECLARATIONS:
+                continue
+
+            redeclared = protected_properties.intersection(declarations)
+            assert not redeclared, (
+                f"{selector!r} redeclares protected dark foundation properties: "
+                f"{', '.join(sorted(redeclared))}"
+            )
+
+
+def assert_no_dark_global_body_font_size(css: str) -> None:
+    for selectors, declarations in css_rules(css):
+        if "font-size" not in declarations:
             continue
-        property_name, value = raw_declaration.split(":", 1)
-        property_name = property_name.strip()
-        assert property_name not in declarations, f"duplicate {property_name!r} in {selector!r}"
-        declarations[property_name] = " ".join(value.split())
-    return declarations
+        offenders = [
+            selector
+            for selector in selectors
+            if selector_targets_dark_root(selector) or selector_targets_global_dark_body(selector)
+        ]
+        assert not offenders, (
+            f"{', '.join(repr(selector) for selector in offenders)} "
+            "sets forbidden global body font-size"
+        )
 
 
 def test_dark_theme_instruction_points_to_source_spec():
@@ -181,7 +253,7 @@ def contrast_ratio(foreground: str, background: str) -> float:
 
 def test_dark_theme_root_has_exact_foundation_declarations():
     css = read_text("static/css/custom.css")
-    assert css_rule_declarations(css, DARK_ROOT_SELECTOR) == EXPECTED_DARK_ROOT_DECLARATIONS
+    assert_dark_root_contract(css)
 
 
 def test_dark_theme_root_precedes_component_overrides():
@@ -216,8 +288,23 @@ def test_layout_loads_only_the_approved_dark_theme_fonts():
 
 
 def test_dark_body_does_not_override_global_font_size():
-    body = css_rule_declarations(read_text("static/css/custom.css"), DARK_BODY_SELECTOR)
-    assert "font-size" not in body
+    assert_no_dark_global_body_font_size(read_text("static/css/custom.css"))
+
+
+def test_equivalent_dark_root_selector_cannot_redeclare_protected_token():
+    css = read_text("static/css/custom.css")
+    css += '\nhtml[data-bs-theme="dark"] { --bg-950: #FFFFFF; }\n'
+
+    with pytest.raises(AssertionError, match="redeclares protected dark foundation properties"):
+        assert_dark_root_contract(css)
+
+
+def test_equivalent_dark_body_selector_cannot_set_global_font_size():
+    css = read_text("static/css/custom.css")
+    css += '\nhtml[data-bs-theme="dark"] body { font-size: 12px; }\n'
+
+    with pytest.raises(AssertionError, match="sets forbidden global body font-size"):
+        assert_no_dark_global_body_font_size(css)
 
 
 @pytest.mark.parametrize(
