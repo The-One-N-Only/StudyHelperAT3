@@ -276,3 +276,233 @@ button, .btn, a, input, select, textarea {
 [data-bs-theme="dark"] p {
     text-wrap: pretty;
 }
+
+/* Candlelit Archive: shared materials and controls */
+[data-bs-theme="dark"] .surface-leather {
+    background-color: var(--surface-800);
+    background-image:
+        linear-gradient(var(--surface-800), var(--surface-800)),
+        url("/static/img/textures/leather-texture.png");
+    background-blend-mode: multiply;
+    background-position: 0 0;
+    background-repeat: repeat, repeat;
+    background-size: auto, 420px;
+    border: 1px solid hsl(35 40% 45% / 0.18);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-warm-raised);
+}
+
+[data-bs-theme="dark"] .btn-secondary-wood {
+    background-color: var(--surface-700);
+    background-image:
+        linear-gradient(var(--surface-700), var(--surface-700)),
+        url("/static/img/textures/wood-texture.png");
+    background-blend-mode: multiply;
+    background-position: 0 0;
+    background-repeat: repeat, repeat;
+    background-size: auto, 200px;
+    border: 1px solid hsl(35 40% 45% / 0.22);
+    border-radius: var(--radius-button);
+    color: var(--gold-300);
+}
+
+[data-bs-theme="dark"] .btn-secondary-wood:hover,
+[data-bs-theme="dark"] .btn-secondary-wood:active {
+    border-color: var(--gold-500);
+    color: var(--gold-100);
+}
+
+[data-bs-theme="dark"] .btn-brass,
+[data-bs-theme="dark"] .btn-primary {
+    --bs-btn-color: var(--bg-950);
+    --bs-btn-bg: var(--gold-300);
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-color: var(--bg-950);
+    --bs-btn-hover-bg: var(--gold-100);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-active-color: var(--bg-950);
+    --bs-btn-active-bg: var(--gold-500);
+    --bs-btn-active-border-color: transparent;
+    background-image: linear-gradient(hsl(35 80% 75% / 0.25), transparent 40%);
+    border-radius: var(--radius-button);
+}
+
+[data-bs-theme="dark"] .btn-ghost {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-button);
+    color: var(--gold-300);
+}
+
+[data-bs-theme="dark"] .btn-ghost:hover {
+    border-color: var(--gold-700);
+    color: var(--gold-100);
+}
+
+[data-bs-theme="dark"] .icon-button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-button);
+    color: var(--gold-300);
+    display: inline-flex;
+    justify-content: center;
+    min-height: 2rem;
+    min-width: 2rem;
+    padding: 0.25rem;
+}
+
+[data-bs-theme="dark"] .icon-button:hover {
+    background: hsl(35 70% 55% / 0.08);
+    color: var(--gold-100);
+}
+
+[data-bs-theme="dark"] .icon-button-danger:hover {
+    color: var(--danger-rust);
+}
+
+[data-bs-theme="dark"] .archive-dropdown,
+[data-bs-theme="dark"] .form-select {
+    background-color: var(--surface-700);
+    border-color: var(--gold-700);
+    border-radius: var(--radius-button);
+    color: var(--text-primary);
+}
+
+[data-bs-theme="dark"] .dropdown-menu,
+[data-bs-theme="dark"] .browse-dropdown-menu {
+    background: var(--surface-600);
+    border-color: hsl(35 40% 45% / 0.22);
+    border-radius: var(--radius-button);
+    box-shadow: var(--shadow-warm-raised);
+    color: var(--text-primary);
+}
+
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .input-group-text {
+    background: var(--surface-800);
+    border-color: hsl(35 40% 45% / 0.3);
+    border-radius: var(--radius-input);
+    color: var(--text-primary);
+}
+
+[data-bs-theme="dark"] .form-control::placeholder,
+[data-bs-theme="dark"] textarea::placeholder {
+    color: var(--text-secondary);
+    opacity: 1;
+}
+
+[data-bs-theme="dark"] .form-control:focus,
+[data-bs-theme="dark"] .form-select:focus,
+[data-bs-theme="dark"] .btn:focus-visible,
+[data-bs-theme="dark"] .icon-button:focus-visible,
+[data-bs-theme="dark"] .navbar-brand:focus-visible {
+    border-color: var(--gold-300);
+    box-shadow: var(--shadow-warm-glow);
+    outline: 0;
+}
+
+[data-bs-theme="dark"] .text-muted {
+    color: var(--text-secondary) !important;
+}
+
+[data-bs-theme="dark"] .archive-count-badge {
+    background: var(--gold-900);
+    border-radius: var(--radius-pill);
+    color: var(--gold-100);
+    font-size: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+}
+
+[data-bs-theme="dark"] .archive-category-badge {
+    background: hsl(35 40% 45% / 0.15);
+    border-radius: var(--radius-pill);
+    color: var(--gold-300);
+    font-size: var(--text-caption);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+[data-bs-theme="dark"] .card {
+    --bs-card-bg: var(--surface-800);
+    --bs-card-border-color: hsl(35 40% 45% / 0.18);
+}
+
+[data-bs-theme="dark"] .offcanvas {
+    --bs-offcanvas-bg: var(--surface-700);
+}
+
+[data-bs-theme="dark"] .bi {
+    color: var(--gold-300);
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: var(--gold-700);
+    border: 2px solid var(--surface-800);
+    border-radius: var(--radius-pill);
+}
+
+[data-bs-theme="dark"] * {
+    scrollbar-color: var(--gold-700) transparent;
+    scrollbar-width: thin;
+}
+
+[data-bs-theme="dark"] .archive-illustration {
+    --illustration-image: none;
+    background-color: var(--gold-700);
+    display: block;
+    mask-image: var(--illustration-image);
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-size: contain;
+    opacity: 0.06;
+    pointer-events: none;
+    position: absolute;
+    z-index: var(--z-bg-illustration);
+}
+
+[data-bs-theme="dark"] .illustration-compass {
+    --illustration-image: url("/static/img/illustrations/compass-rose.svg");
+}
+
+[data-bs-theme="dark"] .illustration-sextant {
+    --illustration-image: url("/static/img/illustrations/sextant.svg");
+}
+
+[data-bs-theme="dark"] .illustration-books {
+    --illustration-image: url("/static/img/illustrations/stacked-books.svg");
+}
+
+[data-bs-theme="dark"] .illustration-open-book {
+    --illustration-image: url("/static/img/illustrations/open-book.svg");
+}
+
+[data-bs-theme="dark"] .illustration-flourish {
+    --illustration-image: url("/static/img/illustrations/scrollwork-flourish.svg");
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-bs-theme="dark"] *,
+    [data-bs-theme="dark"] *::before,
+    [data-bs-theme="dark"] *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+@media (hover: none), (pointer: coarse) {
+    [data-bs-theme="dark"] .archive-illustration {
+        opacity: 0.045;
+    }
+}

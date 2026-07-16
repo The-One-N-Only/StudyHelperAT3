@@ -4,10 +4,10 @@ export function showToast(message, type = "success") {
     const container = document.getElementById("toastContainer");
     const id = "toast-" + Date.now();
     const iconMap = {
-        success: "bi-check-circle-fill text-success",
-        danger: "bi-x-circle-fill text-danger",
-        warning: "bi-exclamation-triangle-fill text-warning",
-        info: "bi-info-circle-fill text-info"
+        success: "bi-check-circle text-success",
+        danger: "bi-x-circle text-danger",
+        warning: "bi-exclamation-triangle text-warning",
+        info: "bi-info-circle text-info"
     };
     const html = `
         <div id="${id}" class="toast align-items-center border-0 shadow" role="alert" aria-live="assertive">

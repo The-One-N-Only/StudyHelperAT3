@@ -318,3 +318,36 @@ def test_equivalent_dark_body_selector_cannot_set_global_font_size():
 )
 def test_core_text_pairs_meet_wcag_aa(foreground, background):
     assert contrast_ratio(foreground, background) >= 4.5
+
+
+def test_shared_dark_theme_materials_and_controls_are_scoped():
+    css = read_text("static/css/custom.css")
+    required_selectors = (
+        '[data-bs-theme="dark"] .surface-leather',
+        '[data-bs-theme="dark"] .btn-secondary-wood',
+        '[data-bs-theme="dark"] .btn-brass',
+        '[data-bs-theme="dark"] .btn-ghost',
+        '[data-bs-theme="dark"] .icon-button',
+        '[data-bs-theme="dark"] .archive-dropdown',
+        '[data-bs-theme="dark"] .archive-count-badge',
+        '[data-bs-theme="dark"] .archive-category-badge',
+        '[data-bs-theme="dark"] .archive-illustration',
+    )
+    for selector in required_selectors:
+        assert selector in css
+
+    assert 'url("/static/img/textures/leather-texture.png")' in css
+    assert 'url("/static/img/textures/wood-texture.png")' in css
+    assert "background-blend-mode: multiply" in css
+    assert "background-size: auto, 420px" in css
+    assert "background-size: auto, 200px" in css
+    assert "@media (prefers-reduced-motion: reduce)" in css
+    assert "@media (hover: none), (pointer: coarse)" in css
+
+    for name in SVG_NAMES:
+        assert f'url("/static/img/illustrations/{name}")' in css
+
+    toast = read_text("static/js/toast.js")
+    assert "-fill" not in toast
+    for icon in ("bi-check-circle", "bi-x-circle", "bi-exclamation-triangle", "bi-info-circle"):
+        assert icon in toast
