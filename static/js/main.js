@@ -19,6 +19,7 @@ function initNavigation() {
 
     if (!brandMenuButton || !navOverlay) return;
 
+    const dialog = navOverlay.querySelector('[role="dialog"]');
     const isSidebarOpen = () => !navOverlay.classList.contains('d-none');
 
     const getFocusableElements = () => Array.from(
@@ -50,7 +51,7 @@ function initNavigation() {
         navOverlay.setAttribute("aria-hidden", "false");
         brandMenuButton.setAttribute("aria-expanded", "true");
         document.body.classList.add('nav-sidebar-open');
-        closeButton?.focus();
+        (getFocusableElements()[0] || dialog)?.focus();
     };
 
     const closeSidebar = () => {
@@ -66,7 +67,11 @@ function initNavigation() {
 
     const containTabFocus = (event) => {
         const focusableElements = getFocusableElements();
-        if (focusableElements.length === 0) return;
+        if (focusableElements.length === 0) {
+            event.preventDefault();
+            dialog?.focus();
+            return;
+        }
 
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];

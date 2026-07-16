@@ -371,7 +371,7 @@ body.nav-sidebar-open {
     background: transparent;
     border: 0;
     border-radius: var(--radius-button);
-    color: var(--gold-300);
+    color: var(--gold-300) !important;
     display: inline-flex;
     justify-content: center;
     min-height: 2rem;
@@ -381,11 +381,11 @@ body.nav-sidebar-open {
 
 [data-bs-theme="dark"] .icon-button:hover {
     background: hsl(35 70% 55% / 0.08);
-    color: var(--gold-100);
+    color: var(--gold-100) !important;
 }
 
 [data-bs-theme="dark"] .icon-button-danger:hover {
-    color: var(--danger-rust);
+    color: var(--danger-rust) !important;
 }
 
 [data-bs-theme="dark"] .archive-dropdown,
