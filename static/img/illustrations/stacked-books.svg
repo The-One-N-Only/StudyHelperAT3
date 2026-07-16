@@ -1,0 +1,25 @@
+<svg viewBox="0 0 260 170" xmlns="http://www.w3.org/2000/svg" role="presentation" aria-hidden="true" class="illustration illustration--stacked-books">
+  <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="15" y="128" width="230" height="24" rx="3" />
+    <line x1="30" y1="128" x2="30" y2="152" stroke-width="1" />
+    <line x1="225" y1="128" x2="225" y2="152" stroke-width="1" />
+
+    <g transform="rotate(-2 137 100)">
+      <rect x="32" y="88" width="195" height="22" rx="3" />
+      <line x1="46" y1="88" x2="46" y2="110" stroke-width="1" />
+      <line x1="212" y1="88" x2="212" y2="110" stroke-width="1" />
+    </g>
+
+    <g transform="rotate(3 130 66)">
+      <rect x="45" y="55" width="172" height="22" rx="3" />
+      <line x1="58" y1="55" x2="58" y2="77" stroke-width="1" />
+      <line x1="196" y1="55" x2="196" y2="77" stroke-width="1" />
+    </g>
+
+    <g transform="rotate(-3 130 33)">
+      <rect x="58" y="22" width="148" height="20" rx="3" />
+      <line x1="70" y1="22" x2="70" y2="42" stroke-width="1" />
+      <line x1="182" y1="22" x2="182" y2="42" stroke-width="1" />
+    </g>
+  </g>
+</svg>

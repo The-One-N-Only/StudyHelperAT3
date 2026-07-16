@@ -1,0 +1,17 @@
+<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="presentation" aria-hidden="true" class="illustration illustration--sextant">
+  <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M128,50 L55,190 Q125,215 195,195 Z" />
+    <path d="M128,50 L150,190" />
+    <path d="M128,50 L128,28" />
+    <path d="M116,30 L140,30" />
+    <rect x="28" y="112" width="52" height="15" rx="7" />
+    <path d="M80,119 L100,110" />
+    <g stroke-width="1">
+      <line x1="78" y1="196" x2="78" y2="204" />
+      <line x1="102" y1="205" x2="102" y2="213" />
+      <line x1="128" y1="209" x2="128" y2="217" />
+      <line x1="154" y1="206" x2="154" y2="214" />
+      <line x1="176" y1="200" x2="176" y2="208" />
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,37 @@
+<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="presentation" aria-hidden="true" class="illustration illustration--compass-rose">
+  <g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="120" cy="120" r="100" />
+    <circle cx="120" cy="120" r="85" />
+    <g stroke-width="1">
+      <line x1="120" y1="20" x2="120" y2="12" />
+      <line x1="158.27" y1="27.61" x2="159.8" y2="23.92" />
+      <line x1="190.71" y1="49.29" x2="196.37" y2="43.63" />
+      <line x1="212.39" y1="81.73" x2="216.08" y2="80.2" />
+      <line x1="220" y1="120" x2="228" y2="120" />
+      <line x1="212.39" y1="158.27" x2="216.08" y2="159.8" />
+      <line x1="190.71" y1="190.71" x2="196.37" y2="196.37" />
+      <line x1="158.27" y1="212.39" x2="159.8" y2="216.08" />
+      <line x1="120" y1="220" x2="120" y2="228" />
+      <line x1="81.73" y1="212.39" x2="80.2" y2="216.08" />
+      <line x1="49.29" y1="190.71" x2="43.63" y2="196.37" />
+      <line x1="27.61" y1="158.27" x2="23.92" y2="159.8" />
+      <line x1="20" y1="120" x2="12" y2="120" />
+      <line x1="27.61" y1="81.73" x2="23.92" y2="80.2" />
+      <line x1="49.29" y1="49.29" x2="43.63" y2="43.63" />
+      <line x1="81.73" y1="27.61" x2="80.2" y2="23.92" />
+    </g>
+  </g>
+  <g fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round">
+    <path d="M120,120 L118.54,106.08 L120,24 L121.46,106.08 Z" />
+    <path d="M120,120 L133.92,118.54 L216,120 L133.92,121.46 Z" />
+    <path d="M120,120 L121.46,133.92 L120,216 L118.54,133.92 Z" />
+    <path d="M120,120 L106.08,121.46 L24,120 L106.08,118.54 Z" />
+  </g>
+  <g fill="currentColor" fill-opacity="0.55" stroke="currentColor" stroke-opacity="0.55" stroke-width="1" stroke-linejoin="round">
+    <path d="M120,120 L128.81,109.12 L166.67,73.33 L130.88,111.19 Z" />
+    <path d="M120,120 L130.88,128.81 L166.67,166.67 L128.81,130.88 Z" />
+    <path d="M120,120 L111.19,130.88 L73.33,166.67 L109.12,128.81 Z" />
+    <path d="M120,120 L109.12,111.19 L73.33,73.33 L111.19,109.12 Z" />
+  </g>
+  <circle cx="120" cy="120" r="4" fill="currentColor" stroke="none" />
+</svg>

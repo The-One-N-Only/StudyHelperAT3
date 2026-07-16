@@ -1,0 +1,15 @@
+<svg viewBox="0 0 200 140" xmlns="http://www.w3.org/2000/svg" role="presentation" aria-hidden="true" class="illustration illustration--open-book">
+  <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="100" y1="22" x2="100" y2="116" />
+    <path d="M100,22 Q42,18 20,44 L20,102 Q42,120 100,116" />
+    <path d="M100,22 Q158,18 180,44 L180,102 Q158,120 100,116" />
+    <g stroke-width="1" opacity="0.7">
+      <line x1="35" y1="45" x2="80" y2="42" />
+      <line x1="35" y1="58" x2="82" y2="55" />
+      <line x1="35" y1="71" x2="82" y2="68" />
+      <line x1="120" y1="42" x2="165" y2="45" />
+      <line x1="118" y1="55" x2="165" y2="58" />
+      <line x1="118" y1="68" x2="165" y2="71" />
+    </g>
+  </g>
+</svg>
