@@ -1,9 +1,16 @@
+import base64
 from html.parser import HTMLParser
+import json
 from pathlib import Path
 import re
+import subprocess
 import xml.etree.ElementTree as ET
 
+from bs4 import BeautifulSoup
 import pytest
+import soupsieve
+from soupsieve.css_parser import PSEUDO_SIMPLE_NO_MATCH, css_unescape
+from soupsieve.css_types import SelectorNull
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +28,11 @@ DARK_THEME_ATTRIBUTE_PATTERN = re.compile(
 )
 FLAT_CSS_RULE_PATTERN = re.compile(
     r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}",
+    flags=re.DOTALL,
+)
+CSS_TOKEN_PATTERN = re.compile(
+    r'/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
+    r"\\(?:[0-9a-fA-F]{1,6}[ \t\r\n\f]?|[^\r\n\f])|[{};,()\[\]]",
     flags=re.DOTALL,
 )
 APPROVED_FONT_STYLESHEET = (
@@ -131,9 +143,6 @@ TASK3_DARK_ONLY_CLASSES = (
     "illustration-open-book",
     "illustration-flourish",
 )
-TASK3_DARK_ONLY_CLASS_PATTERN = re.compile(
-    r"\.(?:" + "|".join(map(re.escape, TASK3_DARK_ONLY_CLASSES)) + r")(?![\w-])"
-)
 SHARED_CONTROL_MOTION_SELECTORS = (
     '[data-bs-theme="dark"] button',
     '[data-bs-theme="dark"] .btn',
@@ -168,6 +177,30 @@ EXPECTED_TOAST_ICON_MAP = {
     "warning": "bi-exclamation-triangle text-warning",
     "info": "bi-info-circle text-info",
 }
+TOAST_RUNTIME_HARNESS = r"""
+const rendered = [];
+const toastElement = { addEventListener() {}, remove() {} };
+const container = {
+  insertAdjacentHTML(position, html) {
+    if (position !== "beforeend") throw new Error(`unexpected insertion: ${position}`);
+    rendered.push(html);
+  }
+};
+globalThis.document = {
+  getElementById(id) {
+    return id === "toastContainer" ? container : toastElement;
+  }
+};
+globalThis.bootstrap = { Toast: class { show() {} } };
+Date.now = () => 1700000000000;
+const { showToast } = await import(process.argv[1]);
+for (const type of ["success", "danger", "warning", "info"]) {
+  const before = rendered.length;
+  showToast(`message-${type}`, type);
+  if (rendered.length !== before + 1) throw new Error(`no render for ${type}`);
+}
+process.stdout.write(JSON.stringify(rendered));
+""".strip()
 EXPECTED_SHARED_RULES = (
     (
         SHARED_CONTROL_MOTION_SELECTORS,
@@ -523,66 +556,36 @@ def css_rules(css: str):
 
 
 def strip_css_comments(css: str) -> str:
-    result = []
-    index = 0
-    quote = None
-    while index < len(css):
-        character = css[index]
-        if quote is not None:
-            result.append(character)
-            if character == "\\" and index + 1 < len(css):
-                index += 1
-                result.append(css[index])
-            elif character == quote:
-                quote = None
-            index += 1
-            continue
+    return CSS_TOKEN_PATTERN.sub(
+        lambda match: " " if match[0].startswith("/*") else match[0],
+        css,
+    )
 
-        if character in ('"', "'"):
-            quote = character
-            result.append(character)
-            index += 1
-        elif css.startswith("/*", index):
-            comment_end = css.find("*/", index + 2)
-            assert comment_end != -1, "unclosed CSS comment"
-            result.append(" ")
-            index = comment_end + 2
-        else:
-            result.append(character)
-            index += 1
-    assert quote is None, "unclosed CSS string"
-    return "".join(result)
+
+def css_structural_tokens(css: str):
+    for match in CSS_TOKEN_PATTERN.finditer(css):
+        token = match[0]
+        if len(token) == 1 and token in "{};,()[]":
+            yield match.start(), token
 
 
 def split_css_components(text: str, separator: str) -> tuple[str, ...]:
     parts = []
     start = 0
-    index = 0
-    quote = None
     depths = {"(": 0, "[": 0, "{": 0}
     closing_to_opening = {")": "(", "]": "[", "}": "{"}
 
-    while index < len(text):
-        character = text[index]
-        if character == "\\" and index + 1 < len(text):
-            index += 2
-            continue
-        if quote is not None:
-            if character == quote:
-                quote = None
-        elif character in ('"', "'"):
-            quote = character
-        elif character in depths:
-            depths[character] += 1
-        elif character in closing_to_opening:
-            opening = closing_to_opening[character]
+    for index, token in css_structural_tokens(text):
+        if token in depths:
+            depths[token] += 1
+        elif token in closing_to_opening:
+            opening = closing_to_opening[token]
             depths[opening] = max(0, depths[opening] - 1)
-        elif character == separator and not any(depths.values()):
+        elif token == separator and not any(depths.values()):
             part = text[start:index].strip()
             if part:
                 parts.append(part)
             start = index + 1
-        index += 1
 
     part = text[start:].strip()
     if part:
@@ -590,75 +593,55 @@ def split_css_components(text: str, separator: str) -> tuple[str, ...]:
     return tuple(parts)
 
 
-def find_css_block_end(css: str, opening_brace: int) -> int:
-    depth = 1
-    index = opening_brace + 1
-    quote = None
-    while index < len(css):
-        character = css[index]
-        if character == "\\" and index + 1 < len(css):
-            index += 2
-            continue
-        if quote is not None:
-            if character == quote:
-                quote = None
-        elif character in ('"', "'"):
-            quote = character
-        elif character == "{":
-            depth += 1
-        elif character == "}":
-            depth -= 1
-            if depth == 0:
-                return index
-        index += 1
-    raise AssertionError("unclosed CSS block")
-
-
 def css_rule_blocks(css: str):
-    css_without_comments = strip_css_comments(css)
-    index = 0
-    while index < len(css_without_comments):
-        while index < len(css_without_comments) and css_without_comments[index].isspace():
-            index += 1
-        if index >= len(css_without_comments):
-            return
-
-        header_start = index
-        quote = None
+    tokens = tuple(css_structural_tokens(css))
+    token_index = 0
+    rule_start = 0
+    while token_index < len(tokens):
         parenthesis_depth = 0
         bracket_depth = 0
-        while index < len(css_without_comments):
-            character = css_without_comments[index]
-            if character == "\\" and index + 1 < len(css_without_comments):
-                index += 2
-                continue
-            if quote is not None:
-                if character == quote:
-                    quote = None
-            elif character in ('"', "'"):
-                quote = character
-            elif character == "(":
+        delimiter = None
+        while token_index < len(tokens):
+            position, token = tokens[token_index]
+            token_index += 1
+            if token == "(":
                 parenthesis_depth += 1
-            elif character == ")":
+            elif token == ")":
                 parenthesis_depth = max(0, parenthesis_depth - 1)
-            elif character == "[":
+            elif token == "[":
                 bracket_depth += 1
-            elif character == "]":
+            elif token == "]":
                 bracket_depth = max(0, bracket_depth - 1)
-            elif character == "{" and parenthesis_depth == bracket_depth == 0:
-                block_end = find_css_block_end(css_without_comments, index)
-                yield (
-                    css_without_comments[header_start:index].strip(),
-                    css_without_comments[index + 1:block_end],
-                )
-                index = block_end + 1
+            elif token in ("{", ";") and parenthesis_depth == bracket_depth == 0:
+                delimiter = (position, token)
                 break
-            elif character == ";" and parenthesis_depth == bracket_depth == 0:
-                index += 1
-                break
-            index += 1
+
+        if delimiter is None:
+            break
+        position, token = delimiter
+        if token == ";":
+            rule_start = position + 1
+            continue
+
+        block_depth = 1
+        body_start = position + 1
+        while token_index < len(tokens):
+            block_end, token = tokens[token_index]
+            token_index += 1
+            if token == "{":
+                block_depth += 1
+            elif token == "}":
+                block_depth -= 1
+                if block_depth == 0:
+                    header = strip_css_comments(css[rule_start:position]).strip()
+                    if header:
+                        yield header, css[body_start:block_end]
+                    rule_start = block_end + 1
+                    break
         else:
-            assert not css_without_comments[header_start:].strip(), "incomplete CSS rule"
+            raise AssertionError("unclosed CSS block")
+
+    assert not strip_css_comments(css[rule_start:]).strip(), "incomplete CSS rule"
 
 
 def selector_group(header: str) -> tuple[str, ...]:
@@ -703,70 +686,191 @@ def css_block_body(css: str, header: str) -> str:
     return matches[0]
 
 
-def qualified_css_selector_groups(css: str):
+def expand_nested_selector(selector: str, parent_selector: str | None) -> str:
+    result = []
+    index = 0
+    quote = None
+    found_nesting_reference = False
+
+    while index < len(selector):
+        character = selector[index]
+        if character == "\\" and index + 1 < len(selector):
+            result.extend((character, selector[index + 1]))
+            index += 2
+            continue
+        if quote is not None:
+            result.append(character)
+            if character == quote:
+                quote = None
+        elif character in ('"', "'"):
+            quote = character
+            result.append(character)
+        elif character == "&":
+            assert parent_selector is not None, (
+                f"unsupported top-level nesting selector: {selector!r}"
+            )
+            result.append(parent_selector)
+            found_nesting_reference = True
+        else:
+            result.append(character)
+        index += 1
+
+    expanded = "".join(result)
+    if parent_selector is not None and not found_nesting_reference:
+        return f"{parent_selector} {expanded}"
+    return expanded
+
+
+def qualified_css_selectors(css: str, parent_selectors: tuple[str, ...] = ()):
     for header, body in css_rule_blocks(css):
         if header.startswith("@"):
-            yield from qualified_css_selector_groups(body)
+            yield from qualified_css_selectors(body, parent_selectors)
+            continue
+
+        nested_selectors = selector_group(header)
+        if parent_selectors:
+            selectors = tuple(
+                expand_nested_selector(nested_selector, parent_selector)
+                for parent_selector in parent_selectors
+                for nested_selector in nested_selectors
+            )
         else:
-            yield selector_group(header)
+            selectors = tuple(
+                expand_nested_selector(nested_selector, None)
+                for nested_selector in nested_selectors
+            )
+
+        yield from selectors
+        yield from qualified_css_selectors(body, selectors)
+
+
+def semantic_selector_targets_task3_class(selector) -> bool:
+    if any(name in TASK3_DARK_ONLY_CLASSES for name in selector.classes):
+        return True
+
+    for attribute in selector.attributes:
+        if attribute.attribute != "class" or attribute.pattern is None:
+            continue
+        if any(attribute.pattern.fullmatch(name) for name in TASK3_DARK_ONLY_CLASSES):
+            return True
+
+    for nested_selector_list in selector.selectors:
+        if nested_selector_list.is_not:
+            continue
+        if any(
+            semantic_selector_targets_task3_class(nested_selector)
+            for nested_selector in nested_selector_list.selectors
+        ):
+            return True
+
+    return any(
+        semantic_selector_targets_task3_class(relation)
+        for relation in selector.relation.selectors
+    )
+
+
+def semantic_selector_component_has_dark_context(selector) -> bool:
+    if any(
+        attribute.attribute == "data-bs-theme"
+        and attribute.pattern is not None
+        and attribute.pattern.pattern == "^dark$"
+        for attribute in selector.attributes
+    ):
+        return True
+
+    return any(
+        not nested_selector_list.is_not
+        and nested_selector_list.selectors
+        and all(
+            semantic_selector_has_dark_ancestry(nested_selector)
+            for nested_selector in nested_selector_list.selectors
+        )
+        for nested_selector_list in selector.selectors
+    )
+
+
+def semantic_selector_has_dark_ancestry(selector) -> bool:
+    current = selector
+    while True:
+        if semantic_selector_component_has_dark_context(current):
+            return True
+
+        if len(current.relation.selectors) != 1:
+            return False
+        current = current.relation.selectors[0]
+        if current.rel_type not in (" ", ">"):
+            return False
+
+
+def strip_trailing_static_dom_states(selector: str) -> str:
+    while True:
+        candidate = selector.rstrip()
+        lowered = candidate.lower()
+        for pseudo in PSEUDO_SIMPLE_NO_MATCH:
+            if lowered.endswith(pseudo):
+                selector = candidate[:-len(pseudo)]
+                break
+        else:
+            return candidate
 
 
 def assert_task3_selectors_are_dark_scoped(css: str) -> None:
-    for selectors in qualified_css_selector_groups(css):
-        for selector in selectors:
-            if not TASK3_DARK_ONLY_CLASS_PATTERN.search(selector):
+    for selector in qualified_css_selectors(css):
+        if not any(name in css_unescape(selector) for name in TASK3_DARK_ONLY_CLASSES):
+            continue
+        semantic_source = strip_trailing_static_dom_states(selector)
+        try:
+            semantic_selectors = soupsieve.compile(semantic_source).selectors.selectors
+        except soupsieve.SelectorSyntaxError as error:
+            raise AssertionError(
+                f"unsupported relevant Task 3 selector: {selector!r}"
+            ) from error
+
+        for semantic_selector in semantic_selectors:
+            if isinstance(semantic_selector, SelectorNull):
+                raise AssertionError(
+                    f"unsupported relevant Task 3 selector: {selector!r}"
+                )
+            if not semantic_selector_targets_task3_class(semantic_selector):
                 continue
-            assert DARK_THEME_ATTRIBUTE_PATTERN.search(selector), (
-                f"Task 3 selector {selector!r} is outside dark scope"
+            assert semantic_selector_has_dark_ancestry(semantic_selector), (
+                f"Task 3 selector {selector!r} is outside dark scope: "
+                "lacks positive dark ancestry/root"
             )
 
 
-def parse_toast_icon_map(toast: str) -> dict[str, str]:
-    toast_without_comments = re.sub(
-        r"/\*.*?\*/|//[^\r\n]*",
-        "",
-        toast,
-        flags=re.DOTALL,
+def assert_toast_runtime_contract(toast: str) -> None:
+    module_url = "data:text/javascript;base64," + base64.b64encode(
+        toast.encode("utf-8")
+    ).decode("ascii")
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", TOAST_RUNTIME_HARNESS, module_url],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=10,
+        check=False,
     )
-    matches = list(
-        re.finditer(
-            r"\bconst\s+iconMap\s*=\s*\{(?P<body>[^{}]*)\}\s*;",
-            toast_without_comments,
-            flags=re.DOTALL,
-        )
+    assert result.returncode == 0, f"toast runtime harness failed: {result.stderr.strip()}"
+
+    rendered = json.loads(result.stdout)
+    assert len(rendered) == len(EXPECTED_TOAST_ICON_MAP), (
+        f"expected {len(EXPECTED_TOAST_ICON_MAP)} toast renders, found {len(rendered)}"
     )
-    assert len(matches) == 1, f"expected one iconMap declaration, found {len(matches)}"
-
-    icon_map = {}
-    for raw_entry in matches[0].group("body").split(","):
-        raw_entry = raw_entry.strip()
-        if not raw_entry:
-            continue
-        entry = re.fullmatch(
-            r"(?P<key>[A-Za-z_$][\w$]*)\s*:\s*"
-            r"(?P<quote>['\"])(?P<value>[^'\"]*)(?P=quote)",
-            raw_entry,
+    for (status, expected), html in zip(
+        EXPECTED_TOAST_ICON_MAP.items(), rendered, strict=True
+    ):
+        soup = BeautifulSoup(html, "html.parser")
+        icons = soup.select(".toast-body > i.bi")
+        assert len(icons) == 1, f"toast iconMap render for {status}: found {len(icons)} icons"
+        classes = set(icons[0].get("class", ()))
+        expected_classes = {"bi", *expected.split()}
+        assert classes == expected_classes, (
+            f"toast iconMap render for {status}: {classes!r} != {expected_classes!r}"
         )
-        assert entry is not None, f"invalid iconMap entry: {raw_entry!r}"
-        key = entry.group("key")
-        assert key not in icon_map, f"duplicate iconMap key: {key!r}"
-        icon_map[key] = entry.group("value")
-    return icon_map
-
-
-def assert_toast_renders_icon_map(toast: str) -> None:
-    html_templates = list(
-        re.finditer(
-            r"\bconst\s+html\s*=\s*`(?P<body>(?:\\.|[^`])*)`\s*;",
-            toast,
-            flags=re.DOTALL,
+        assert all("-fill" not in class_name for class_name in classes), (
+            f"toast iconMap render for {status} uses filled icon: {classes!r}"
         )
-    )
-    assert len(html_templates) == 1, f"expected one showToast HTML template, found {len(html_templates)}"
-    assert re.search(
-        r"<i\s+class=['\"]bi\s+\$\{iconMap\[type\]\}['\"]\s*>\s*</i>",
-        html_templates[0].group("body"),
-    ), "showToast HTML must consume iconMap[type]"
 
 
 def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
@@ -787,8 +891,7 @@ def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
         '[data-bs-theme="dark"] .archive-illustration',
     ) == EXPECTED_COARSE_POINTER_DECLARATIONS
 
-    assert parse_toast_icon_map(toast) == EXPECTED_TOAST_ICON_MAP
-    assert_toast_renders_icon_map(toast)
+    assert_toast_runtime_contract(toast)
 
 
 def mark_dark_theme_attribute(selector: str) -> str | None:
@@ -1097,3 +1200,102 @@ def test_shared_contract_boundary_accepts_unrelated_duplicate_fallback_declarati
     )
 
     assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+@pytest.mark.parametrize(
+    "selector",
+    (
+        '.surface-leather:not([data-bs-theme="dark"])',
+        r".surface\-leather",
+        '[class~="surface-leather"]',
+        "[data-probe='[data-bs-theme=\"dark\"]'] .surface-leather",
+        ".unrelated { & .surface-leather",
+    ),
+    ids=(
+        "negated-dark",
+        "escaped-class",
+        "class-token-attribute",
+        "irrelevant-dark-text",
+        "native-nesting",
+    ),
+)
+def test_third_review_boundary_rejects_semantic_non_dark_task_selector(selector):
+    css = read_text("static/css/custom.css")
+    if selector.startswith(".unrelated"):
+        css += f"\n{selector} {{ color: red; }} }}\n"
+    else:
+        css += f"\n{selector} {{ color: red; }}\n"
+
+    with pytest.raises(AssertionError):
+        assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_third_review_boundary_rejects_unused_toast_template_decoy():
+    toast = read_text("static/js/toast.js").replace(
+        "${iconMap[type]}",
+        "bi-question-circle-fill",
+        1,
+    )
+    toast = toast.replace(
+        "const html = `",
+        'const html = `<i class="bi ${iconMap[type]}"></i>`;\n'
+        "    const renderedHtml = `",
+        1,
+    ).replace(
+        'insertAdjacentHTML("beforeend", html)',
+        'insertAdjacentHTML("beforeend", renderedHtml)',
+        1,
+    )
+
+    with pytest.raises(AssertionError):
+        assert_shared_dark_theme_contract(read_text("static/css/custom.css"), toast)
+
+
+def test_third_review_boundary_rejects_commented_toast_icon_decoy():
+    toast = read_text("static/js/toast.js").replace(
+        '<i class="bi ${iconMap[type]}"></i>',
+        '<!-- <i class="bi ${iconMap[type]}"></i> -->\n'
+        '                    <i class="bi bi-question-circle-fill"></i>',
+        1,
+    )
+
+    with pytest.raises(AssertionError):
+        assert_shared_dark_theme_contract(read_text("static/css/custom.css"), toast)
+
+
+def test_third_review_boundary_accepts_unrelated_task_text_in_attribute():
+    css = read_text("static/css/custom.css")
+    css += '\n[data-probe=".surface-leather"] { color: red; }\n'
+
+    assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_third_review_boundary_accepts_positive_dark_ancestry_via_is():
+    css = read_text("static/css/custom.css")
+    css += '\n:is([data-bs-theme="dark"]) .surface-leather { color: red; }\n'
+
+    assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_third_review_boundary_accepts_toast_template_variable_rename():
+    toast = read_text("static/js/toast.js").replace(
+        "const html = `",
+        "const toastHtml = `",
+        1,
+    ).replace(
+        'insertAdjacentHTML("beforeend", html)',
+        'insertAdjacentHTML("beforeend", toastHtml)',
+        1,
+    )
+
+    assert_shared_dark_theme_contract(read_text("static/css/custom.css"), toast)
+
+
+def test_third_review_boundary_accepts_aria_hidden_toast_icon():
+    toast = read_text("static/js/toast.js").replace(
+        '<i class="bi ${iconMap[type]}"></i>',
+        '<i aria-hidden="true" class="bi ${iconMap[type]}"></i>',
+        1,
+    )
+
+    assert_shared_dark_theme_contract(read_text("static/css/custom.css"), toast)
