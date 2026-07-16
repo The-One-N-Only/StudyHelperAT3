@@ -257,7 +257,6 @@ button, .btn, a, input, select, textarea {
         var(--bg-950);
     background-attachment: fixed;
     font-family: var(--font-body);
-    font-size: var(--text-body);
 }
 
 [data-bs-theme="dark"] h1,
