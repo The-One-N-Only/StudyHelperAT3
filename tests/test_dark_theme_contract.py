@@ -26,6 +26,11 @@ DARK_BODY_SELECTOR = '[data-bs-theme="dark"] body'
 DARK_THEME_ATTRIBUTE_PATTERN = re.compile(
     r'''\[\s*data-bs-theme\s*=\s*(?:"dark"|'dark'|dark)\s*\]'''
 )
+OPEN_VIEWER_IMPORT_PATTERN = re.compile(
+    r'''^[ \t]*import[ \t]*\{[ \t]*openViewer[ \t]*\}[ \t]*from[ \t]*
+    (?P<quote>['"])\.\/viewer\.js(?P=quote)[ \t]*;?[ \t]*$''',
+    flags=re.MULTILINE | re.VERBOSE,
+)
 FLAT_CSS_RULE_PATTERN = re.compile(
     r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}",
     flags=re.DOTALL,
@@ -143,6 +148,23 @@ TASK3_DARK_ONLY_CLASSES = (
     "illustration-open-book",
     "illustration-flourish",
 )
+TASK4_NAVIGATION_CLASSES = (
+    "archive-navbar",
+    "archive-wordmark",
+    "nav-sidebar-open",
+    "nav-sidebar-overlay",
+    "nav-sidebar",
+)
+TASK4_ALLOWED_THEME_NEUTRAL_SELECTORS = frozenset(
+    {
+        ".archive-wordmark",
+        "body.nav-sidebar-open",
+        ".nav-sidebar-overlay",
+        ".nav-sidebar-overlay.d-none",
+        ".nav-sidebar",
+        ".nav-sidebar .list-group-item",
+    }
+)
 SHARED_CONTROL_MOTION_SELECTORS = (
     '[data-bs-theme="dark"] button',
     '[data-bs-theme="dark"] .btn',
@@ -228,11 +250,13 @@ class FakeClassList {
 }
 
 class FakeElement {
-  constructor(id, classNames = [], attributes = {}) {
+  constructor(id, classNames = [], attributes = {}, inert = false) {
     this.id = id;
     this.classList = new FakeClassList(classNames);
     this.attributes = new Map(Object.entries(attributes));
+    this.inert = inert;
     this.listeners = new Map();
+    this.focusableElements = [];
   }
 
   addEventListener(type, callback) {
@@ -260,6 +284,14 @@ class FakeElement {
   focus() {
     document.activeElement = this;
   }
+
+  querySelectorAll() {
+    return this.focusableElements;
+  }
+
+  contains(element) {
+    return element === this || this.focusableElements.includes(element);
+  }
 }
 
 const brandMenuButton = new FakeElement(
@@ -273,7 +305,15 @@ const navOverlay = new FakeElement(
   { "aria-hidden": "true" },
 );
 const closeButton = new FakeElement("closeNavSidebarBtn");
+const homeLink = new FakeElement("homeLink");
+const browseLink = new FakeElement("browseLink");
+const uploadLink = new FakeElement("uploadLink");
 const overlayChild = new FakeElement("overlayChild");
+navOverlay.focusableElements = [closeButton, homeLink, browseLink, uploadLink];
+
+const navbar = new FakeElement("navbar");
+const pageContent = new FakeElement("pageContent", [], {}, true);
+const toastContainer = new FakeElement("toastContainer");
 for (const element of [brandMenuButton, navOverlay, closeButton]) {
   elements.set(element.id, element);
 }
@@ -281,7 +321,10 @@ for (const element of [brandMenuButton, navOverlay, closeButton]) {
 globalThis.window = {};
 globalThis.document = {
   activeElement: null,
-  body: { classList: new FakeClassList() },
+  body: {
+    children: [navbar, pageContent, toastContainer, navOverlay],
+    classList: new FakeClassList(),
+  },
   getElementById(id) {
     return elements.get(id) ?? null;
   },
@@ -295,7 +338,14 @@ globalThis.document = {
 function dispatchDocument(type, init = {}) {
   const callbacks = documentListeners.get(type) || [];
   invariant(callbacks.length > 0, `missing document ${type} listener`);
-  for (const callback of callbacks) callback({ type, ...init });
+  const event = {
+    type,
+    defaultPrevented: false,
+    preventDefault() { this.defaultPrevented = true; },
+    ...init,
+  };
+  for (const callback of callbacks) callback(event);
+  return event;
 }
 
 function assertOpen(context) {
@@ -304,6 +354,9 @@ function assertOpen(context) {
   invariant(brandMenuButton.getAttribute("aria-expanded") === "true", `${context}: aria-expanded`);
   invariant(document.body.classList.contains("nav-sidebar-open"), `${context}: body class`);
   invariant(document.activeElement === closeButton, `${context}: close focus`);
+  invariant(navbar.inert, `${context}: navbar not inert`);
+  invariant(pageContent.inert, `${context}: pre-inert content changed`);
+  invariant(toastContainer.inert, `${context}: toast container not inert`);
 }
 
 function assertClosed(context) {
@@ -312,6 +365,9 @@ function assertClosed(context) {
   invariant(brandMenuButton.getAttribute("aria-expanded") === "false", `${context}: aria-expanded`);
   invariant(!document.body.classList.contains("nav-sidebar-open"), `${context}: body class`);
   invariant(document.activeElement === brandMenuButton, `${context}: wordmark focus`);
+  invariant(!navbar.inert, `${context}: navbar inert state not restored`);
+  invariant(pageContent.inert, `${context}: pre-inert content state not restored`);
+  invariant(!toastContainer.inert, `${context}: toast inert state not restored`);
 }
 
 await import(process.argv[1]);
@@ -319,6 +375,17 @@ dispatchDocument("DOMContentLoaded");
 
 brandMenuButton.dispatch("click");
 assertOpen("open");
+
+uploadLink.focus();
+const forwardTab = dispatchDocument("keydown", { key: "Tab", shiftKey: false });
+invariant(forwardTab.defaultPrevented, "forward Tab not contained");
+invariant(document.activeElement === closeButton, "forward Tab did not wrap to first");
+
+closeButton.focus();
+const backwardTab = dispatchDocument("keydown", { key: "Tab", shiftKey: true });
+invariant(backwardTab.defaultPrevented, "Shift+Tab not contained");
+invariant(document.activeElement === uploadLink, "Shift+Tab did not wrap to last");
+
 closeButton.dispatch("click");
 assertClosed("close button");
 
@@ -637,6 +704,79 @@ EXPECTED_REDUCED_MOTION_DECLARATIONS = {
     "transition-duration": "0.01ms !important",
 }
 EXPECTED_COARSE_POINTER_DECLARATIONS = {"opacity": "0.045"}
+EXPECTED_NAVIGATION_NEUTRAL_RULES = (
+    (
+        (".archive-wordmark",),
+        {
+            "-webkit-appearance": "none",
+            "appearance": "none",
+            "background": "transparent",
+            "border": "0",
+            "cursor": "pointer",
+            "padding-inline": "0",
+        },
+    ),
+    (("body.nav-sidebar-open",), {"overflow": "hidden"}),
+)
+EXPECTED_NAVIGATION_DARK_RULES = (
+    (
+        ('[data-bs-theme="dark"] .archive-navbar',),
+        {
+            "background": "var(--surface-800) !important",
+            "border-bottom-color": "hsl(35 40% 45% / 0.12) !important",
+            "box-shadow": "0 4px 18px hsl(28 60% 4% / 0.35) !important",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .archive-wordmark',),
+        {
+            "color": "var(--gold-100)",
+            "font-family": "var(--font-display)",
+            "font-size": "1.25rem",
+            "font-weight": "600",
+            "letter-spacing": "0.06em",
+            "padding": "0.35rem 0.5rem",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .archive-wordmark:hover',),
+        {"color": "var(--gold-300)"},
+    ),
+    (
+        ('[data-bs-theme="dark"] .archive-wordmark:focus-visible',),
+        {
+            "border-radius": "var(--radius-button)",
+            "box-shadow": "var(--shadow-warm-glow)",
+            "outline": "0",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .nav-sidebar-overlay',),
+        {"background": "hsl(28 60% 4% / 0.72)"},
+    ),
+    (
+        ('[data-bs-theme="dark"] .nav-sidebar',),
+        {"border-radius": "0 var(--radius-panel) var(--radius-panel) 0"},
+    ),
+    (
+        ('[data-bs-theme="dark"] .nav-sidebar .list-group-item',),
+        {
+            "background": "transparent",
+            "border-color": "hsl(35 40% 45% / 0.12)",
+            "color": "var(--text-primary)",
+        },
+    ),
+    (
+        (
+            '[data-bs-theme="dark"] .nav-sidebar .list-group-item:hover',
+            '[data-bs-theme="dark"] .nav-sidebar .list-group-item:focus-visible',
+        ),
+        {
+            "background": "hsl(35 70% 55% / 0.1)",
+            "color": "var(--gold-100)",
+        },
+    ),
+)
 
 
 class LinkCollector(HTMLParser):
@@ -879,29 +1019,33 @@ def qualified_css_selectors(css: str, parent_selectors: tuple[str, ...] = ()):
         yield from qualified_css_selectors(body, selectors)
 
 
-def semantic_selector_targets_task3_class(selector) -> bool:
-    if any(name in TASK3_DARK_ONLY_CLASSES for name in selector.classes):
+def semantic_selector_targets_classes(selector, class_names: tuple[str, ...]) -> bool:
+    if any(name in class_names for name in selector.classes):
         return True
 
     for attribute in selector.attributes:
         if attribute.attribute != "class" or attribute.pattern is None:
             continue
-        if any(attribute.pattern.fullmatch(name) for name in TASK3_DARK_ONLY_CLASSES):
+        if any(attribute.pattern.fullmatch(name) for name in class_names):
             return True
 
     for nested_selector_list in selector.selectors:
         if nested_selector_list.is_not:
             continue
         if any(
-            semantic_selector_targets_task3_class(nested_selector)
+            semantic_selector_targets_classes(nested_selector, class_names)
             for nested_selector in nested_selector_list.selectors
         ):
             return True
 
     return any(
-        semantic_selector_targets_task3_class(relation)
+        semantic_selector_targets_classes(relation, class_names)
         for relation in selector.relation.selectors
     )
+
+
+def semantic_selector_targets_task3_class(selector) -> bool:
+    return semantic_selector_targets_classes(selector, TASK3_DARK_ONLY_CLASSES)
 
 
 def semantic_selector_component_has_dark_context(selector) -> bool:
@@ -974,6 +1118,39 @@ def assert_task3_selectors_are_dark_scoped(css: str) -> None:
             )
 
 
+def assert_navigation_selectors_are_scoped(css: str) -> None:
+    for selector in qualified_css_selectors(css):
+        if not any(name in css_unescape(selector) for name in TASK4_NAVIGATION_CLASSES):
+            continue
+
+        normalized_selector = " ".join(selector.split())
+        if normalized_selector in TASK4_ALLOWED_THEME_NEUTRAL_SELECTORS:
+            continue
+
+        semantic_source = strip_trailing_static_dom_states(selector)
+        try:
+            semantic_selectors = soupsieve.compile(semantic_source).selectors.selectors
+        except soupsieve.SelectorSyntaxError as error:
+            raise AssertionError(
+                f"unsupported relevant Task 4 selector: {selector!r}"
+            ) from error
+
+        for semantic_selector in semantic_selectors:
+            if isinstance(semantic_selector, SelectorNull):
+                raise AssertionError(
+                    f"unsupported relevant Task 4 selector: {selector!r}"
+                )
+            if not semantic_selector_targets_classes(
+                semantic_selector,
+                TASK4_NAVIGATION_CLASSES,
+            ):
+                continue
+            assert semantic_selector_has_dark_ancestry(semantic_selector), (
+                f"Task 4 selector {selector!r} is outside dark scope and is not "
+                "an approved theme-neutral baseline rule"
+            )
+
+
 def assert_toast_runtime_contract(toast: str) -> None:
     module_url = "data:text/javascript;base64," + base64.b64encode(
         toast.encode("utf-8")
@@ -1009,9 +1186,12 @@ def assert_toast_runtime_contract(toast: str) -> None:
 
 
 def assert_navigation_runtime_contract(main: str) -> None:
-    viewer_import = "import { openViewer } from './viewer.js';"
-    assert viewer_import in main
-    executable_main = main.replace(viewer_import, "const openViewer = () => {};", 1)
+    executable_main, import_count = OPEN_VIEWER_IMPORT_PATTERN.subn(
+        "const openViewer = () => {};",
+        main,
+        count=1,
+    )
+    assert import_count == 1, "expected one openViewer import"
     module_url = "data:text/javascript;base64," + base64.b64encode(
         executable_main.encode("utf-8")
     ).decode("ascii")
@@ -1027,6 +1207,15 @@ def assert_navigation_runtime_contract(main: str) -> None:
         f"navigation runtime harness failed: {result.stderr.strip()}"
     )
     assert result.stdout == "navigation runtime ok"
+
+
+def assert_navigation_css_contract(css: str) -> None:
+    assert_navigation_selectors_are_scoped(css)
+    for selectors, expected_declarations in (
+        *EXPECTED_NAVIGATION_NEUTRAL_RULES,
+        *EXPECTED_NAVIGATION_DARK_RULES,
+    ):
+        assert css_rule_group_declarations(css, selectors) == expected_declarations
 
 
 def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
@@ -1491,9 +1680,14 @@ def test_navigation_markup_has_accessible_dialog_relationships():
     assert wordmark is not None
     assert wordmark.get_text(strip=True) == "StudyLib"
     assert wordmark.get("type") == "button"
-    assert wordmark.get("aria-label") == "Open navigation menu"
+    assert wordmark.get("aria-label") == "StudyLib, open navigation menu"
     assert wordmark.get("aria-controls") == "navSidebarOverlay"
     assert wordmark.get("aria-expanded") == "false"
+    assert set(wordmark.get("class", ())) == {
+        "navbar-brand",
+        "archive-wordmark",
+        "mb-0",
+    }
     assert soup.select_one("#navMenuButton") is None
 
     overlay = soup.select_one("#navSidebarOverlay")
@@ -1512,6 +1706,12 @@ def test_navigation_markup_has_accessible_dialog_relationships():
     assert close_button is not None
     assert close_button.get("type") == "button"
     assert close_button.get("aria-label") == "Close menu"
+    assert set(close_button.get("class", ())) == {
+        "btn",
+        "btn-link",
+        "text-reset",
+        "icon-button",
+    }
 
     links = [
         (link.get("href"), link.get_text(strip=True))
@@ -1523,8 +1723,73 @@ def test_navigation_markup_has_accessible_dialog_relationships():
     assert theme_button is not None
     assert theme_button.get("type") == "button"
     assert theme_button.get("aria-label") == "Switch to dark theme"
+    assert set(theme_button.get("class", ())) == {
+        "btn",
+        "btn-link",
+        "p-1",
+        "icon-button",
+    }
     assert theme_button.select_one('i.bi-moon-stars[aria-hidden="true"]') is not None
 
 
 def test_navigation_runtime_keeps_visibility_aria_body_and_focus_in_sync():
     assert_navigation_runtime_contract(read_text("static/js/main.js"))
+
+
+def test_navigation_runtime_import_transform_tolerates_quote_and_spacing_style():
+    main = read_text("static/js/main.js")
+    variant_main, import_count = OPEN_VIEWER_IMPORT_PATTERN.subn(
+        'import {openViewer} from "./viewer.js"',
+        main,
+        count=1,
+    )
+    assert import_count == 1
+
+    assert_navigation_runtime_contract(variant_main)
+
+
+def test_navigation_css_preserves_light_baseline_and_scopes_dark_visuals():
+    assert_navigation_css_contract(read_text("static/css/custom.css"))
+
+
+@pytest.mark.parametrize(
+    ("original", "mutation"),
+    (
+        (
+            '[data-bs-theme="dark"] .archive-navbar {',
+            '.archive-navbar {',
+        ),
+        (
+            "body.nav-sidebar-open {\n    overflow: hidden;\n}",
+            "body.nav-sidebar-open {\n    overflow: visible;\n}",
+        ),
+        (
+            "    padding-inline: 0;\n",
+            "    padding-inline: 0.5rem;\n",
+        ),
+        (
+            "box-shadow: 0 4px 18px hsl(28 60% 4% / 0.35) !important;",
+            "box-shadow: none !important;",
+        ),
+    ),
+)
+def test_navigation_css_contract_rejects_semantic_and_visual_mutations(
+    original: str,
+    mutation: str,
+):
+    css = read_text("static/css/custom.css")
+    assert_navigation_css_contract(css)
+    assert original in css
+
+    with pytest.raises(AssertionError):
+        assert_navigation_css_contract(css.replace(original, mutation, 1))
+
+
+def test_navigation_css_contract_rejects_additive_unscoped_visual_rule():
+    css = read_text("static/css/custom.css")
+    assert_navigation_css_contract(css)
+
+    with pytest.raises(AssertionError):
+        assert_navigation_css_contract(
+            css + "\n.archive-wordmark:hover { color: red; }\n"
+        )

@@ -148,6 +148,17 @@ button, .btn, a, input, select, textarea {
 }
 
 /* Sidebar navigation overlay */
+.archive-wordmark {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    padding-inline: 0;
+}
+body.nav-sidebar-open {
+    overflow: hidden;
+}
 .nav-sidebar-overlay {
     position: fixed;
     inset: 0;
@@ -544,9 +555,6 @@ button, .btn, a, input, select, textarea {
 }
 
 [data-bs-theme="dark"] .archive-wordmark {
-    appearance: none;
-    background: transparent;
-    border: 0;
     color: var(--gold-100);
     font-family: var(--font-display);
     font-size: 1.25rem;
