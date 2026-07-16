@@ -84,6 +84,7 @@ EXPECTED_DARK_TOKENS = {
         "0 0 0 1px var(--gold-500), "
         "0 0 18px 2px hsl(35 70% 55% / 0.25)"
     ),
+    "--candle-x": "50%", "--candle-y": "30%", "--candle-radius": "380px",
     "--z-bg-base": "0",
     "--z-bg-illustration": "1",
     "--z-content": "10",
@@ -3296,3 +3297,61 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     user_tail = css_rule_group_declarations(css, ('[data-bs-theme="dark"] .chat-message-user::after',))
     assert user_tail == {"border-color": f"transparent transparent transparent {composite}", "border-width": "0.45rem 0 0.45rem 0.55rem", "right": "-0.5rem"}
     assert contrast_ratio(tokens["--text-primary"], composite) >= 4.5
+
+
+def test_candle_cursor_contract_is_dark_scoped_and_guarded():
+    layout = read_text("templates/layout.html")
+    theme = read_text("static/js/theme.js")
+    css = read_text("static/css/custom.css")
+    layer = '<div class="candle-glow" aria-hidden="true"></div>'
+    assert layout.count(layer) == 1
+    assert re.search(r"<body>\s*" + re.escape(layer), layout)
+    for marker in (
+        'matchMedia("(hover: hover) and (pointer: fine)")',
+        "function startCandle()",
+        "if (!candleLayer || isTracking || !finePointer.matches) return;",
+        'addEventListener("pointermove", trackPointer',
+        "function stopCandle()",
+        "if (!isTracking) return;",
+        'removeEventListener("pointermove", trackPointer)',
+        "requestAnimationFrame(animateCandle)",
+        "cancelAnimationFrame(animationFrame)",
+        "currentX += (targetX - currentX) * 0.15",
+        "currentY += (targetY - currentY) * 0.15",
+        "function syncCandle()",
+        'finePointer.addEventListener("change", syncCandle)',
+    ):
+        assert marker in theme
+    assert theme.count('themeBtn.addEventListener("click", toggleTheme)') == 1
+    assert css_rule_group_declarations(css, ('[data-bs-theme="dark"] .candle-glow',)) == {
+        "animation": "candle-flicker 4.2s ease-in-out infinite",
+        "background": (
+            "radial-gradient(circle var(--candle-radius) at var(--candle-x) "
+            "var(--candle-y), hsl(35 80% 68% / 0.16), "
+            "hsl(35 80% 68% / 0.05) 45%, transparent 75%)"
+        ),
+        "inset": "0",
+        "mix-blend-mode": "soft-light",
+        "pointer-events": "none",
+        "position": "fixed",
+        "z-index": "var(--z-candle-glow)",
+    }
+    assert_task_selectors_are_dark_scoped(
+        css, ("candle-glow",), frozenset(), "Task 9", "an approved neutral rule"
+    )
+    reduced = css_block_body(css, "@media (prefers-reduced-motion: reduce)")
+    coarse = css_block_body(css, "@media (hover: none), (pointer: coarse)")
+    assert css_rule_declarations(reduced, '[data-bs-theme="dark"] .candle-glow') == {
+        "animation": "none"
+    }
+    assert css_rule_declarations(coarse, '[data-bs-theme="dark"] .candle-glow') == {
+        "display": "none"
+    }
+    assert css.count("@media (prefers-reduced-motion: reduce)") == 1
+    assert css.count("@media (hover: none), (pointer: coarse)") == 1
+    keyframes = css_block_body(css, "@keyframes candle-flicker")
+    frames = list(css_rules(keyframes))
+    assert [rule[1]["opacity"] for rule in frames] == [
+        "1", "0.94", "1", "0.9", "0.98", "0.93", "1", "0.95"
+    ]
+    assert all(set(declarations) == {"opacity"} for _, declarations in frames)
