@@ -5,25 +5,25 @@ import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } f
 
 export function createCard(item) {
     const card = document.createElement('div');
-    card.className = 'card card-fixed shadow-sm rounded-3 h-100';
+    card.className = 'card card-fixed shadow-sm surface-leather result-card rounded-3 h-100';
     card.innerHTML = `
         <img src="${item.thumb_url || '/static/img/placeholder.png'}" class="card-img-top" style="height: 130px; object-fit: contain; background-color: var(--bs-body-secondary);" alt="">
         <div class="card-body">
             <h6 class="card-title text-truncate mb-1">${item.title}</h6>
             <p class="card-text small text-muted card-description mb-2">${item.description}</p>
             <div class="d-flex align-items-center justify-content-between">
-                <small class="text-muted"><i class="bi bi-globe2"></i> ${item.source_name}</small>
-                <button class="btn btn-link btn-sm p-0 save-btn" data-item-id="${item.id}">
-                    <i class="bi bi-bookmark${item.saved ? '-fill text-danger' : ''}"></i>
+                <small class="text-muted result-source"><i class="bi bi-globe2" aria-hidden="true"></i> ${item.source_name}</small>
+                <button class="btn btn-link btn-sm p-0 icon-button save-btn" data-item-id="${item.id}" type="button" aria-label="${item.saved ? 'Remove saved result' : 'Save result'}" aria-pressed="${item.saved ? 'true' : 'false'}">
+                    <i class="bi ${item.saved ? 'bi-bookmark-check' : 'bi-bookmark'}" aria-hidden="true"></i>
                 </button>
             </div>
         </div>
-        <div class="card-footer bg-transparent border-top p-2">
-            <button class="btn btn-outline-secondary btn-sm w-50 view-btn" data-item-id="${item.id}">View</button>
-            <button class="btn btn-primary btn-sm w-50 add-btn" data-item-id="${item.id}">Add</button>
+        <div class="card-footer bg-transparent border-top p-2 result-card-actions">
+            <button class="btn btn-outline-secondary btn-secondary-wood btn-sm w-50 view-btn" data-item-id="${item.id}" type="button">View</button>
+            <button class="btn btn-primary btn-secondary-wood btn-sm w-50 add-btn" data-item-id="${item.id}" type="button">Add</button>
         </div>
         <div class="d-flex align-items-center gap-2 mt-2">
-            <select class="workspace-select form-select form-select-sm"></select>
+            <select class="form-select form-select-sm archive-dropdown workspace-select" aria-label="Choose workspace"></select>
         </div>
     `;
     

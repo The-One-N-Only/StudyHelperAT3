@@ -30,18 +30,22 @@ async function loadWhitelistDomains() {
 export function initBrowse(root) {
     pageRoot = root;
     pageRoot.innerHTML = `
-        <div class="bg-body-tertiary border-bottom p-3 mb-3">
+        <div class="container-fluid archive-page archive-page-browse">
+            <span class="archive-illustration illustration-books" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-flourish" aria-hidden="true"></span>
+            <div class="archive-content">
+        <div class="bg-body-tertiary border-bottom browse-search-shell p-3 mb-3">
             <div class="container-fluid">
                 <div class="row g-3 align-items-center">
                     <div class="col-12">
                         <div class="dropdown d-inline-block w-100 position-relative">
                             <div class="input-group input-group-lg browse-search-group w-100">
-                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
                                 <input type="text" class="form-control browse-search-input" id="searchInput" placeholder="Search verified academic sources...">
-                                <button class="btn btn-primary" id="goBtn">Go</button>
-                                <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="filtersDropdown">Filters</button>
+                                <button class="btn btn-primary btn-brass" id="goBtn" type="button">Go</button>
+                                <button class="btn btn-outline-secondary archive-dropdown dropdown-toggle" type="button" id="filtersDropdown" aria-expanded="false" aria-controls="browseFiltersMenu">Filters</button>
                             </div>
-                            <div class="browse-dropdown-menu p-3" aria-labelledby="filtersDropdown" style="min-width: 320px;">
+                            <div class="browse-dropdown-menu archive-dropdown-menu p-3" id="browseFiltersMenu" aria-labelledby="filtersDropdown" style="min-width: 320px;">
                                 <div class="mb-3">
                                     <label class="form-label mb-2">Sources</label>
                                     <div class="form-check">
@@ -99,12 +103,14 @@ export function initBrowse(root) {
             <div class="flex-grow-1 p-3 overflow-y-auto">
                 <div id="resultsContainer">
                     <div class="text-center py-5">
-                        <i class="bi bi-mortarboard display-4 text-muted"></i>
+                        <i class="bi bi-mortarboard display-4 text-muted" aria-hidden="true"></i>
                         <h5>Search verified academic sources</h5>
                         <p class="text-muted">Use the search bar above to find academic resources from trusted sources</p>
                     </div>
                 </div>
                 <div id="googleCseContainer" class="mt-4"></div>
+            </div>
+        </div>
             </div>
         </div>
     `;
@@ -229,7 +235,7 @@ function renderSidebar(sourceCounts = {}, results = []) {
     const selectedSources = lastSearchSources || [];
     if (!selectedSources.length) {
         sidebar.innerHTML = `
-            <div class="card mb-3">
+            <div class="card surface-leather ai-overview-panel mb-3">
                 <div class="card-header">
                     <h5 class="card-title mb-0">AI Overview</h5>
                 </div>
@@ -241,7 +247,7 @@ function renderSidebar(sourceCounts = {}, results = []) {
         return;
     }
 
-    let html = '<div class="card mb-3">';
+    let html = '<div class="card surface-leather source-summary-panel mb-3">';
     html += '<div class="card-header"><h5 class="card-title mb-0">Search sources</h5></div>';
     html += '<div class="list-group list-group-flush">';
 
@@ -255,7 +261,7 @@ function renderSidebar(sourceCounts = {}, results = []) {
             <div class="list-group-item">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <strong>${escapeHtml(displayName)}</strong>
-                    <span class="badge bg-primary rounded-pill">${count}</span>
+                    <span class="badge bg-primary rounded-pill archive-count-badge">${count}</span>
                 </div>
         `;
         if (topItem) {
@@ -519,7 +525,7 @@ function renderResults(results) {
         const buttonContainer = document.createElement('div');
         buttonContainer.className = 'text-center mt-4 mb-3';
         buttonContainer.innerHTML = `
-            <button class="btn btn-outline-primary" id="loadMoreBtn">
+            <button class="btn btn-outline-primary btn-secondary-wood" id="loadMoreBtn" type="button">
                 <span id="loadMoreText">Load More Results</span>
                 <span id="loadMoreSpinner" class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true" style="display: none;"></span>
             </button>
@@ -597,5 +603,5 @@ function loadMoreResults() {
 
 function showNoResults() {
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
-    resultsContainer.innerHTML = '<div class="text-center"><i class="bi bi-search display-4 text-muted"></i><h5>No results found</h5></div>';
+    resultsContainer.innerHTML = '<div class="text-center"><i class="bi bi-search display-4 text-muted" aria-hidden="true"></i><h5>No results found</h5></div>';
 }
