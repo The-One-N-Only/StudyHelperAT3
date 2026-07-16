@@ -71,7 +71,7 @@ function safeImageUrl(value) {
 }
 
 function updateSaveButton(button, saved) {
-    button.setAttribute('aria-label', saved ? 'Remove saved result' : 'Save result');
+    button.setAttribute('aria-label', saved ? 'Saved result' : 'Save result');
     button.setAttribute('aria-pressed', saved ? 'true' : 'false');
     button.querySelector('.save-icon-light').className = saved
         ? 'bi bi-bookmark-fill text-danger save-icon-light'
@@ -82,26 +82,23 @@ function updateSaveButton(button, saved) {
 }
 
 async function toggleSave(item, button) {
-    const wasSaved = Boolean(item.saved);
-    const endpoint = wasSaved ? '/api/item/unsave' : '/api/item/save';
-
     try {
-        const response = await fetch(endpoint, {
+        const response = await fetch('/api/item/save', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({item_id: item.id})
         });
         const result = await response.json();
         if (result.status) {
-            item.saved = !wasSaved;
-            updateSaveButton(button, item.saved);
-            showToast(item.saved ? 'Saved' : 'Removed from saved', 'success');
+            item.saved = true;
+            updateSaveButton(button, true);
+            showToast('Saved', 'success');
         } else {
-            showToast(wasSaved ? 'Unable to remove saved result' : 'Already saved', 'info');
+            showToast('Already saved', 'info');
         }
     } catch (error) {
-        console.error('Save toggle error:', error);
-        showToast('Unable to update saved result', 'danger');
+        console.error('Save error:', error);
+        showToast('Unable to save result', 'danger');
     }
 }
 

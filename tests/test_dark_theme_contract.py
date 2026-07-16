@@ -242,16 +242,29 @@ EXPECTED_TOAST_ICON_MAP = {
     "warning": "bi-exclamation-triangle text-warning",
     "info": "bi-info-circle text-info",
 }
+EXPECTED_LIGHT_TOAST_ICON_MAP = {
+    "success": "bi-check-circle-fill text-success",
+    "danger": "bi-x-circle-fill text-danger",
+    "warning": "bi-exclamation-triangle-fill text-warning",
+    "info": "bi-info-circle-fill text-info",
+}
 TOAST_RUNTIME_HARNESS = r"""
-const rendered = [];
+const rendered = { dark: [], light: [] };
+let currentTheme = "dark";
 const toastElement = { addEventListener() {}, remove() {} };
 const container = {
   insertAdjacentHTML(position, html) {
     if (position !== "beforeend") throw new Error(`unexpected insertion: ${position}`);
-    rendered.push(html);
+    rendered[currentTheme].push(html);
   }
 };
 globalThis.document = {
+  documentElement: {
+    getAttribute(name) {
+      if (name !== "data-bs-theme") throw new Error(`unexpected attribute: ${name}`);
+      return currentTheme;
+    }
+  },
   getElementById(id) {
     return id === "toastContainer" ? container : toastElement;
   }
@@ -259,10 +272,13 @@ globalThis.document = {
 globalThis.bootstrap = { Toast: class { show() {} } };
 Date.now = () => 1700000000000;
 const { showToast } = await import(process.argv[1]);
-for (const type of ["success", "danger", "warning", "info"]) {
-  const before = rendered.length;
-  showToast(`message-${type}`, type);
-  if (rendered.length !== before + 1) throw new Error(`no render for ${type}`);
+for (const theme of ["dark", "light"]) {
+  currentTheme = theme;
+  for (const type of ["success", "danger", "warning", "info"]) {
+    const before = rendered[theme].length;
+    showToast(`message-${type}`, type);
+    if (rendered[theme].length !== before + 1) throw new Error(`no ${theme} render for ${type}`);
+  }
 }
 process.stdout.write(JSON.stringify(rendered));
 """.strip()
@@ -1457,23 +1473,27 @@ def assert_toast_runtime_contract(toast: str) -> None:
     assert result.returncode == 0, f"toast runtime harness failed: {result.stderr.strip()}"
 
     rendered = json.loads(result.stdout)
-    assert len(rendered) == len(EXPECTED_TOAST_ICON_MAP), (
-        f"expected {len(EXPECTED_TOAST_ICON_MAP)} toast renders, found {len(rendered)}"
-    )
-    for (status, expected), html in zip(
-        EXPECTED_TOAST_ICON_MAP.items(), rendered, strict=True
-    ):
-        soup = BeautifulSoup(html, "html.parser")
-        icons = soup.select(".toast-body > i.bi")
-        assert len(icons) == 1, f"toast iconMap render for {status}: found {len(icons)} icons"
-        classes = set(icons[0].get("class", ()))
-        expected_classes = {"bi", *expected.split()}
-        assert classes == expected_classes, (
-            f"toast iconMap render for {status}: {classes!r} != {expected_classes!r}"
-        )
-        assert all("-fill" not in class_name for class_name in classes), (
-            f"toast iconMap render for {status} uses filled icon: {classes!r}"
-        )
+    expected_by_theme = {
+        "dark": EXPECTED_TOAST_ICON_MAP,
+        "light": EXPECTED_LIGHT_TOAST_ICON_MAP,
+    }
+    assert set(rendered) == set(expected_by_theme)
+    for theme, expected_map in expected_by_theme.items():
+        assert len(rendered[theme]) == len(expected_map)
+        for (status, expected), html in zip(
+            expected_map.items(), rendered[theme], strict=True
+        ):
+            soup = BeautifulSoup(html, "html.parser")
+            icons = soup.select(".toast-body > i.bi")
+            assert len(icons) == 1, (
+                f"{theme} toast iconMap render for {status}: found {len(icons)} icons"
+            )
+            classes = set(icons[0].get("class", ()))
+            expected_classes = {"bi", *expected.split()}
+            assert classes == expected_classes, (
+                f"{theme} toast iconMap render for {status}: "
+                f"{classes!r} != {expected_classes!r}"
+            )
 
 
 def assert_navigation_runtime_contract(main: str) -> None:
@@ -2143,9 +2163,10 @@ def test_navigation_uses_wordmark_trigger_and_home_entry():
     assert 'setAttribute("aria-hidden", "true")' in main
     assert "brandMenuButton.focus()" in main
 
-    assert "-fill" not in layout + theme + auth
-    assert 'setAttribute("aria-label"' in theme
-    assert 'setAttribute("aria-label"' in auth
+    for script in (theme, auth):
+        assert "? '<i class=\"bi bi-sun\" aria-hidden=\"true\"></i>'" in script
+        assert ": '<i class=\"bi bi-moon-stars-fill\" aria-hidden=\"true\"></i>'" in script
+        assert 'setAttribute("aria-label"' in script
 
 
 def test_navigation_markup_has_accessible_dialog_relationships():
@@ -2205,7 +2226,7 @@ def test_navigation_markup_has_accessible_dialog_relationships():
         "p-1",
         "icon-button",
     }
-    assert theme_button.select_one('i.bi-moon-stars[aria-hidden="true"]') is not None
+    assert theme_button.select_one('i.bi-moon-stars-fill[aria-hidden="true"]') is not None
 
 
 def test_navigation_runtime_keeps_visibility_aria_body_and_focus_in_sync():
@@ -2328,7 +2349,7 @@ def test_dashboard_has_archive_hooks_without_changing_data_flow():
         "surface-leather workspace-card",
         "workspace-card-add",
         "archive-category-badge",
-        ">WORKSPACE<",
+        ">Workspace<",
         "loadWorkspaces()",
         "createWorkspaceDialog",
         "fetch('/api/workspaces')",
@@ -2554,7 +2575,7 @@ const createdCards = [];
 const fetchCalls = [];
 const hydrateCalls = [];
 const toastCalls = [];
-const saveStatuses = [true, true, true, false];
+const saveStatuses = [true, false, true, false];
 
 function makeCard() {
   const card = new FakeElement("card");
@@ -2637,16 +2658,15 @@ await hostileNodes.get(".save-btn").dispatch("click", {
 });
 invariant(stopped, "save click did not stop propagation");
 invariant(hostileItem.saved === true, "successful save did not mutate item");
-invariant(hostileNodes.get(".save-btn").getAttribute("aria-label") === "Remove saved result", "saved label is wrong");
+invariant(hostileNodes.get(".save-btn").getAttribute("aria-label") === "Saved result", "saved label is wrong");
 invariant(hostileNodes.get(".save-btn").getAttribute("aria-pressed") === "true", "saved pressed state is wrong");
 invariant(hostileNodes.get(".save-icon-light").className.includes("bi-bookmark-fill"), "saved light glyph is wrong");
 invariant(hostileNodes.get(".save-icon-dark").className.includes("bi-bookmark-check"), "saved dark glyph is wrong");
 
 await hostileNodes.get(".save-btn").dispatch("click");
-invariant(hostileItem.saved === false, "successful unsave did not mutate item");
-invariant(hostileNodes.get(".save-btn").getAttribute("aria-label") === "Save result", "unsaved label was not restored");
-invariant(hostileNodes.get(".save-btn").getAttribute("aria-pressed") === "false", "unsaved pressed state was not restored");
-invariant(hostileNodes.get(".save-icon-light").className === "bi bi-bookmark save-icon-light", "unsaved light glyph is wrong");
+invariant(hostileItem.saved === true, "repeat save changed saved state");
+invariant(hostileNodes.get(".save-btn").getAttribute("aria-label") === "Saved result", "repeat save changed label");
+invariant(hostileNodes.get(".save-btn").getAttribute("aria-pressed") === "true", "repeat save changed pressed state");
 
 const initiallySaved = {
   id: 18,
@@ -2666,7 +2686,7 @@ const savedBefore = {
   darkIcon: savedCard.nodes.get(".save-icon-dark").className,
 };
 await savedCard.nodes.get(".save-btn").dispatch("click");
-invariant(initiallySaved.saved === false, "initially saved item did not unsave");
+invariant(initiallySaved.saved === true, "initially saved item changed state");
 
 const failedItem = {
   id: 19,
@@ -2682,6 +2702,7 @@ await failedCard.nodes.get(".save-btn").dispatch("click");
 invariant(failedItem.saved === false, "failed save mutated item");
 invariant(failedCard.nodes.get(".save-btn").getAttribute("aria-label") === "Save result", "failed save mutated DOM");
 invariant(failedCard.nodes.get(".save-icon-light").className === "bi bi-bookmark save-icon-light", "failed save mutated icon");
+const saveToasts = toastCalls.slice();
 
 await hostileNodes.get(".view-btn").dispatch("click");
 invariant(globalThis.viewedItem === hostileItem, "View lost original item");
@@ -2690,8 +2711,8 @@ await hostileNodes.get(".add-btn").dispatch("click");
 const actionCalls = fetchCalls.filter((call) => call.url !== "/static/whitelist.json");
 invariant(
   actionCalls.map((call) => call.url).join(",") ===
-    "/api/item/save,/api/item/unsave,/api/item/unsave,/api/item/save,/api/workspace/add",
-  "save/unsave/add endpoint sequence is wrong: " + actionCalls.map((call) => call.url).join(","),
+    "/api/item/save,/api/item/save,/api/item/save,/api/item/save,/api/workspace/add",
+  "save/add endpoint sequence is wrong: " + actionCalls.map((call) => call.url).join(","),
 );
 invariant(JSON.parse(actionCalls[0].options.body).item_id === hostileItem.id, "save payload changed");
 const addBody = JSON.parse(actionCalls[4].options.body);
@@ -2713,6 +2734,7 @@ process.stdout.write(JSON.stringify({
     darkIcon: hostileNodes.get(".save-icon-dark").className,
   },
   savedBefore,
+  saveToasts,
   endpoints: actionCalls.map((call) => call.url),
 }));
 """
@@ -2956,22 +2978,29 @@ def assert_browse_css_contract(css: str) -> None:
     ) == {"min-width": "0", "width": "100%"}
 
 
-def test_task6_card_runtime_handles_both_state_transitions_and_failed_requests():
+def test_task6_card_runtime_preserves_save_only_state_and_failed_requests():
+    assert "/api/item/unsave" not in read_text("static/js/card.js")
     rendered = card_runtime()
     assert rendered["endpoints"] == [
         "/api/item/save",
-        "/api/item/unsave",
-        "/api/item/unsave",
+        "/api/item/save",
+        "/api/item/save",
         "/api/item/save",
         "/api/workspace/add",
     ]
     assert rendered["savedBefore"] == {
         "image": "https://images.test/saved.png",
-        "label": "Remove saved result",
+        "label": "Saved result",
         "pressed": "true",
         "lightIcon": "bi bi-bookmark-fill text-danger save-icon-light",
         "darkIcon": "bi bi-bookmark-check save-icon-dark d-none",
     }
+    assert rendered["saveToasts"] == [
+        ["Saved", "success"],
+        ["Already saved", "info"],
+        ["Saved", "success"],
+        ["Already saved", "info"],
+    ]
 
 
 def test_task6_client_and_jinja_render_hostile_fields_as_inert_text_with_light_parity():
@@ -2996,10 +3025,10 @@ def test_task6_client_and_jinja_render_hostile_fields_as_inert_text_with_light_p
         "source": attack,
         "image": "/static/img/placeholder.png",
         "itemId": hostile["id"],
-        "label": "Save result",
-        "pressed": "false",
-        "lightIcon": "bi bi-bookmark save-icon-light",
-        "darkIcon": "bi bi-bookmark save-icon-dark d-none",
+        "label": "Saved result",
+        "pressed": "true",
+        "lightIcon": "bi bi-bookmark-fill text-danger save-icon-light",
+        "darkIcon": "bi bi-bookmark-check save-icon-dark d-none",
     }
     assert server.select_one(".card-title").get_text(strip=True) == attack
     assert server.select_one(".card-description").get_text(strip=True) == attack
@@ -3018,10 +3047,7 @@ def test_task6_client_and_jinja_render_hostile_fields_as_inert_text_with_light_p
         "html.parser",
     )
     save = saved_server.select_one(".save-btn")
-    assert (save.get("aria-label"), save.get("aria-pressed")) == (
-        client["savedBefore"]["label"],
-        client["savedBefore"]["pressed"],
-    )
+    assert save.get("aria-pressed") == client["savedBefore"]["pressed"]
     assert " ".join(save.select_one(".save-icon-light").get("class")) == client[
         "savedBefore"
     ]["lightIcon"]

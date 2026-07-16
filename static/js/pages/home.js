@@ -95,7 +95,7 @@ function renderWorkspaceCards() {
             <div class="card h-100 surface-leather workspace-card position-relative">
                 <div class="card-body d-flex flex-column">
                     <div class="d-flex align-items-center justify-content-between mb-3">
-                        <div class="badge bg-primary bg-opacity-10 text-primary archive-category-badge">WORKSPACE</div>
+                        <div class="badge bg-primary bg-opacity-10 text-primary archive-category-badge">Workspace</div>
                         <span class="icon-button" aria-hidden="true"><i class="bi bi-three-dots-vertical text-muted"></i></span>
                     </div>
                     <div class="mb-4">

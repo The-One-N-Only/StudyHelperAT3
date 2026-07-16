@@ -71,7 +71,7 @@
         const isDark = current === "dark";
         themeBtn.innerHTML = isDark
             ? '<i class="bi bi-sun" aria-hidden="true"></i>'
-            : '<i class="bi bi-moon-stars" aria-hidden="true"></i>';
+            : '<i class="bi bi-moon-stars-fill" aria-hidden="true"></i>';
         themeBtn.setAttribute("aria-label", isDark ? "Switch to light theme" : "Switch to dark theme");
     }
 
