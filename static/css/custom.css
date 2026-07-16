@@ -536,3 +536,51 @@ button, .btn, a, input, select, textarea {
         opacity: 0.045;
     }
 }
+
+[data-bs-theme="dark"] .archive-navbar {
+    background: var(--surface-800) !important;
+    border-bottom-color: hsl(35 40% 45% / 0.12) !important;
+    box-shadow: 0 4px 18px hsl(28 60% 4% / 0.35) !important;
+}
+
+[data-bs-theme="dark"] .archive-wordmark {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: var(--gold-100);
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 0.35rem 0.5rem;
+}
+
+[data-bs-theme="dark"] .archive-wordmark:hover {
+    color: var(--gold-300);
+}
+
+[data-bs-theme="dark"] .archive-wordmark:focus-visible {
+    border-radius: var(--radius-button);
+    box-shadow: var(--shadow-warm-glow);
+    outline: 0;
+}
+
+[data-bs-theme="dark"] .nav-sidebar-overlay {
+    background: hsl(28 60% 4% / 0.72);
+}
+
+[data-bs-theme="dark"] .nav-sidebar {
+    border-radius: 0 var(--radius-panel) var(--radius-panel) 0;
+}
+
+[data-bs-theme="dark"] .nav-sidebar .list-group-item {
+    background: transparent;
+    border-color: hsl(35 40% 45% / 0.12);
+    color: var(--text-primary);
+}
+
+[data-bs-theme="dark"] .nav-sidebar .list-group-item:hover,
+[data-bs-theme="dark"] .nav-sidebar .list-group-item:focus-visible {
+    background: hsl(35 70% 55% / 0.1);
+    color: var(--gold-100);
+}

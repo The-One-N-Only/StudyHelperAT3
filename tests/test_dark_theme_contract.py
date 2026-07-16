@@ -201,6 +201,141 @@ for (const type of ["success", "danger", "warning", "info"]) {
 }
 process.stdout.write(JSON.stringify(rendered));
 """.strip()
+NAVIGATION_RUNTIME_HARNESS = r"""
+const elements = new Map();
+const documentListeners = new Map();
+
+function invariant(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+class FakeClassList {
+  constructor(names = []) {
+    this.names = new Set(names);
+  }
+
+  add(name) {
+    this.names.add(name);
+  }
+
+  remove(name) {
+    this.names.delete(name);
+  }
+
+  contains(name) {
+    return this.names.has(name);
+  }
+}
+
+class FakeElement {
+  constructor(id, classNames = [], attributes = {}) {
+    this.id = id;
+    this.classList = new FakeClassList(classNames);
+    this.attributes = new Map(Object.entries(attributes));
+    this.listeners = new Map();
+  }
+
+  addEventListener(type, callback) {
+    const callbacks = this.listeners.get(type) || [];
+    callbacks.push(callback);
+    this.listeners.set(type, callbacks);
+  }
+
+  dispatch(type, init = {}) {
+    const callbacks = this.listeners.get(type) || [];
+    invariant(callbacks.length > 0, `missing ${type} listener on ${this.id}`);
+    for (const callback of callbacks) {
+      callback({ type, target: this, ...init });
+    }
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
+
+  focus() {
+    document.activeElement = this;
+  }
+}
+
+const brandMenuButton = new FakeElement(
+  "brandMenuButton",
+  [],
+  { "aria-expanded": "false" },
+);
+const navOverlay = new FakeElement(
+  "navSidebarOverlay",
+  ["nav-sidebar-overlay", "d-none"],
+  { "aria-hidden": "true" },
+);
+const closeButton = new FakeElement("closeNavSidebarBtn");
+const overlayChild = new FakeElement("overlayChild");
+for (const element of [brandMenuButton, navOverlay, closeButton]) {
+  elements.set(element.id, element);
+}
+
+globalThis.window = {};
+globalThis.document = {
+  activeElement: null,
+  body: { classList: new FakeClassList() },
+  getElementById(id) {
+    return elements.get(id) ?? null;
+  },
+  addEventListener(type, callback) {
+    const callbacks = documentListeners.get(type) || [];
+    callbacks.push(callback);
+    documentListeners.set(type, callbacks);
+  },
+};
+
+function dispatchDocument(type, init = {}) {
+  const callbacks = documentListeners.get(type) || [];
+  invariant(callbacks.length > 0, `missing document ${type} listener`);
+  for (const callback of callbacks) callback({ type, ...init });
+}
+
+function assertOpen(context) {
+  invariant(!navOverlay.classList.contains("d-none"), `${context}: overlay hidden`);
+  invariant(navOverlay.getAttribute("aria-hidden") === "false", `${context}: aria-hidden`);
+  invariant(brandMenuButton.getAttribute("aria-expanded") === "true", `${context}: aria-expanded`);
+  invariant(document.body.classList.contains("nav-sidebar-open"), `${context}: body class`);
+  invariant(document.activeElement === closeButton, `${context}: close focus`);
+}
+
+function assertClosed(context) {
+  invariant(navOverlay.classList.contains("d-none"), `${context}: overlay visible`);
+  invariant(navOverlay.getAttribute("aria-hidden") === "true", `${context}: aria-hidden`);
+  invariant(brandMenuButton.getAttribute("aria-expanded") === "false", `${context}: aria-expanded`);
+  invariant(!document.body.classList.contains("nav-sidebar-open"), `${context}: body class`);
+  invariant(document.activeElement === brandMenuButton, `${context}: wordmark focus`);
+}
+
+await import(process.argv[1]);
+dispatchDocument("DOMContentLoaded");
+
+brandMenuButton.dispatch("click");
+assertOpen("open");
+closeButton.dispatch("click");
+assertClosed("close button");
+
+brandMenuButton.dispatch("click");
+navOverlay.dispatch("click", { target: overlayChild });
+assertOpen("overlay child click");
+navOverlay.dispatch("click", { target: navOverlay });
+assertClosed("overlay click");
+
+brandMenuButton.dispatch("click");
+dispatchDocument("keydown", { key: "Enter" });
+assertOpen("non-Escape key");
+dispatchDocument("keydown", { key: "Escape" });
+assertClosed("Escape");
+
+process.stdout.write("navigation runtime ok");
+""".strip()
 EXPECTED_SHARED_RULES = (
     (
         SHARED_CONTROL_MOTION_SELECTORS,
@@ -873,6 +1008,27 @@ def assert_toast_runtime_contract(toast: str) -> None:
         )
 
 
+def assert_navigation_runtime_contract(main: str) -> None:
+    viewer_import = "import { openViewer } from './viewer.js';"
+    assert viewer_import in main
+    executable_main = main.replace(viewer_import, "const openViewer = () => {};", 1)
+    module_url = "data:text/javascript;base64," + base64.b64encode(
+        executable_main.encode("utf-8")
+    ).decode("ascii")
+    result = subprocess.run(
+        ["node", "--input-type=module", "--eval", NAVIGATION_RUNTIME_HARNESS, module_url],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"navigation runtime harness failed: {result.stderr.strip()}"
+    )
+    assert result.stdout == "navigation runtime ok"
+
+
 def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
     assert_task3_selectors_are_dark_scoped(css)
 
@@ -1299,3 +1455,76 @@ def test_third_review_boundary_accepts_aria_hidden_toast_icon():
     )
 
     assert_shared_dark_theme_contract(read_text("static/css/custom.css"), toast)
+
+
+def test_navigation_uses_wordmark_trigger_and_home_entry():
+    layout = read_text("templates/layout.html")
+    main = read_text("static/js/main.js")
+    theme = read_text("static/js/theme.js")
+    auth = read_text("static/js/auth.js")
+
+    assert 'id="brandMenuButton"' in layout
+    assert 'aria-controls="navSidebarOverlay"' in layout
+    assert 'aria-expanded="false"' in layout
+    assert 'id="navMenuButton"' not in layout
+    assert '<a class="list-group-item list-group-item-action" href="/">Home</a>' in layout
+    assert 'id="navSidebarOverlay"' in layout
+    assert 'aria-hidden="true"' in layout
+
+    assert "getElementById('brandMenuButton')" in main
+    assert "event.key === 'Escape'" in main
+    assert 'setAttribute("aria-expanded", "true")' in main
+    assert 'setAttribute("aria-expanded", "false")' in main
+    assert 'setAttribute("aria-hidden", "false")' in main
+    assert 'setAttribute("aria-hidden", "true")' in main
+    assert "brandMenuButton.focus()" in main
+
+    assert "-fill" not in layout + theme + auth
+    assert 'setAttribute("aria-label"' in theme
+    assert 'setAttribute("aria-label"' in auth
+
+
+def test_navigation_markup_has_accessible_dialog_relationships():
+    soup = BeautifulSoup(read_text("templates/layout.html"), "html.parser")
+
+    wordmark = soup.select_one("button#brandMenuButton")
+    assert wordmark is not None
+    assert wordmark.get_text(strip=True) == "StudyLib"
+    assert wordmark.get("type") == "button"
+    assert wordmark.get("aria-label") == "Open navigation menu"
+    assert wordmark.get("aria-controls") == "navSidebarOverlay"
+    assert wordmark.get("aria-expanded") == "false"
+    assert soup.select_one("#navMenuButton") is None
+
+    overlay = soup.select_one("#navSidebarOverlay")
+    assert overlay is not None
+    assert "d-none" in overlay.get("class", ())
+    assert overlay.get("aria-hidden") == "true"
+
+    dialog = overlay.select_one(".nav-sidebar")
+    assert dialog is not None
+    assert dialog.get("role") == "dialog"
+    assert dialog.get("aria-modal") == "true"
+    assert dialog.get("aria-labelledby") == "navSidebarTitle"
+    assert dialog.select_one("#navSidebarTitle") is not None
+
+    close_button = dialog.select_one("button#closeNavSidebarBtn")
+    assert close_button is not None
+    assert close_button.get("type") == "button"
+    assert close_button.get("aria-label") == "Close menu"
+
+    links = [
+        (link.get("href"), link.get_text(strip=True))
+        for link in dialog.select(".list-group > a.list-group-item-action")
+    ]
+    assert links == [("/", "Home"), ("/browse", "Browse"), ("/upload", "Upload")]
+
+    theme_button = soup.select_one("button#themeToggle")
+    assert theme_button is not None
+    assert theme_button.get("type") == "button"
+    assert theme_button.get("aria-label") == "Switch to dark theme"
+    assert theme_button.select_one('i.bi-moon-stars[aria-hidden="true"]') is not None
+
+
+def test_navigation_runtime_keeps_visibility_aria_body_and_focus_in_sync():
+    assert_navigation_runtime_contract(read_text("static/js/main.js"))

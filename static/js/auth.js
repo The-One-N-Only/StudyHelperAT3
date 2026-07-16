@@ -15,8 +15,14 @@ function toggleTheme() {
 
 function updateThemeButton() {
     const themeBtn = document.getElementById("themeToggle");
+    if (!themeBtn) return;
+
     const current = document.documentElement.getAttribute("data-bs-theme");
-    themeBtn.innerHTML = current === "dark" ? '<i class="bi bi-sun-fill"></i>' : '<i class="bi bi-moon-stars-fill"></i>';
+    const isDark = current === "dark";
+    themeBtn.innerHTML = isDark
+        ? '<i class="bi bi-sun" aria-hidden="true"></i>'
+        : '<i class="bi bi-moon-stars" aria-hidden="true"></i>';
+    themeBtn.setAttribute("aria-label", isDark ? "Switch to light theme" : "Switch to dark theme");
 }
 
 function validateJWT(token) {
