@@ -278,6 +278,22 @@ button, .btn, a, input, select, textarea {
 }
 
 /* Candlelit Archive: shared materials and controls */
+[data-bs-theme="dark"] button,
+[data-bs-theme="dark"] .btn,
+[data-bs-theme="dark"] input,
+[data-bs-theme="dark"] select,
+[data-bs-theme="dark"] textarea,
+[data-bs-theme="dark"] .btn-secondary-wood,
+[data-bs-theme="dark"] .btn-brass,
+[data-bs-theme="dark"] .btn-ghost,
+[data-bs-theme="dark"] .icon-button,
+[data-bs-theme="dark"] .archive-dropdown,
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select,
+[data-bs-theme="dark"] .navbar-brand {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
 [data-bs-theme="dark"] .surface-leather {
     background-color: var(--surface-800);
     background-image:
@@ -376,6 +392,19 @@ button, .btn, a, input, select, textarea {
     border-radius: var(--radius-button);
     box-shadow: var(--shadow-warm-raised);
     color: var(--text-primary);
+    display: block;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease-in, visibility 0s linear 180ms;
+    visibility: hidden;
+}
+
+[data-bs-theme="dark"] .dropdown-menu.show,
+[data-bs-theme="dark"] .browse-dropdown-menu.show {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 180ms ease-out, visibility 0s linear 0s;
+    visibility: visible;
 }
 
 [data-bs-theme="dark"] .form-control,
@@ -497,6 +526,7 @@ button, .btn, a, input, select, textarea {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         scroll-behavior: auto !important;
+        transition-delay: 0s !important;
         transition-duration: 0.01ms !important;
     }
 }

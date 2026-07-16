@@ -103,6 +103,352 @@ EXPECTED_DARK_BODY_DECLARATIONS = {
     "background-attachment": "fixed",
     "font-family": "var(--font-body)",
 }
+SHARED_REQUIRED_SELECTORS = (
+    '[data-bs-theme="dark"] .surface-leather',
+    '[data-bs-theme="dark"] .btn-secondary-wood',
+    '[data-bs-theme="dark"] .btn-brass',
+    '[data-bs-theme="dark"] .btn-ghost',
+    '[data-bs-theme="dark"] .icon-button',
+    '[data-bs-theme="dark"] .archive-dropdown',
+    '[data-bs-theme="dark"] .archive-count-badge',
+    '[data-bs-theme="dark"] .archive-category-badge',
+    '[data-bs-theme="dark"] .archive-illustration',
+)
+SHARED_CONTROL_MOTION_SELECTORS = (
+    '[data-bs-theme="dark"] button',
+    '[data-bs-theme="dark"] .btn',
+    '[data-bs-theme="dark"] input',
+    '[data-bs-theme="dark"] select',
+    '[data-bs-theme="dark"] textarea',
+    '[data-bs-theme="dark"] .btn-secondary-wood',
+    '[data-bs-theme="dark"] .btn-brass',
+    '[data-bs-theme="dark"] .btn-ghost',
+    '[data-bs-theme="dark"] .icon-button',
+    '[data-bs-theme="dark"] .archive-dropdown',
+    '[data-bs-theme="dark"] .form-control',
+    '[data-bs-theme="dark"] .form-select',
+    '[data-bs-theme="dark"] .navbar-brand',
+)
+DROPDOWN_MENU_SELECTORS = (
+    '[data-bs-theme="dark"] .dropdown-menu',
+    '[data-bs-theme="dark"] .browse-dropdown-menu',
+)
+DROPDOWN_OPEN_SELECTORS = (
+    '[data-bs-theme="dark"] .dropdown-menu.show',
+    '[data-bs-theme="dark"] .browse-dropdown-menu.show',
+)
+REDUCED_MOTION_SELECTORS = (
+    '[data-bs-theme="dark"] *',
+    '[data-bs-theme="dark"] *::before',
+    '[data-bs-theme="dark"] *::after',
+)
+EXPECTED_TOAST_ICON_MAP = {
+    "success": "bi-check-circle text-success",
+    "danger": "bi-x-circle text-danger",
+    "warning": "bi-exclamation-triangle text-warning",
+    "info": "bi-info-circle text-info",
+}
+EXPECTED_SHARED_RULES = (
+    (
+        SHARED_CONTROL_MOTION_SELECTORS,
+        {
+            "transition": (
+                "background-color 150ms ease, border-color 150ms ease, "
+                "color 150ms ease"
+            ),
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .surface-leather',),
+        {
+            "background-color": "var(--surface-800)",
+            "background-image": (
+                "linear-gradient(var(--surface-800), var(--surface-800)), "
+                'url("/static/img/textures/leather-texture.png")'
+            ),
+            "background-blend-mode": "multiply",
+            "background-position": "0 0",
+            "background-repeat": "repeat, repeat",
+            "background-size": "auto, 420px",
+            "border": "1px solid hsl(35 40% 45% / 0.18)",
+            "border-radius": "var(--radius-panel)",
+            "box-shadow": "var(--shadow-warm-raised)",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .btn-secondary-wood',),
+        {
+            "background-color": "var(--surface-700)",
+            "background-image": (
+                "linear-gradient(var(--surface-700), var(--surface-700)), "
+                'url("/static/img/textures/wood-texture.png")'
+            ),
+            "background-blend-mode": "multiply",
+            "background-position": "0 0",
+            "background-repeat": "repeat, repeat",
+            "background-size": "auto, 200px",
+            "border": "1px solid hsl(35 40% 45% / 0.22)",
+            "border-radius": "var(--radius-button)",
+            "color": "var(--gold-300)",
+        },
+    ),
+    (
+        (
+            '[data-bs-theme="dark"] .btn-secondary-wood:hover',
+            '[data-bs-theme="dark"] .btn-secondary-wood:active',
+        ),
+        {
+            "border-color": "var(--gold-500)",
+            "color": "var(--gold-100)",
+        },
+    ),
+    (
+        (
+            '[data-bs-theme="dark"] .btn-brass',
+            '[data-bs-theme="dark"] .btn-primary',
+        ),
+        {
+            "--bs-btn-color": "var(--bg-950)",
+            "--bs-btn-bg": "var(--gold-300)",
+            "--bs-btn-border-color": "transparent",
+            "--bs-btn-hover-color": "var(--bg-950)",
+            "--bs-btn-hover-bg": "var(--gold-100)",
+            "--bs-btn-hover-border-color": "transparent",
+            "--bs-btn-active-color": "var(--bg-950)",
+            "--bs-btn-active-bg": "var(--gold-500)",
+            "--bs-btn-active-border-color": "transparent",
+            "background-image": (
+                "linear-gradient(hsl(35 80% 75% / 0.25), transparent 40%)"
+            ),
+            "border-radius": "var(--radius-button)",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .btn-ghost',),
+        {
+            "background": "transparent",
+            "border": "1px solid transparent",
+            "border-radius": "var(--radius-button)",
+            "color": "var(--gold-300)",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .btn-ghost:hover',),
+        {
+            "border-color": "var(--gold-700)",
+            "color": "var(--gold-100)",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .icon-button',),
+        {
+            "align-items": "center",
+            "background": "transparent",
+            "border": "0",
+            "border-radius": "var(--radius-button)",
+            "color": "var(--gold-300)",
+            "display": "inline-flex",
+            "justify-content": "center",
+            "min-height": "2rem",
+            "min-width": "2rem",
+            "padding": "0.25rem",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .icon-button:hover',),
+        {
+            "background": "hsl(35 70% 55% / 0.08)",
+            "color": "var(--gold-100)",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .icon-button-danger:hover',),
+        {"color": "var(--danger-rust)"},
+    ),
+    (
+        (
+            '[data-bs-theme="dark"] .archive-dropdown',
+            '[data-bs-theme="dark"] .form-select',
+        ),
+        {
+            "background-color": "var(--surface-700)",
+            "border-color": "var(--gold-700)",
+            "border-radius": "var(--radius-button)",
+            "color": "var(--text-primary)",
+        },
+    ),
+    (
+        DROPDOWN_MENU_SELECTORS,
+        {
+            "background": "var(--surface-600)",
+            "border-color": "hsl(35 40% 45% / 0.22)",
+            "border-radius": "var(--radius-button)",
+            "box-shadow": "var(--shadow-warm-raised)",
+            "color": "var(--text-primary)",
+            "display": "block",
+            "opacity": "0",
+            "pointer-events": "none",
+            "transition": "opacity 180ms ease-in, visibility 0s linear 180ms",
+            "visibility": "hidden",
+        },
+    ),
+    (
+        DROPDOWN_OPEN_SELECTORS,
+        {
+            "opacity": "1",
+            "pointer-events": "auto",
+            "transition": "opacity 180ms ease-out, visibility 0s linear 0s",
+            "visibility": "visible",
+        },
+    ),
+    (
+        (
+            '[data-bs-theme="dark"] .form-control',
+            '[data-bs-theme="dark"] .input-group-text',
+        ),
+        {
+            "background": "var(--surface-800)",
+            "border-color": "hsl(35 40% 45% / 0.3)",
+            "border-radius": "var(--radius-input)",
+            "color": "var(--text-primary)",
+        },
+    ),
+    (
+        (
+            '[data-bs-theme="dark"] .form-control::placeholder',
+            '[data-bs-theme="dark"] textarea::placeholder',
+        ),
+        {
+            "color": "var(--text-secondary)",
+            "opacity": "1",
+        },
+    ),
+    (
+        (
+            '[data-bs-theme="dark"] .form-control:focus',
+            '[data-bs-theme="dark"] .form-select:focus',
+            '[data-bs-theme="dark"] .btn:focus-visible',
+            '[data-bs-theme="dark"] .icon-button:focus-visible',
+            '[data-bs-theme="dark"] .navbar-brand:focus-visible',
+        ),
+        {
+            "border-color": "var(--gold-300)",
+            "box-shadow": "var(--shadow-warm-glow)",
+            "outline": "0",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .text-muted',),
+        {"color": "var(--text-secondary) !important"},
+    ),
+    (
+        ('[data-bs-theme="dark"] .archive-count-badge',),
+        {
+            "background": "var(--gold-900)",
+            "border-radius": "var(--radius-pill)",
+            "color": "var(--gold-100)",
+            "font-size": "var(--text-caption)",
+            "font-variant-numeric": "tabular-nums",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .archive-category-badge',),
+        {
+            "background": "hsl(35 40% 45% / 0.15)",
+            "border-radius": "var(--radius-pill)",
+            "color": "var(--gold-300)",
+            "font-size": "var(--text-caption)",
+            "letter-spacing": "0.04em",
+            "text-transform": "uppercase",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .card',),
+        {
+            "--bs-card-bg": "var(--surface-800)",
+            "--bs-card-border-color": "hsl(35 40% 45% / 0.18)",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .offcanvas',),
+        {"--bs-offcanvas-bg": "var(--surface-700)"},
+    ),
+    (
+        ('[data-bs-theme="dark"] .bi',),
+        {"color": "var(--gold-300)"},
+    ),
+    (
+        ('[data-bs-theme="dark"] ::-webkit-scrollbar',),
+        {"height": "10px", "width": "10px"},
+    ),
+    (
+        ('[data-bs-theme="dark"] ::-webkit-scrollbar-track',),
+        {"background": "transparent"},
+    ),
+    (
+        ('[data-bs-theme="dark"] ::-webkit-scrollbar-thumb',),
+        {
+            "background": "var(--gold-700)",
+            "border": "2px solid var(--surface-800)",
+            "border-radius": "var(--radius-pill)",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] *',),
+        {
+            "scrollbar-color": "var(--gold-700) transparent",
+            "scrollbar-width": "thin",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .archive-illustration',),
+        {
+            "--illustration-image": "none",
+            "background-color": "var(--gold-700)",
+            "display": "block",
+            "mask-image": "var(--illustration-image)",
+            "mask-position": "center",
+            "mask-repeat": "no-repeat",
+            "mask-size": "contain",
+            "opacity": "0.06",
+            "pointer-events": "none",
+            "position": "absolute",
+            "z-index": "var(--z-bg-illustration)",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .illustration-compass',),
+        {"--illustration-image": 'url("/static/img/illustrations/compass-rose.svg")'},
+    ),
+    (
+        ('[data-bs-theme="dark"] .illustration-sextant',),
+        {"--illustration-image": 'url("/static/img/illustrations/sextant.svg")'},
+    ),
+    (
+        ('[data-bs-theme="dark"] .illustration-books',),
+        {"--illustration-image": 'url("/static/img/illustrations/stacked-books.svg")'},
+    ),
+    (
+        ('[data-bs-theme="dark"] .illustration-open-book',),
+        {"--illustration-image": 'url("/static/img/illustrations/open-book.svg")'},
+    ),
+    (
+        ('[data-bs-theme="dark"] .illustration-flourish',),
+        {
+            "--illustration-image": (
+                'url("/static/img/illustrations/scrollwork-flourish.svg")'
+            )
+        },
+    ),
+)
+EXPECTED_REDUCED_MOTION_DECLARATIONS = {
+    "animation-duration": "0.01ms !important",
+    "animation-iteration-count": "1 !important",
+    "scroll-behavior": "auto !important",
+    "transition-delay": "0s !important",
+    "transition-duration": "0.01ms !important",
+}
+EXPECTED_COARSE_POINTER_DECLARATIONS = {"opacity": "0.045"}
 
 
 class LinkCollector(HTMLParser):
@@ -154,6 +500,118 @@ def css_rules(css: str):
         selectors = tuple(selector.strip() for selector in match.group("selectors").split(","))
         context = ", ".join(repr(selector) for selector in selectors)
         yield selectors, parse_css_declarations(match.group("body"), context)
+
+
+def top_level_css_rules(css: str):
+    css_without_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    depth = 0
+    rule_start = 0
+    header = ""
+    body_start = 0
+
+    for index, character in enumerate(css_without_comments):
+        if character == "{" and depth == 0:
+            header = css_without_comments[rule_start:index].strip()
+            body_start = index + 1
+            depth = 1
+        elif character == "{" and depth > 0:
+            depth += 1
+        elif character == "}" and depth > 0:
+            depth -= 1
+            if depth == 0:
+                if not header.startswith("@"):
+                    selectors = tuple(selector.strip() for selector in header.split(","))
+                    context = ", ".join(repr(selector) for selector in selectors)
+                    yield selectors, parse_css_declarations(
+                        css_without_comments[body_start:index],
+                        context,
+                    )
+                rule_start = index + 1
+
+
+def css_rule_group_declarations(css: str, selectors: tuple[str, ...]) -> dict[str, str]:
+    matches = [
+        declarations
+        for actual_selectors, declarations in top_level_css_rules(css)
+        if actual_selectors == selectors
+    ]
+    assert len(matches) == 1, f"expected one {selectors!r} rule group, found {len(matches)}"
+    return matches[0]
+
+
+def css_block_body(css: str, header: str) -> str:
+    css_without_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    matches = list(
+        re.finditer(
+            rf"^[ \t]*{re.escape(header)}[ \t]*\{{",
+            css_without_comments,
+            flags=re.MULTILINE,
+        )
+    )
+    assert len(matches) == 1, f"expected one {header!r} block, found {len(matches)}"
+
+    depth = 1
+    body_start = matches[0].end()
+    for index in range(body_start, len(css_without_comments)):
+        if css_without_comments[index] == "{":
+            depth += 1
+        elif css_without_comments[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return css_without_comments[body_start:index]
+    raise AssertionError(f"unclosed {header!r} block")
+
+
+def parse_toast_icon_map(toast: str) -> dict[str, str]:
+    toast_without_comments = re.sub(
+        r"/\*.*?\*/|//[^\r\n]*",
+        "",
+        toast,
+        flags=re.DOTALL,
+    )
+    matches = list(
+        re.finditer(
+            r"\bconst\s+iconMap\s*=\s*\{(?P<body>[^{}]*)\}\s*;",
+            toast_without_comments,
+            flags=re.DOTALL,
+        )
+    )
+    assert len(matches) == 1, f"expected one iconMap declaration, found {len(matches)}"
+
+    icon_map = {}
+    for raw_entry in matches[0].group("body").split(","):
+        raw_entry = raw_entry.strip()
+        if not raw_entry:
+            continue
+        entry = re.fullmatch(
+            r"(?P<key>[A-Za-z_$][\w$]*)\s*:\s*"
+            r"(?P<quote>['\"])(?P<value>[^'\"]*)(?P=quote)",
+            raw_entry,
+        )
+        assert entry is not None, f"invalid iconMap entry: {raw_entry!r}"
+        key = entry.group("key")
+        assert key not in icon_map, f"duplicate iconMap key: {key!r}"
+        icon_map[key] = entry.group("value")
+    return icon_map
+
+
+def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
+    for selectors, expected_declarations in EXPECTED_SHARED_RULES:
+        assert css_rule_group_declarations(css, selectors) == expected_declarations
+
+    reduced_motion = css_block_body(css, "@media (prefers-reduced-motion: reduce)")
+    assert (
+        css_rule_group_declarations(reduced_motion, REDUCED_MOTION_SELECTORS)
+        == EXPECTED_REDUCED_MOTION_DECLARATIONS
+    )
+
+    coarse_pointer = css_block_body(css, "@media (hover: none), (pointer: coarse)")
+    assert css_rule_declarations(
+        coarse_pointer,
+        '[data-bs-theme="dark"] .archive-illustration',
+    ) == EXPECTED_COARSE_POINTER_DECLARATIONS
+
+    assert parse_toast_icon_map(toast) == EXPECTED_TOAST_ICON_MAP
 
 
 def mark_dark_theme_attribute(selector: str) -> str | None:
@@ -322,32 +780,89 @@ def test_core_text_pairs_meet_wcag_aa(foreground, background):
 
 def test_shared_dark_theme_materials_and_controls_are_scoped():
     css = read_text("static/css/custom.css")
-    required_selectors = (
-        '[data-bs-theme="dark"] .surface-leather',
-        '[data-bs-theme="dark"] .btn-secondary-wood',
-        '[data-bs-theme="dark"] .btn-brass',
-        '[data-bs-theme="dark"] .btn-ghost',
-        '[data-bs-theme="dark"] .icon-button',
-        '[data-bs-theme="dark"] .archive-dropdown',
-        '[data-bs-theme="dark"] .archive-count-badge',
-        '[data-bs-theme="dark"] .archive-category-badge',
-        '[data-bs-theme="dark"] .archive-illustration',
-    )
-    for selector in required_selectors:
-        assert selector in css
-
-    assert 'url("/static/img/textures/leather-texture.png")' in css
-    assert 'url("/static/img/textures/wood-texture.png")' in css
-    assert "background-blend-mode: multiply" in css
-    assert "background-size: auto, 420px" in css
-    assert "background-size: auto, 200px" in css
-    assert "@media (prefers-reduced-motion: reduce)" in css
-    assert "@media (hover: none), (pointer: coarse)" in css
-
-    for name in SVG_NAMES:
-        assert f'url("/static/img/illustrations/{name}")' in css
-
     toast = read_text("static/js/toast.js")
-    assert "-fill" not in toast
-    for icon in ("bi-check-circle", "bi-x-circle", "bi-exclamation-triangle", "bi-info-circle"):
-        assert icon in toast
+    assert_shared_dark_theme_contract(css, toast)
+
+
+def test_shared_dark_theme_controls_use_spec_motion():
+    css = read_text("static/css/custom.css")
+    assert css_rule_group_declarations(css, SHARED_CONTROL_MOTION_SELECTORS) == {
+        "transition": (
+            "background-color 150ms ease, border-color 150ms ease, color 150ms ease"
+        )
+    }
+
+
+def test_shared_dark_theme_dropdowns_animate_open_and_close():
+    css = read_text("static/css/custom.css")
+    assert css_rule_group_declarations(css, DROPDOWN_MENU_SELECTORS) == {
+        "background": "var(--surface-600)",
+        "border-color": "hsl(35 40% 45% / 0.22)",
+        "border-radius": "var(--radius-button)",
+        "box-shadow": "var(--shadow-warm-raised)",
+        "color": "var(--text-primary)",
+        "display": "block",
+        "opacity": "0",
+        "pointer-events": "none",
+        "transition": "opacity 180ms ease-in, visibility 0s linear 180ms",
+        "visibility": "hidden",
+    }
+    assert css_rule_group_declarations(css, DROPDOWN_OPEN_SELECTORS) == {
+        "opacity": "1",
+        "pointer-events": "auto",
+        "transition": "opacity 180ms ease-out, visibility 0s linear 0s",
+        "visibility": "visible",
+    }
+
+
+def test_reduced_motion_collapses_shared_transition_delay_and_duration():
+    css = read_text("static/css/custom.css")
+    media = css_block_body(css, "@media (prefers-reduced-motion: reduce)")
+    assert (
+        css_rule_group_declarations(media, REDUCED_MOTION_SELECTORS)
+        == EXPECTED_REDUCED_MOTION_DECLARATIONS
+    )
+
+
+def test_shared_contract_rejects_light_scoped_rules_hidden_by_comments():
+    css = read_text("static/css/custom.css").replace(
+        DARK_ROOT_SELECTOR,
+        '[data-bs-theme="light"]',
+    )
+    css += "\n/* " + " ".join(SHARED_REQUIRED_SELECTORS) + " */\n"
+
+    with pytest.raises(AssertionError):
+        assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_shared_contract_rejects_moved_material_declaration():
+    css = read_text("static/css/custom.css").replace(
+        "    background-size: auto, 420px;\n",
+        "",
+        1,
+    )
+    css += f"\n{DARK_ROOT_SELECTOR} .unrelated {{ background-size: auto, 420px; }}\n"
+
+    with pytest.raises(AssertionError):
+        assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_shared_contract_rejects_wrong_material_declaration():
+    css = read_text("static/css/custom.css").replace(
+        "background-blend-mode: multiply;",
+        "background-blend-mode: screen;",
+        1,
+    )
+
+    with pytest.raises(AssertionError):
+        assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_shared_contract_rejects_wrong_toast_status_mapping_hidden_by_comment():
+    toast = read_text("static/js/toast.js")
+    for value in EXPECTED_TOAST_ICON_MAP.values():
+        toast = toast.replace(value, "bi-question-circle text-muted")
+    toast += "\n// " + " ".join(EXPECTED_TOAST_ICON_MAP.values()) + "\n"
+
+    with pytest.raises(AssertionError):
+        assert_shared_dark_theme_contract(read_text("static/css/custom.css"), toast)
