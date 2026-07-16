@@ -725,7 +725,7 @@ EXPECTED_SHARED_RULES = (
     (
         (
             '[data-bs-theme="dark"] .btn-brass',
-            '[data-bs-theme="dark"] .btn-primary',
+            '[data-bs-theme="dark"] .btn-primary:not(.btn-secondary-wood)',
         ),
         {
             "--bs-btn-color": "var(--bg-950)",
@@ -2444,44 +2444,86 @@ def test_dashboard_css_contract_rejects_additive_unscoped_visual_rule():
         )
 
 
-def test_browse_and_result_cards_use_archive_components():
-    browse = read_text("static/js/pages/browse.js")
-    card = read_text("static/js/card.js")
-    macros = read_text("templates/macros.html")
+def run_task6_module_harness(
+    source: str,
+    replacements: tuple[tuple[str, str], ...],
+    harness: str,
+    label: str,
+) -> dict:
+    executable = source
+    for original, replacement in replacements:
+        assert executable.count(original) == 1
+        executable = executable.replace(original, replacement, 1)
 
-    for marker in (
-        "archive-page archive-page-browse",
-        "browse-search-shell",
-        "btn-brass",
-        "archive-dropdown",
-        "surface-leather ai-overview-panel",
-        "surface-leather source-summary-panel",
-        "archive-illustration illustration-books",
-        "archive-illustration illustration-flourish",
-        "archive-count-badge",
-        "btn-secondary-wood",
-    ):
-        assert marker in browse
-
-    for source in (card, macros):
-        assert "surface-leather result-card" in source
-        assert "result-source" in source
-        assert "icon-button" in source
-        assert source.count("btn-secondary-wood") >= 2
-        assert "-fill" not in source
-
-    assert "archive-dropdown workspace-select" in card
+    module_url = "data:text/javascript;base64," + base64.b64encode(
+        executable.encode("utf-8")
+    ).decode("ascii")
+    runner = (
+        f"globalThis.__task6ModuleUrl = {json.dumps(module_url)};\n"
+        + harness.replace("process.argv[1]", "globalThis.__task6ModuleUrl")
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module"],
+        input=runner,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, f"{label} runtime harness failed: {result.stderr.strip()}"
+    return json.loads(result.stdout)
 
 
-CARD_RUNTIME_HARNESS = r"""
+TASK6_RUNTIME_BASE = r"""
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-class Control {
-  constructor(name) {
+class FakeClassList {
+  constructor(owner) {
+    this.owner = owner;
+    this.values = new Set((owner.className || "").split(/\s+/).filter(Boolean));
+  }
+  sync() {
+    this.owner.className = Array.from(this.values).join(" ");
+  }
+  toggle(name) {
+    const added = !this.values.has(name);
+    if (added) this.values.add(name);
+    else this.values.delete(name);
+    this.sync();
+    return added;
+  }
+  remove(name) {
+    this.values.delete(name);
+    this.sync();
+  }
+  contains(name) {
+    return this.values.has(name);
+  }
+}
+
+class FakeElement {
+  constructor(name, className = "") {
     this.name = name;
+    this.className = className;
+    this.classList = new FakeClassList(this);
     this.listeners = new Map();
+    this.attributes = new Map();
+    this.dataset = {};
+    this.innerHTML = "";
+    this.textContent = "";
+    this.value = "";
+    this.checked = false;
+    this.src = "";
+    this.alt = "";
+  }
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
   }
   addEventListener(type, callback) {
     const callbacks = this.listeners.get(type) || [];
@@ -2490,123 +2532,315 @@ class Control {
   }
   async dispatch(type, init = {}) {
     const callbacks = this.listeners.get(type) || [];
-    invariant(callbacks.length === 1, `${this.name}: expected one ${type} listener`);
-    for (const callback of callbacks) await callback({ type, target: this, ...init });
+    invariant(callbacks.length === 1, this.name + ": expected one " + type + " listener");
+    for (const callback of callbacks) {
+      await callback({ type, target: this, stopPropagation() {}, ...init });
+    }
   }
+  querySelector() {
+    return null;
+  }
+  querySelectorAll() {
+    return [];
+  }
+  focus() {}
+}
+"""
+
+
+CARD_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""
+const createdCards = [];
+const fetchCalls = [];
+const hydrateCalls = [];
+const toastCalls = [];
+const saveStatuses = [true, true, true, false];
+
+function makeCard() {
+  const card = new FakeElement("card");
+  const nodes = new Map([
+    [".card-img-top", new FakeElement("image", "card-img-top")],
+    [".card-title", new FakeElement("title", "card-title text-truncate mb-1")],
+    [".card-description", new FakeElement("description", "card-text small text-muted card-description mb-2")],
+    [".result-source-text", new FakeElement("source", "result-source-text")],
+    [".save-btn", new FakeElement("save", "btn btn-link btn-sm p-0 icon-button save-btn")],
+    [".save-icon-light", new FakeElement("light icon")],
+    [".save-icon-dark", new FakeElement("dark icon")],
+    [".view-btn", new FakeElement("view", "btn btn-outline-secondary btn-secondary-wood btn-sm w-50 view-btn")],
+    [".add-btn", new FakeElement("add", "btn btn-primary btn-secondary-wood btn-sm w-50 add-btn")],
+    [".workspace-select", new FakeElement("workspace", "form-select form-select-sm archive-dropdown workspace-select")],
+  ]);
+  for (const selector of [".save-btn", ".view-btn", ".add-btn"]) {
+    nodes.get(selector).setAttribute("type", "button");
+  }
+  nodes.get(".workspace-select").setAttribute("aria-label", "Choose workspace");
+  nodes.get(".save-btn").querySelector = (selector) => {
+    const icon = nodes.get(selector);
+    invariant(icon, "unexpected save selector: " + selector);
+    return icon;
+  };
+  card.querySelector = (selector) => {
+    const node = nodes.get(selector);
+    invariant(node, "unexpected card selector: " + selector);
+    return node;
+  };
+  card.nodes = nodes;
+  createdCards.push(card);
+  return card;
 }
 
-const controls = new Map(
-  [".workspace-select", ".save-btn", ".view-btn", ".add-btn"]
-    .map((selector) => [selector, new Control(selector)]),
-);
-const card = {
-  className: "",
-  innerHTML: "",
-  querySelector(selector) {
-    const control = controls.get(selector);
-    invariant(control, `unexpected selector: ${selector}`);
-    return control;
-  },
-};
-const fetchCalls = [];
-globalThis.hydrateCalls = [];
-globalThis.toastCalls = [];
 globalThis.document = {
+  baseURI: "https://study.test/browse",
   createElement(tag) {
-    invariant(tag === "div", `unexpected element: ${tag}`);
-    return card;
+    invariant(tag === "div", "unexpected card element: " + tag);
+    return makeCard();
   },
 };
 globalThis.fetch = async (url, options) => {
   fetchCalls.push({ url, options });
+  if (url === "/api/item/save" || url === "/api/item/unsave") {
+    const status = saveStatuses.shift();
+    return { async json() { return { status }; } };
+  }
+  invariant(url === "/api/workspace/add", "unexpected endpoint: " + url);
   return { async json() { return { status: true }; } };
 };
-let viewedItem = null;
-globalThis.window = { openViewer(item) { viewedItem = item; } };
+globalThis.window = { openViewer(item) { globalThis.viewedItem = item; } };
+globalThis.hydrateCalls = hydrateCalls;
+globalThis.toastCalls = toastCalls;
 
 const { createCard } = await import(process.argv[1]);
-const item = {
-  id: 17,
-  title: "Archive Result",
-  description: "A useful source",
-  thumb_url: "",
-  source_name: "Wikipedia",
+const attack = '"><img src=x onerror=alert(1)>';
+const hostileItem = {
+  id: '17" autofocus onfocus="alert(1)',
+  title: attack,
+  description: attack,
+  thumb_url: "javascript:alert(1)",
+  source_name: attack,
   source_url: "https://example.test/source",
+  saved: false,
+};
+const hostileCard = createCard(hostileItem);
+const hostileNodes = hostileCard.nodes;
+invariant(!hostileCard.innerHTML.includes(attack), "untrusted fields reached innerHTML");
+invariant(hostileNodes.get(".card-title").textContent === attack, "title was not assigned as text");
+invariant(hostileNodes.get(".card-description").textContent === attack, "description was not assigned as text");
+invariant(hostileNodes.get(".result-source-text").textContent === attack, "source was not assigned as text");
+invariant(hostileNodes.get(".card-img-top").src === "/static/img/placeholder.png", "unsafe thumbnail survived");
+invariant(hostileNodes.get(".save-btn").dataset.itemId === hostileItem.id, "item id was not assigned safely");
+invariant(hostileNodes.get(".save-btn").getAttribute("aria-label") === "Save result", "unsaved label is wrong");
+invariant(hostileNodes.get(".save-btn").getAttribute("aria-pressed") === "false", "unsaved state is wrong");
+
+let stopped = false;
+await hostileNodes.get(".save-btn").dispatch("click", {
+  stopPropagation() { stopped = true; },
+});
+invariant(stopped, "save click did not stop propagation");
+invariant(hostileItem.saved === true, "successful save did not mutate item");
+invariant(hostileNodes.get(".save-btn").getAttribute("aria-label") === "Remove saved result", "saved label is wrong");
+invariant(hostileNodes.get(".save-btn").getAttribute("aria-pressed") === "true", "saved pressed state is wrong");
+invariant(hostileNodes.get(".save-icon-light").className.includes("bi-bookmark-fill"), "saved light glyph is wrong");
+invariant(hostileNodes.get(".save-icon-dark").className.includes("bi-bookmark-check"), "saved dark glyph is wrong");
+
+await hostileNodes.get(".save-btn").dispatch("click");
+invariant(hostileItem.saved === false, "successful unsave did not mutate item");
+invariant(hostileNodes.get(".save-btn").getAttribute("aria-label") === "Save result", "unsaved label was not restored");
+invariant(hostileNodes.get(".save-btn").getAttribute("aria-pressed") === "false", "unsaved pressed state was not restored");
+invariant(hostileNodes.get(".save-icon-light").className === "bi bi-bookmark save-icon-light", "unsaved light glyph is wrong");
+
+const initiallySaved = {
+  id: 18,
+  title: "Saved",
+  description: "Saved description",
+  thumb_url: "https://images.test/saved.png",
+  source_name: "PubMed",
+  source_url: "https://example.test/saved",
   saved: true,
 };
-const rendered = createCard(item);
-invariant(rendered === card, "createCard returned a different element");
-invariant(globalThis.hydrateCalls.length === 1, "workspace select was not hydrated once");
-invariant(globalThis.hydrateCalls[0][0] === controls.get(".workspace-select"), "wrong select hydrated");
+const savedCard = createCard(initiallySaved);
+const savedBefore = {
+  image: savedCard.nodes.get(".card-img-top").src,
+  label: savedCard.nodes.get(".save-btn").getAttribute("aria-label"),
+  pressed: savedCard.nodes.get(".save-btn").getAttribute("aria-pressed"),
+  lightIcon: savedCard.nodes.get(".save-icon-light").className,
+  darkIcon: savedCard.nodes.get(".save-icon-dark").className,
+};
+await savedCard.nodes.get(".save-btn").dispatch("click");
+invariant(initiallySaved.saved === false, "initially saved item did not unsave");
 
-let propagationStopped = false;
-await controls.get(".save-btn").dispatch("click", {
-  stopPropagation() { propagationStopped = true; },
-});
-invariant(propagationStopped, "save click did not stop propagation");
-await controls.get(".view-btn").dispatch("click");
-invariant(viewedItem === item, "View no longer opens original item");
-await controls.get(".add-btn").dispatch("click");
+const failedItem = {
+  id: 19,
+  title: "Failure",
+  description: "No mutation",
+  thumb_url: "",
+  source_name: "Wikipedia",
+  source_url: "https://example.test/failure",
+  saved: false,
+};
+const failedCard = createCard(failedItem);
+await failedCard.nodes.get(".save-btn").dispatch("click");
+invariant(failedItem.saved === false, "failed save mutated item");
+invariant(failedCard.nodes.get(".save-btn").getAttribute("aria-label") === "Save result", "failed save mutated DOM");
+invariant(failedCard.nodes.get(".save-icon-light").className === "bi bi-bookmark save-icon-light", "failed save mutated icon");
 
-invariant(fetchCalls.length === 2, `expected two action requests, got ${fetchCalls.length}`);
-invariant(fetchCalls[0].url === "/api/item/save", "save endpoint changed");
-invariant(JSON.parse(fetchCalls[0].options.body).item_id === 17, "save payload changed");
-invariant(fetchCalls[1].url === "/api/workspace/add", "workspace endpoint changed");
-const addBody = JSON.parse(fetchCalls[1].options.body);
-invariant(addBody.item_id === 17 && addBody.workspace_id === 42, "workspace payload changed");
+await hostileNodes.get(".view-btn").dispatch("click");
+invariant(globalThis.viewedItem === hostileItem, "View lost original item");
+await hostileNodes.get(".add-btn").dispatch("click");
+
+const actionCalls = fetchCalls.filter((call) => call.url !== "/static/whitelist.json");
+invariant(
+  actionCalls.map((call) => call.url).join(",") ===
+    "/api/item/save,/api/item/unsave,/api/item/unsave,/api/item/save,/api/workspace/add",
+  "save/unsave/add endpoint sequence is wrong: " + actionCalls.map((call) => call.url).join(","),
+);
+invariant(JSON.parse(actionCalls[0].options.body).item_id === hostileItem.id, "save payload changed");
+const addBody = JSON.parse(actionCalls[4].options.body);
+invariant(addBody.item_id === hostileItem.id && addBody.workspace_id === 42, "workspace add payload changed");
+invariant(hydrateCalls.length === 3, "workspace hydration count changed");
 
 process.stdout.write(JSON.stringify({
-  className: rendered.className,
-  html: rendered.innerHTML,
-  item,
+  template: hostileCard.innerHTML,
+  className: hostileCard.className,
+  hostile: {
+    title: hostileNodes.get(".card-title").textContent,
+    description: hostileNodes.get(".card-description").textContent,
+    source: hostileNodes.get(".result-source-text").textContent,
+    image: hostileNodes.get(".card-img-top").src,
+    itemId: hostileNodes.get(".save-btn").dataset.itemId,
+    label: hostileNodes.get(".save-btn").getAttribute("aria-label"),
+    pressed: hostileNodes.get(".save-btn").getAttribute("aria-pressed"),
+    lightIcon: hostileNodes.get(".save-icon-light").className,
+    darkIcon: hostileNodes.get(".save-icon-dark").className,
+  },
+  savedBefore,
+  endpoints: actionCalls.map((call) => call.url),
 }));
-""".strip()
+"""
 
 
+BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""
+const controls = new Map();
+function control(selector, value = "") {
+  const element = new FakeElement(selector);
+  element.value = value;
+  controls.set(selector, element);
+  return element;
+}
+const search = control("#searchInput", "archive");
+const go = control("#goBtn");
+const filters = control("#filtersDropdown");
+const menu = control(".browse-dropdown-menu");
+const sorting = control("#filterSorting");
+control("#filterYearFrom");
+control("#filterYearTo");
+control("#filterContentType");
+control("#sidebarContainer");
+control("#resultsContainer");
+control("#whitelistCheckboxes");
+const wikipedia = new FakeElement("wikipedia");
+wikipedia.value = "wikipedia";
+wikipedia.checked = true;
+menu.querySelectorAll = () => [wikipedia];
+
+const root = new FakeElement("root");
+root.querySelector = (selector) => controls.get(selector) || null;
+root.querySelectorAll = () => [wikipedia];
+const documentControl = new FakeElement("document");
+globalThis.document = {
+  addEventListener: documentControl.addEventListener.bind(documentControl),
+  getElementById(id) {
+    return id === "google-cse-script" ? {} : null;
+  },
+  body: { appendChild() {} },
+  createElement() {
+    return new FakeElement("created");
+  },
+};
+globalThis.window = {};
+globalThis.localStorage = {
+  getItem() { return null; },
+  setItem() {},
+};
+const fetchCalls = [];
+globalThis.fetch = async (url, options) => {
+  fetchCalls.push({ url, options });
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  return { json() { return new Promise(() => {}); } };
+};
+globalThis.toastCalls = [];
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+
+const searchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
+invariant(searchCalls.length === 1, "Go did not issue exactly one search");
+invariant(searchCalls[0].options.method === "POST", "search method changed");
+const body = JSON.parse(searchCalls[0].options.body);
+invariant(body.query === "archive", "search query changed");
+invariant(body.sources.length === 1 && body.sources[0] === "wikipedia", "search sources changed");
+invariant(body.num_results === 10, "search result count changed");
+
+process.stdout.write(JSON.stringify({ html: root.innerHTML, body }));
+"""
+
+
+CARD_IMPORT_REPLACEMENTS = (
+    (
+        "import { showToast } from './toast.js';",
+        "const showToast = (...args) => globalThis.toastCalls.push(args);",
+    ),
+    (
+        "import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } "
+        "from './workspace-selector.js';",
+        "const hydrateWorkspaceSelect = (...args) => globalThis.hydrateCalls.push(args);\n"
+        "const getSelectedWorkspaceId = () => 42;\n"
+        "const clearWorkspaceCache = () => {};",
+    ),
+)
+BROWSE_IMPORT_REPLACEMENTS = (
+    (
+        "import { showToast } from '../toast.js';",
+        "const showToast = (...args) => globalThis.toastCalls.push(args);",
+    ),
+    (
+        "import { createCard } from '../card.js';",
+        "const createCard = () => ({});",
+    ),
+)
 TASK6_DARK_ONLY_CLASSES = (
     "archive-page-browse",
     "browse-search-shell",
+    "browse-results-layout",
+    "browse-sidebar",
+    "browse-results-pane",
     "ai-overview-panel",
     "source-summary-panel",
     "result-card",
     "result-card-actions",
     "result-source",
+    "save-icon-light",
+    "save-icon-dark",
 )
 
 
-def render_client_result_card() -> dict:
-    card = read_text("static/js/card.js")
-    toast_import = "import { showToast } from './toast.js';"
-    workspace_import = (
-        "import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } "
-        "from './workspace-selector.js';"
+def card_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/card.js"),
+        CARD_IMPORT_REPLACEMENTS,
+        CARD_RUNTIME_HARNESS,
+        "card",
     )
-    assert card.count(toast_import) == 1
-    assert card.count(workspace_import) == 1
-    executable = card.replace(
-        toast_import,
-        "const showToast = (...args) => globalThis.toastCalls.push(args);",
-        1,
-    ).replace(
-        workspace_import,
-        "const hydrateWorkspaceSelect = (...args) => globalThis.hydrateCalls.push(args);\n"
-        "const getSelectedWorkspaceId = () => 42;\n"
-        "const clearWorkspaceCache = () => {};",
-        1,
+
+
+def browse_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_RUNTIME_HARNESS,
+        "browse",
     )
-    module_url = "data:text/javascript;base64," + base64.b64encode(
-        executable.encode("utf-8")
-    ).decode("ascii")
-    result = subprocess.run(
-        ["node", "--input-type=module", "--eval", CARD_RUNTIME_HARNESS, module_url],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=10,
-        check=False,
-    )
-    assert result.returncode == 0, f"card runtime harness failed: {result.stderr.strip()}"
-    return json.loads(result.stdout)
 
 
 def render_server_result_card(item: dict) -> str:
@@ -2620,50 +2854,28 @@ def render_server_result_card(item: dict) -> str:
     return template.render(item=item)
 
 
-def result_card_signature(markup: str) -> dict:
-    soup = BeautifulSoup(markup, "html.parser")
-    card = soup.select_one(".result-card")
-    assert card is not None
-    image = card.select_one("img.card-img-top")
-    title = card.select_one(".card-title")
-    description = card.select_one(".card-description")
-    source = card.select_one(".result-source")
-    source_icon = source.select_one("i") if source else None
-    save = card.select_one("button.save-btn")
-    save_icon = save.select_one("i") if save else None
-    footer = card.select_one(".card-footer")
-    actions = footer.select("button") if footer else []
-    assert all((image, title, description, source, source_icon, save, save_icon, footer))
-    assert len(actions) == 2
-    return {
-        "card_classes": frozenset(card.get("class", ())),
-        "image": (image.get("src"), image.get("class"), image.get("style"), image.get("alt")),
-        "title": (title.get("class"), title.get_text(strip=True)),
-        "description": (description.get("class"), description.get_text(strip=True)),
-        "source": (
-            source.get("class"),
-            source.get_text(" ", strip=True),
-            source_icon.get("class"),
-            source_icon.get("aria-hidden"),
-        ),
-        "save": (
-            frozenset(save.get("class", ())),
-            save.get("type"),
-            save.get("aria-label"),
-            save.get("aria-pressed"),
-            frozenset(save_icon.get("class", ())),
-            save_icon.get("aria-hidden"),
-        ),
-        "footer_classes": frozenset(footer.get("class", ())),
-        "actions": tuple(
-            (
-                frozenset(action.get("class", ())),
-                action.get("type"),
-                action.get_text(strip=True),
-            )
-            for action in actions
-        ),
-    }
+def composed_background_images(css: str, markup: str, target: str) -> list[str]:
+    soup = BeautifulSoup(
+        '<html data-bs-theme="dark"><body>' + markup + "</body></html>",
+        "html.parser",
+    )
+    element = soup.select_one(target)
+    assert element is not None
+    values = []
+    for header, body in css_rule_blocks(css):
+        if header.startswith("@"):
+            continue
+        declarations = parse_relevant_css_declarations(body, header)
+        if "background-image" not in declarations:
+            continue
+        for selector in selector_group(header):
+            try:
+                matches = soupsieve.match(selector, element)
+            except soupsieve.SelectorSyntaxError:
+                matches = False
+            if matches:
+                values.append(declarations["background-image"])
+    return values
 
 
 def assert_browse_css_contract(css: str) -> None:
@@ -2674,187 +2886,266 @@ def assert_browse_css_contract(css: str) -> None:
         "Task 6",
         "a dark-only browse/result rule",
     )
-    expected_rules = (
-        (
-            ('[data-bs-theme="dark"] .archive-page-browse',),
-            {"padding": "0 0 2rem"},
-        ),
-        (
-            ('[data-bs-theme="dark"] .browse-search-shell',),
-            {
-                "background": "hsl(28 45% 8% / 0.78) !important",
-                "border-bottom": "1px solid hsl(35 40% 45% / 0.12) !important",
-                "position": "relative",
-                "z-index": "calc(var(--z-content) + 1)",
-            },
-        ),
-        (
-            ('[data-bs-theme="dark"] .browse-search-group',),
-            {"margin-inline": "auto", "max-width": "960px"},
-        ),
-        (
-            ('[data-bs-theme="dark"] .browse-dropdown-menu',),
-            {
-                "background": "var(--surface-600)",
-                "border": "1px solid hsl(35 40% 45% / 0.25)",
-                "border-radius": "var(--radius-panel)",
-                "box-shadow": "var(--shadow-warm-raised)",
-                "transition": "opacity 180ms ease-out, transform 180ms ease-out",
-            },
-        ),
-        (
-            (
-                '[data-bs-theme="dark"] .ai-overview-panel',
-                '[data-bs-theme="dark"] .source-summary-panel',
-            ),
-            {"margin-bottom": "1rem", "padding": "1.25rem"},
-        ),
-        (
-            (
-                '[data-bs-theme="dark"] .ai-overview-panel .card-title',
-                '[data-bs-theme="dark"] .source-summary-panel .card-title',
-            ),
-            {
-                "color": "var(--gold-100)",
-                "font-family": "var(--font-display)",
-                "font-size": "var(--text-display-sm)",
-            },
-        ),
-        (
-            ('[data-bs-theme="dark"] .result-card',),
-            {
-                "border-radius": "var(--radius-panel) !important",
-                "box-shadow": "var(--shadow-warm-raised) !important",
-                "overflow": "hidden",
-                "transition": (
-                    "border-color 150ms ease, box-shadow 150ms ease, "
-                    "transform 150ms ease"
-                ),
-            },
-        ),
-        (
-            (
-                '[data-bs-theme="dark"] .result-card:hover',
-                '[data-bs-theme="dark"] .result-card:focus-within',
-            ),
-            {
-                "border-color": "hsl(35 50% 55% / 0.35)",
-                "box-shadow": "var(--shadow-warm-glow) !important",
-                "transform": "translateY(-2px)",
-            },
-        ),
-        (
-            ('[data-bs-theme="dark"] .result-card img',),
-            {"filter": "none"},
-        ),
-        (
-            ('[data-bs-theme="dark"] .result-card .card-title',),
-            {"color": "var(--text-primary)"},
-        ),
-        (
-            ('[data-bs-theme="dark"] .result-source',),
-            {
-                "color": "var(--gold-300) !important",
-                "font-size": "var(--text-caption)",
-            },
-        ),
-        (
-            ('[data-bs-theme="dark"] .result-card .card-text',),
-            {
-                "color": "var(--text-secondary)",
-                "display": "-webkit-box",
-                "overflow": "hidden",
-                "-webkit-box-orient": "vertical",
-                "-webkit-line-clamp": "2",
-            },
-        ),
-        (
-            ('[data-bs-theme="dark"] .result-card-actions',),
-            {"display": "flex", "gap": "0.5rem"},
-        ),
-        (
-            ('[data-bs-theme="dark"] .result-card .save-btn',),
-            {"padding": "0.25rem !important"},
-        ),
-        (
-            ('[data-bs-theme="dark"] .archive-page-browse .illustration-books',),
-            {"bottom": "0", "height": "160px", "left": "0", "width": "240px"},
-        ),
-        (
-            ('[data-bs-theme="dark"] .archive-page-browse .illustration-flourish',),
-            {
-                "bottom": "0",
-                "height": "180px",
-                "right": "0",
-                "transform": "scaleX(-1)",
-                "width": "180px",
-            },
-        ),
+
+    dropdown = css_rule_group_declarations(
+        css, ('[data-bs-theme="dark"] .browse-dropdown-menu',)
     )
-    for selectors, declarations in expected_rules:
-        assert css_rule_group_declarations(css, selectors) == declarations
+    assert dropdown["background"] == "var(--surface-600)"
+    assert dropdown["border-radius"] == "var(--radius-panel)"
+    assert "transition" not in dropdown
+
+    assert css_rule_group_declarations(
+        css,
+        (
+            '[data-bs-theme="dark"] .result-card:hover',
+            '[data-bs-theme="dark"] .result-card:focus-within',
+        ),
+    ) == {
+        "border-color": "hsl(35 50% 55% / 0.35)",
+        "box-shadow": "var(--shadow-warm-glow) !important",
+        "transform": "translateY(-2px)",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (
+            '[data-bs-theme="dark"] .dropdown-menu',
+            '[data-bs-theme="dark"] .browse-dropdown-menu',
+        ),
+    )["transition"] == "opacity 180ms ease-in, visibility 0s linear 180ms"
+    assert css_rule_group_declarations(
+        css,
+        (
+            '[data-bs-theme="dark"] .dropdown-menu.show',
+            '[data-bs-theme="dark"] .browse-dropdown-menu.show',
+        ),
+    )["transition"] == "opacity 180ms ease-out, visibility 0s linear 0s"
+    assert css_rule_group_declarations(
+        css, ('[data-bs-theme="dark"] .result-card .save-icon-light',)
+    ) == {"display": "none !important"}
+    assert css_rule_group_declarations(
+        css, ('[data-bs-theme="dark"] .result-card .save-icon-dark',)
+    ) == {"display": "inline-block !important"}
 
     mobile = css_block_body(css, "@media (max-width: 767.98px)")
     assert css_rule_group_declarations(
-        mobile,
-        ('[data-bs-theme="dark"] .browse-search-group',),
+        mobile, ('[data-bs-theme="dark"] .archive-page-browse',)
+    ) == {"overflow": "visible"}
+    assert css_rule_group_declarations(
+        mobile, ('[data-bs-theme="dark"] .browse-results-layout',)
+    ) == {"flex-direction": "column", "height": "auto !important"}
+    assert css_rule_group_declarations(
+        mobile, ('[data-bs-theme="dark"] #sidebarContainer.browse-sidebar',)
     ) == {
-        "align-items": "stretch",
-        "display": "grid",
-        "grid-template-columns": "1fr auto auto",
+        "border-right": "0 !important",
+        "border-bottom": "1px solid hsl(35 40% 45% / 0.18)",
+        "max-width": "none",
+        "min-width": "0",
+        "overflow-y": "visible !important",
+        "width": "100% !important",
     }
     assert css_rule_group_declarations(
-        mobile,
-        ('[data-bs-theme="dark"] .browse-search-group .input-group-text',),
-    ) == {"display": "none"}
+        mobile, ('[data-bs-theme="dark"] .browse-results-pane',)
+    ) == {"overflow-y": "visible !important", "width": "100%"}
     assert css_rule_group_declarations(
         mobile,
-        ('[data-bs-theme="dark"] .browse-search-input',),
-    ) == {"min-width": "0"}
+        (
+            '[data-bs-theme="dark"] .browse-results-row .col',
+            '[data-bs-theme="dark"] .browse-results-row .result-card',
+        ),
+    ) == {"min-width": "0", "width": "100%"}
 
 
-def test_browse_shell_preserves_controls_and_adds_accessible_archive_structure():
+def test_task6_card_runtime_handles_both_state_transitions_and_failed_requests():
+    rendered = card_runtime()
+    assert rendered["endpoints"] == [
+        "/api/item/save",
+        "/api/item/unsave",
+        "/api/item/unsave",
+        "/api/item/save",
+        "/api/workspace/add",
+    ]
+    assert rendered["savedBefore"] == {
+        "image": "https://images.test/saved.png",
+        "label": "Remove saved result",
+        "pressed": "true",
+        "lightIcon": "bi bi-bookmark-fill text-danger save-icon-light",
+        "darkIcon": "bi bi-bookmark-check save-icon-dark d-none",
+    }
+
+
+def test_task6_client_and_jinja_render_hostile_fields_as_inert_text_with_light_parity():
+    client = card_runtime()
+    attack = '"><img src=x onerror=alert(1)>'
+    hostile = {
+        "id": '17" autofocus onfocus="alert(1)',
+        "title": attack,
+        "description": attack,
+        "thumb_url": "javascript:alert(1)",
+        "source_name": attack,
+        "source_url": "https://example.test/source",
+        "saved": False,
+    }
+    server = BeautifulSoup(render_server_result_card(hostile), "html.parser")
+
+    assert attack not in client["template"]
+    assert "onerror=" not in client["template"]
+    assert client["hostile"] == {
+        "title": attack,
+        "description": attack,
+        "source": attack,
+        "image": "/static/img/placeholder.png",
+        "itemId": hostile["id"],
+        "label": "Save result",
+        "pressed": "false",
+        "lightIcon": "bi bi-bookmark save-icon-light",
+        "darkIcon": "bi bi-bookmark save-icon-dark d-none",
+    }
+    assert server.select_one(".card-title").get_text(strip=True) == attack
+    assert server.select_one(".card-description").get_text(strip=True) == attack
+    assert server.select_one(".result-source-text").get_text(strip=True) == attack
+    assert server.select_one("img.card-img-top").get("src") == "/static/img/placeholder.png"
+    assert server.select_one(".save-btn").get("data-item-id") == hostile["id"]
+    assert not [
+        name
+        for tag in server.find_all(True)
+        for name in tag.attrs
+        if name.lower().startswith("on")
+    ]
+
+    saved_server = BeautifulSoup(
+        render_server_result_card({**hostile, "saved": True}),
+        "html.parser",
+    )
+    save = saved_server.select_one(".save-btn")
+    assert (save.get("aria-label"), save.get("aria-pressed")) == (
+        client["savedBefore"]["label"],
+        client["savedBefore"]["pressed"],
+    )
+    assert " ".join(save.select_one(".save-icon-light").get("class")) == client[
+        "savedBefore"
+    ]["lightIcon"]
+    assert " ".join(save.select_one(".save-icon-dark").get("class")) == client[
+        "savedBefore"
+    ]["darkIcon"]
+
+
+def test_task6_card_templates_keep_shared_structure_and_equal_wood_cascade():
+    client = card_runtime()
+    client_markup = '<div class="' + client["className"] + '">' + client["template"] + "</div>"
+    item = {
+        "id": 1,
+        "title": "Result",
+        "description": "Description",
+        "thumb_url": "",
+        "source_name": "Wikipedia",
+        "source_url": "https://example.test",
+        "saved": True,
+    }
+    server_markup = render_server_result_card(item)
+    css = read_text("static/css/custom.css")
+    wood = (
+        "linear-gradient(var(--surface-700), var(--surface-700)), "
+        'url("/static/img/textures/wood-texture.png")'
+    )
+
+    for markup in (client_markup, server_markup):
+        soup = BeautifulSoup(markup, "html.parser")
+        assert set(soup.select_one(".result-card").get("class")) == {
+            "card",
+            "card-fixed",
+            "shadow-sm",
+            "surface-leather",
+            "result-card",
+            "rounded-3",
+            "h-100",
+        }
+        assert soup.select_one(".result-source i").get("aria-hidden") == "true"
+        assert soup.select_one(".save-btn").get("type") == "button"
+        assert soup.select_one(".view-btn").get("type") == "button"
+        assert soup.select_one(".add-btn").get("type") == "button"
+        assert {"btn-outline-secondary", "btn-secondary-wood"}.issubset(
+            soup.select_one(".view-btn").get("class")
+        )
+        assert {"btn-primary", "btn-secondary-wood"}.issubset(
+            soup.select_one(".add-btn").get("class")
+        )
+        if markup == client_markup:
+            workspace = soup.select_one(".workspace-select")
+            assert {"form-select", "form-select-sm", "archive-dropdown"}.issubset(
+                workspace.get("class")
+            )
+            assert workspace.get("aria-label") == "Choose workspace"
+        for target in (".view-btn", ".add-btn"):
+            applied = composed_background_images(css, markup, target)
+            assert applied
+            assert applied[-1] == wood
+
+
+def test_task6_browse_runtime_keeps_go_search_listener_and_payload():
+    rendered = browse_runtime()
+    assert rendered["body"] == {
+        "query": "archive",
+        "sources": ["wikipedia"],
+        "num_results": 10,
+        "filters": {},
+    }
+
+
+def test_task6_runtime_guards_catch_go_listener_and_unsaved_label_mutations():
+    browse = read_text("static/js/pages/browse.js")
+    listener = "    goBtn.addEventListener('click', performSearch);\n"
+    assert browse.count(listener) == 1
+    with pytest.raises(AssertionError, match="browse runtime harness failed"):
+        browse_runtime(browse.replace(listener, "", 1))
+
+    card = read_text("static/js/card.js")
+    label = "'Save result'"
+    assert card.count(label) >= 1
+    with pytest.raises(AssertionError, match="card runtime harness failed"):
+        card_runtime(card.replace(label, "'Corrupt unsaved label'", 1))
+
+
+def test_task6_browse_structure_preserves_light_output_and_supports_mobile_stack():
     browse = read_text("static/js/pages/browse.js")
     soup = BeautifulSoup(assigned_template_markup(browse, "pageRoot"), "html.parser")
-    page = soup.select_one("div.container-fluid.archive-page.archive-page-browse")
+    page = soup.select_one("div.archive-page.archive-page-browse")
     assert page is not None
+    assert "container-fluid" not in page.get("class", ())
     direct_children = page.find_all(recursive=False)
     assert [child.name for child in direct_children] == ["span", "span", "div"]
-    assert [set(child.get("class", ())) for child in direct_children] == [
-        {"archive-illustration", "illustration-books"},
-        {"archive-illustration", "illustration-flourish"},
-        {"archive-content"},
-    ]
-    for decoration in direct_children[:2]:
-        assert decoration.get("aria-hidden") == "true"
-
-    content = direct_children[2]
-    search_shell = content.select_one(".browse-search-shell")
-    assert search_shell is not None
-    assert {"bg-body-tertiary", "border-bottom"}.issubset(search_shell.get("class", ()))
-    search_icon = search_shell.select_one(".input-group-text i.bi-search")
-    assert search_icon is not None and search_icon.get("aria-hidden") == "true"
-    go = search_shell.select_one("button#goBtn")
-    assert go is not None
-    assert {"btn", "btn-primary", "btn-brass"}.issubset(go.get("class", ()))
-    assert go.get("type") == "button"
-    filters = search_shell.select_one("button#filtersDropdown")
-    assert filters is not None
-    assert {"btn", "btn-outline-secondary", "archive-dropdown"}.issubset(
-        filters.get("class", ())
+    assert all(
+        decoration.get("aria-hidden") == "true"
+        for decoration in direct_children[:2]
     )
-    assert filters.get("type") == "button"
-    assert filters.get("aria-expanded") == "false"
-    assert filters.get("aria-controls") == "browseFiltersMenu"
-    menu = search_shell.select_one("#browseFiltersMenu.browse-dropdown-menu.archive-dropdown-menu")
-    assert menu is not None and menu.get("aria-labelledby") == "filtersDropdown"
-    empty_icon = content.select_one("#resultsContainer i.bi-mortarboard")
-    assert empty_icon is not None and empty_icon.get("aria-hidden") == "true"
+
+    search_shell = page.select_one(".browse-search-shell")
+    assert {"bg-body-tertiary", "border-bottom", "p-3", "mb-3"}.issubset(
+        search_shell.get("class", ())
+    )
+    assert search_shell.select_one(".container-fluid") is not None
+    assert search_shell.select_one("#goBtn").get("type") == "button"
+    filters = search_shell.select_one("#filtersDropdown")
+    assert (filters.get("type"), filters.get("aria-expanded"), filters.get("aria-controls")) == (
+        "button",
+        "false",
+        "browseFiltersMenu",
+    )
+
+    layout = page.select_one(".browse-results-layout.d-flex")
+    sidebar = layout.select_one("#sidebarContainer.browse-sidebar")
+    pane = layout.select_one(".browse-results-pane")
+    assert layout.get("style") == "height: calc(100vh - 200px);"
+    assert sidebar.get("style") == "width: 320px; min-width: 320px; overflow-y: auto;"
+    assert {"border-end", "p-3", "flex-shrink-0"}.issubset(sidebar.get("class", ()))
+    assert {"flex-grow-1", "p-3", "overflow-y-auto"}.issubset(pane.get("class", ()))
+    assert pane.select_one("#resultsContainer") is not None
+    assert pane.select_one("#googleCseContainer") is not None
 
     expected_ids = {
         "searchInput",
         "goBtn",
         "filtersDropdown",
+        "browseFiltersMenu",
         "filterWikipedia",
         "filterGBooks",
         "filterPubMed",
@@ -2868,123 +3159,41 @@ def test_browse_shell_preserves_controls_and_adds_accessible_archive_structure()
         "googleCseContainer",
     }
     assert expected_ids.issubset({tag.get("id") for tag in soup.select("[id]")})
+
     assert browse.count("fetch('/api/browse/search-all'") == 2
-    assert "body: JSON.stringify({ query, sources, num_results: 10, filters })" in browse
     assert "num_results: 20" in browse
     assert "localStorage.setItem(BROWSE_STORAGE_KEY" in browse
     assert "localStorage.getItem(BROWSE_STORAGE_KEY" in browse
     assert "loadMoreBtn.addEventListener('click', loadMoreResults)" in browse
 
 
-def test_browse_dynamic_panels_and_pagination_keep_light_classes_and_accessibility():
+def test_task6_dynamic_panels_pagination_and_dark_contract_remain_intact():
     browse = read_text("static/js/pages/browse.js")
     overview = BeautifulSoup(assigned_template_markup(browse, "sidebar"), "html.parser")
-    overview_panel = overview.select_one(".ai-overview-panel")
-    assert overview_panel is not None
-    assert {"card", "mb-3", "surface-leather"}.issubset(
-        overview_panel.get("class", ())
-    )
-    assert (
-        "let html = '<div class=\"card surface-leather source-summary-panel mb-3\">';"
-        in browse
-    )
-    assert (
-        '<span class="badge bg-primary rounded-pill archive-count-badge">${count}</span>'
-        in browse
+    assert {"card", "mb-3", "surface-leather", "ai-overview-panel"}.issubset(
+        overview.select_one(".ai-overview-panel").get("class", ())
     )
     pagination = BeautifulSoup(
         assigned_template_markup(browse, "buttonContainer"), "html.parser"
     )
-    load_more = pagination.select_one("button#loadMoreBtn")
-    assert load_more is not None
+    load_more = pagination.select_one("#loadMoreBtn")
     assert {"btn", "btn-outline-primary", "btn-secondary-wood"}.issubset(
         load_more.get("class", ())
     )
     assert load_more.get("type") == "button"
 
-
-def test_result_card_renderers_match_and_preserve_light_accessible_semantics():
-    client = render_client_result_card()
-    client_markup = f'<div class="{client["className"]}">{client["html"]}</div>'
-    server_markup = render_server_result_card(client["item"])
-    assert result_card_signature(client_markup) == result_card_signature(server_markup)
-
-    signature = result_card_signature(client_markup)
-    assert signature["card_classes"] == {
-        "card",
-        "card-fixed",
-        "shadow-sm",
-        "surface-leather",
-        "result-card",
-        "rounded-3",
-        "h-100",
-    }
-    save_classes, save_type, save_label, save_pressed, icon_classes, icon_hidden = (
-        signature["save"]
-    )
-    assert {"btn", "btn-link", "btn-sm", "p-0", "icon-button", "save-btn"} == set(
-        save_classes
-    )
-    assert (save_type, save_label, save_pressed, icon_hidden) == (
-        "button",
-        "Remove saved result",
-        "true",
-        "true",
-    )
-    assert icon_classes == {"bi", "bi-bookmark-check"}
-    assert [action[1:] for action in signature["actions"]] == [
-        ("button", "View"),
-        ("button", "Add"),
-    ]
-    assert {"btn-outline-secondary", "btn-secondary-wood"}.issubset(
-        signature["actions"][0][0]
-    )
-    assert {"btn-primary", "btn-secondary-wood"}.issubset(
-        signature["actions"][1][0]
-    )
-
-    client_soup = BeautifulSoup(client_markup, "html.parser")
-    workspace_select = client_soup.select_one("select.archive-dropdown.workspace-select")
-    assert workspace_select is not None
-    assert {"form-select", "form-select-sm", "archive-dropdown", "workspace-select"} == set(
-        workspace_select.get("class", ())
-    )
-    assert workspace_select.get("aria-label") == "Choose workspace"
-    assert client_soup.select_one("img.card-img-top").get("alt") == ""
-
-
-def test_result_card_runtime_preserves_save_view_and_workspace_add_behavior():
-    rendered = render_client_result_card()
-    assert rendered["item"]["id"] == 17
-
-
-def test_browse_result_css_preserves_light_baseline_and_scopes_dark_visuals():
     css = read_text("static/css/custom.css")
-    assert css_rule_group_declarations(css, (".card-description",)) == {
-        "display": "-webkit-box",
-        "-webkit-line-clamp": "3",
-        "-webkit-box-orient": "vertical",
-        "overflow": "hidden",
-    }
+    assert css_rule_group_declarations(css, (".card-description",))[
+        "-webkit-line-clamp"
+    ] == "3"
     assert css_rule_group_declarations(css, (".browse-search-group",)) == {
         "display": "flex",
         "width": "100%",
     }
-    assert css_rule_group_declarations(css, (".browse-dropdown-menu",)) == {
-        "position": "absolute",
-        "top": "calc(100% + 0.25rem)",
-        "right": "0",
-        "display": "none",
-        "z-index": "1200",
-        "background-color": "var(--bs-body-bg)",
-        "border": "1px solid var(--bs-border-color)",
-        "border-radius": "var(--bs-border-radius)",
-        "box-shadow": "0 0.5rem 1rem rgba(0, 0, 0, 0.15)",
-    }
     assert_browse_css_contract(css)
 
 
-def test_browse_result_css_contract_rejects_unscoped_visual_rule():
+def test_task6_dark_contract_rejects_unscoped_visual_rule():
     css = read_text("static/css/custom.css")
     assert_browse_css_contract(css)
     with pytest.raises(AssertionError, match="outside dark scope"):

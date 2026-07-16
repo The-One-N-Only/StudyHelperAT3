@@ -30,7 +30,7 @@ async function loadWhitelistDomains() {
 export function initBrowse(root) {
     pageRoot = root;
     pageRoot.innerHTML = `
-        <div class="container-fluid archive-page archive-page-browse">
+        <div class="archive-page archive-page-browse">
             <span class="archive-illustration illustration-books" aria-hidden="true"></span>
             <span class="archive-illustration illustration-flourish" aria-hidden="true"></span>
             <div class="archive-content">
@@ -98,9 +98,9 @@ export function initBrowse(root) {
                 </div>
             </div>
         </div>
-        <div class="d-flex" style="height: calc(100vh - 200px);">
-            <div class="border-end p-3 flex-shrink-0" style="width: 320px; min-width: 320px; overflow-y: auto;" id="sidebarContainer"></div>
-            <div class="flex-grow-1 p-3 overflow-y-auto">
+        <div class="d-flex browse-results-layout" style="height: calc(100vh - 200px);">
+            <div class="border-end p-3 flex-shrink-0 browse-sidebar" style="width: 320px; min-width: 320px; overflow-y: auto;" id="sidebarContainer"></div>
+            <div class="flex-grow-1 p-3 overflow-y-auto browse-results-pane">
                 <div id="resultsContainer">
                     <div class="text-center py-5">
                         <i class="bi bi-mortarboard display-4 text-muted" aria-hidden="true"></i>
