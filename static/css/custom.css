@@ -455,12 +455,16 @@ body.nav-sidebar-open {
 }
 
 [data-bs-theme="dark"] .archive-category-badge {
-    background: hsl(35 40% 45% / 0.15);
+    background: hsl(35 40% 45% / 0.15) !important;
     border-radius: var(--radius-pill);
-    color: var(--gold-300);
+    color: var(--gold-300) !important;
     font-size: var(--text-caption);
     letter-spacing: 0.04em;
     text-transform: uppercase;
+}
+
+[data-bs-theme="dark"] .icon-button .text-muted {
+    color: inherit !important;
 }
 
 [data-bs-theme="dark"] .card {
@@ -622,7 +626,8 @@ body.nav-sidebar-open {
     transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
-[data-bs-theme="dark"] .workspace-card:not(.workspace-card-add):hover {
+[data-bs-theme="dark"] .workspace-card:not(.workspace-card-add):hover,
+[data-bs-theme="dark"] .workspace-card:not(.workspace-card-add):focus-within {
     border-color: hsl(35 50% 55% / 0.35);
     box-shadow: var(--shadow-warm-glow);
     transform: translateY(-2px);

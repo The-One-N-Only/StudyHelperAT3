@@ -189,6 +189,23 @@ EXPECTED_DARK_ICON_COLORS = {
         "var(--danger-rust) !important"
     ),
 }
+EXPECTED_DASHBOARD_CARD_HEADER_RULES = (
+    (
+        ('[data-bs-theme="dark"] .archive-category-badge',),
+        {
+            "background": "hsl(35 40% 45% / 0.15) !important",
+            "border-radius": "var(--radius-pill)",
+            "color": "var(--gold-300) !important",
+            "font-size": "var(--text-caption)",
+            "letter-spacing": "0.04em",
+            "text-transform": "uppercase",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .icon-button .text-muted',),
+        {"color": "inherit !important"},
+    ),
+)
 SHARED_CONTROL_MOTION_SELECTORS = (
     '[data-bs-theme="dark"] button',
     '[data-bs-theme="dark"] .btn',
@@ -472,6 +489,7 @@ class FakeElement {
     this._innerHTML = String(value);
     this._textContent = null;
     this.children = [];
+    this.cardTarget = null;
   }
 
   get innerHTML() {
@@ -495,13 +513,18 @@ class FakeElement {
   async dispatch(type, init = {}) {
     const callbacks = this.listeners.get(type) || [];
     invariant(callbacks.length > 0, `missing ${type} listener on ${this.id || "element"}`);
-    const event = { type, target: this, ...init };
+    const event = { type, target: this, defaultPrevented: false, ...init };
+    event.preventDefault = () => { event.defaultPrevented = true; };
     for (const callback of callbacks) await callback(event);
+    return event;
   }
 
   querySelector(selector) {
     if (selector === "#workspaceSearch") return searchInput;
     if (selector === ".card") {
+      const hasCardClass = [...this._innerHTML.matchAll(/\bclass=(["'])([^"']*)\1/g)]
+        .some(([, , classes]) => classes.split(/\s+/).includes("card"));
+      if (!hasCardClass) return null;
       this.cardTarget ||= new FakeElement("workspaceCardTarget");
       return this.cardTarget;
     }
@@ -518,12 +541,15 @@ const root = new FakeElement("root");
 const searchInput = new FakeElement("workspaceSearch");
 const workspaceCards = new FakeElement("workspaceCards");
 const fetchCalls = [];
+const promptResponses = [null, null, "New Workspace"];
+let promptCalls = 0;
 globalThis.toastCalls = [];
 globalThis.window = { location: { href: "" } };
 globalThis.prompt = (message, defaultValue) => {
   invariant(message === "Enter a name for the new workspace:", "prompt message changed");
   invariant(defaultValue === "New Workspace", "prompt default changed");
-  return "New Workspace";
+  promptCalls += 1;
+  return promptResponses.shift();
 };
 globalThis.document = {
   getElementById(id) {
@@ -555,7 +581,7 @@ globalThis.fetch = async (url, options) => {
         status: true,
         workspaces: [{
           id: 7,
-          name: "<unsafe & name>",
+          name: '<unsafe "quoted" & name>',
           time_created: 0,
           item_count: 3,
           note_count: 0,
@@ -577,10 +603,18 @@ invariant(workspaceCards.children.length === 2, "initial cards did not render");
 
 let addCard = workspaceCards.children[0];
 invariant(addCard.innerHTML.includes("Create new workspace"), "add card label changed");
-invariant(addCard.querySelector(".card").listeners.get("click")?.length === 1, "add listener missing");
+let addCardTarget = addCard.querySelector(".card");
+invariant(addCardTarget.listeners.get("click")?.length === 1, "add listener missing");
+invariant(addCardTarget.listeners.get("keydown")?.length === 1, "add keyboard listener missing");
+
+await addCardTarget.dispatch("keydown", { key: "Enter" });
+invariant(promptCalls === 1, "Enter did not open create dialog");
+const spaceEvent = await addCardTarget.dispatch("keydown", { key: " " });
+invariant(promptCalls === 2, "Space did not open create dialog");
+invariant(spaceEvent.defaultPrevented, "Space did not prevent page scroll");
 
 let renderedCard = workspaceCards.children[1].innerHTML;
-invariant(renderedCard.includes("&lt;unsafe &amp; name&gt;"), "workspace title not escaped");
+invariant(renderedCard.includes('&lt;unsafe "quoted" &amp; name&gt;'), "workspace title not escaped");
 invariant(!renderedCard.includes("<unsafe"), "unsafe workspace title rendered as markup");
 invariant(renderedCard.includes("3 sources"), "source metadata changed");
 invariant(renderedCard.includes("0 notes"), "note metadata changed");
@@ -588,6 +622,12 @@ invariant(renderedCard.includes("Created on Unknown"), "created date changed");
 invariant(
   renderedCard.includes('class="stretched-link" href="/workspace/7"'),
   "workspace stretched link changed",
+);
+invariant(
+  renderedCard.includes(
+    'aria-label="Open &lt;unsafe &quot;quoted&quot; &amp; name&gt; workspace"',
+  ),
+  "workspace link name missing or unsafe",
 );
 
 await searchInput.dispatch("input", { target: { value: "missing" } });
@@ -602,7 +642,8 @@ invariant(workspaceCards.children.length === 2, "search trim/lowercase behavior 
 await searchInput.dispatch("input", { target: { value: "" } });
 
 addCard = workspaceCards.children[0];
-await addCard.querySelector(".card").dispatch("click");
+addCardTarget = addCard.querySelector(".card");
+await addCardTarget.dispatch("click");
 invariant(fetchCalls.length === 2, "create did not issue one request");
 const createCall = fetchCalls[1];
 invariant(createCall.url === "/api/workspaces", "create API URL changed");
@@ -624,7 +665,6 @@ invariant(
   renderedCard.includes('class="stretched-link" href="/workspace/8"'),
   "created workspace stretched link changed",
 );
-
 process.stdout.write("home runtime ok");
 """.strip()
 EXPECTED_SHARED_RULES = (
@@ -838,17 +878,7 @@ EXPECTED_SHARED_RULES = (
             "font-variant-numeric": "tabular-nums",
         },
     ),
-    (
-        ('[data-bs-theme="dark"] .archive-category-badge',),
-        {
-            "background": "hsl(35 40% 45% / 0.15)",
-            "border-radius": "var(--radius-pill)",
-            "color": "var(--gold-300)",
-            "font-size": "var(--text-caption)",
-            "letter-spacing": "0.04em",
-            "text-transform": "uppercase",
-        },
-    ),
+    *EXPECTED_DASHBOARD_CARD_HEADER_RULES,
     (
         ('[data-bs-theme="dark"] .card',),
         {
@@ -1527,6 +1557,7 @@ def assert_dashboard_selectors_are_scoped(css: str) -> None:
 def assert_dashboard_css_contract(css: str) -> None:
     assert_dashboard_selectors_are_scoped(css)
     expected_rules = (
+        *EXPECTED_DASHBOARD_CARD_HEADER_RULES,
         (
             (".workspace-card",),
             {
@@ -1581,7 +1612,10 @@ def assert_dashboard_css_contract(css: str) -> None:
             },
         ),
         (
-            ('[data-bs-theme="dark"] .workspace-card:not(.workspace-card-add):hover',),
+            (
+                '[data-bs-theme="dark"] .workspace-card:not(.workspace-card-add):hover',
+                '[data-bs-theme="dark"] .workspace-card:not(.workspace-card-add):focus-within',
+            ),
             {
                 "border-color": "hsl(35 50% 55% / 0.35)",
                 "box-shadow": "var(--shadow-warm-glow)",
@@ -1643,14 +1677,18 @@ def assert_dashboard_css_contract(css: str) -> None:
     ) == {"min-height": "190px"}
 
 
-def home_shell_markup(home: str) -> str:
+def assigned_template_markup(source: str, target: str) -> str:
     matches = re.findall(
-        r"root\.innerHTML\s*=\s*`(?P<markup>.*?)`\s*;",
-        home,
+        rf"\b{re.escape(target)}\.innerHTML\s*=\s*`(?P<markup>.*?)`\s*;",
+        source,
         flags=re.DOTALL,
     )
-    assert len(matches) == 1, f"expected one home shell template, found {len(matches)}"
+    assert len(matches) == 1, f"expected one {target} template, found {len(matches)}"
     return matches[0]
+
+
+def home_shell_markup(home: str) -> str:
+    return assigned_template_markup(home, "root")
 
 
 def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
@@ -2340,8 +2378,55 @@ def test_dashboard_shell_has_accessible_archive_structure():
     assert len(soup.select("#workspaceCards")) == 1
 
 
+def test_dashboard_card_markup_preserves_light_and_accessible_semantics():
+    home = read_text("static/js/pages/home.js")
+    add_card = BeautifulSoup(
+        assigned_template_markup(home, "addCard"), "html.parser"
+    ).select_one(".workspace-card-add")
+    assert add_card is not None
+    assert (add_card.get("role"), add_card.get("tabindex")) == ("button", "0")
+
+    card = BeautifulSoup(assigned_template_markup(home, "card"), "html.parser")
+
+    badge = card.select_one(".archive-category-badge")
+    assert badge is not None
+    assert set(badge.get("class", ())) == {
+        "badge",
+        "bg-primary",
+        "bg-opacity-10",
+        "text-primary",
+        "archive-category-badge",
+    }
+
+    icon_hook = card.select_one('.icon-button[aria-hidden="true"]')
+    assert icon_hook is not None
+    icon = icon_hook.select_one("i")
+    assert icon is not None
+    assert set(icon.get("class", ())) == {
+        "bi",
+        "bi-three-dots-vertical",
+        "text-muted",
+    }
+
+    link = card.select_one("a.stretched-link")
+    assert link is not None
+    assert link.get("aria-label") == (
+        "Open ${escapeHtmlAttribute(workspace.name)} workspace"
+    )
+
+
 def test_dashboard_runtime_preserves_search_render_create_and_open_flow():
     assert_home_runtime_contract(read_text("static/js/pages/home.js"))
+
+
+def test_dashboard_runtime_rejects_missing_add_card_target():
+    home = read_text("static/js/pages/home.js")
+    card = 'class="card h-100 workspace-card workspace-card-add'
+    panel = 'class="panel h-100 workspace-card workspace-card-add'
+    assert home.count(card) == 1
+
+    with pytest.raises(AssertionError, match="home runtime harness failed"):
+        assert_home_runtime_contract(home.replace(card, panel, 1))
 
 
 def test_dashboard_css_preserves_light_baseline_and_scopes_dark_visuals():

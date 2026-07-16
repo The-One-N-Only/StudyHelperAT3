@@ -55,7 +55,7 @@ function renderWorkspaceCards() {
     const addCard = document.createElement('div');
     addCard.className = 'col';
     addCard.innerHTML = `
-        <div class="card h-100 workspace-card workspace-card-add text-center text-muted">
+        <div class="card h-100 workspace-card workspace-card-add text-center text-muted" role="button" tabindex="0">
             <div class="card-body d-flex flex-column justify-content-center align-items-center py-5">
                 <div class="display-6 mb-3">+</div>
                 <h5>Create new workspace</h5>
@@ -63,7 +63,17 @@ function renderWorkspaceCards() {
             </div>
         </div>
     `;
-    addCard.querySelector('.card').addEventListener('click', createWorkspaceDialog);
+    const addCardTarget = addCard.querySelector('.card');
+    addCardTarget.addEventListener('click', createWorkspaceDialog);
+    addCardTarget.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+        if (event.key === ' ') {
+            event.preventDefault();
+        }
+        createWorkspaceDialog();
+    });
     container.appendChild(addCard);
 
     const filtered = allWorkspaces.filter((workspace) => {
@@ -85,8 +95,8 @@ function renderWorkspaceCards() {
             <div class="card h-100 surface-leather workspace-card position-relative">
                 <div class="card-body d-flex flex-column">
                     <div class="d-flex align-items-center justify-content-between mb-3">
-                        <div class="badge archive-category-badge">WORKSPACE</div>
-                        <span class="icon-button" aria-hidden="true"><i class="bi bi-three-dots-vertical"></i></span>
+                        <div class="badge bg-primary bg-opacity-10 text-primary archive-category-badge">WORKSPACE</div>
+                        <span class="icon-button" aria-hidden="true"><i class="bi bi-three-dots-vertical text-muted"></i></span>
                     </div>
                     <div class="mb-4">
                         <h5 class="card-title mb-1 text-truncate">${escapeHtml(workspace.name)}</h5>
@@ -96,7 +106,7 @@ function renderWorkspaceCards() {
                         Created on ${formatDate(workspace.time_created)}
                     </div>
                 </div>
-                <a class="stretched-link" href="/workspace/${workspace.id}"></a>
+                <a class="stretched-link" href="/workspace/${workspace.id}" aria-label="Open ${escapeHtmlAttribute(workspace.name)} workspace"></a>
             </div>
         `;
         container.appendChild(card);
@@ -150,4 +160,8 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function escapeHtmlAttribute(text) {
+    return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
