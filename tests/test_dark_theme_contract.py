@@ -114,6 +114,26 @@ SHARED_REQUIRED_SELECTORS = (
     '[data-bs-theme="dark"] .archive-category-badge',
     '[data-bs-theme="dark"] .archive-illustration',
 )
+TASK3_DARK_ONLY_CLASSES = (
+    "surface-leather",
+    "btn-secondary-wood",
+    "btn-brass",
+    "btn-ghost",
+    "icon-button",
+    "icon-button-danger",
+    "archive-dropdown",
+    "archive-count-badge",
+    "archive-category-badge",
+    "archive-illustration",
+    "illustration-compass",
+    "illustration-sextant",
+    "illustration-books",
+    "illustration-open-book",
+    "illustration-flourish",
+)
+TASK3_DARK_ONLY_CLASS_PATTERN = re.compile(
+    r"\.(?:" + "|".join(map(re.escape, TASK3_DARK_ONLY_CLASSES)) + r")(?![\w-])"
+)
 SHARED_CONTROL_MOTION_SELECTORS = (
     '[data-bs-theme="dark"] button',
     '[data-bs-theme="dark"] .btn',
@@ -502,64 +522,203 @@ def css_rules(css: str):
         yield selectors, parse_css_declarations(match.group("body"), context)
 
 
-def top_level_css_rules(css: str):
-    css_without_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
-    depth = 0
-    rule_start = 0
-    header = ""
-    body_start = 0
+def strip_css_comments(css: str) -> str:
+    result = []
+    index = 0
+    quote = None
+    while index < len(css):
+        character = css[index]
+        if quote is not None:
+            result.append(character)
+            if character == "\\" and index + 1 < len(css):
+                index += 1
+                result.append(css[index])
+            elif character == quote:
+                quote = None
+            index += 1
+            continue
 
-    for index, character in enumerate(css_without_comments):
-        if character == "{" and depth == 0:
-            header = css_without_comments[rule_start:index].strip()
-            body_start = index + 1
-            depth = 1
-        elif character == "{" and depth > 0:
+        if character in ('"', "'"):
+            quote = character
+            result.append(character)
+            index += 1
+        elif css.startswith("/*", index):
+            comment_end = css.find("*/", index + 2)
+            assert comment_end != -1, "unclosed CSS comment"
+            result.append(" ")
+            index = comment_end + 2
+        else:
+            result.append(character)
+            index += 1
+    assert quote is None, "unclosed CSS string"
+    return "".join(result)
+
+
+def split_css_components(text: str, separator: str) -> tuple[str, ...]:
+    parts = []
+    start = 0
+    index = 0
+    quote = None
+    depths = {"(": 0, "[": 0, "{": 0}
+    closing_to_opening = {")": "(", "]": "[", "}": "{"}
+
+    while index < len(text):
+        character = text[index]
+        if character == "\\" and index + 1 < len(text):
+            index += 2
+            continue
+        if quote is not None:
+            if character == quote:
+                quote = None
+        elif character in ('"', "'"):
+            quote = character
+        elif character in depths:
+            depths[character] += 1
+        elif character in closing_to_opening:
+            opening = closing_to_opening[character]
+            depths[opening] = max(0, depths[opening] - 1)
+        elif character == separator and not any(depths.values()):
+            part = text[start:index].strip()
+            if part:
+                parts.append(part)
+            start = index + 1
+        index += 1
+
+    part = text[start:].strip()
+    if part:
+        parts.append(part)
+    return tuple(parts)
+
+
+def find_css_block_end(css: str, opening_brace: int) -> int:
+    depth = 1
+    index = opening_brace + 1
+    quote = None
+    while index < len(css):
+        character = css[index]
+        if character == "\\" and index + 1 < len(css):
+            index += 2
+            continue
+        if quote is not None:
+            if character == quote:
+                quote = None
+        elif character in ('"', "'"):
+            quote = character
+        elif character == "{":
             depth += 1
-        elif character == "}" and depth > 0:
+        elif character == "}":
             depth -= 1
             if depth == 0:
-                if not header.startswith("@"):
-                    selectors = tuple(selector.strip() for selector in header.split(","))
-                    context = ", ".join(repr(selector) for selector in selectors)
-                    yield selectors, parse_css_declarations(
-                        css_without_comments[body_start:index],
-                        context,
-                    )
-                rule_start = index + 1
+                return index
+        index += 1
+    raise AssertionError("unclosed CSS block")
+
+
+def css_rule_blocks(css: str):
+    css_without_comments = strip_css_comments(css)
+    index = 0
+    while index < len(css_without_comments):
+        while index < len(css_without_comments) and css_without_comments[index].isspace():
+            index += 1
+        if index >= len(css_without_comments):
+            return
+
+        header_start = index
+        quote = None
+        parenthesis_depth = 0
+        bracket_depth = 0
+        while index < len(css_without_comments):
+            character = css_without_comments[index]
+            if character == "\\" and index + 1 < len(css_without_comments):
+                index += 2
+                continue
+            if quote is not None:
+                if character == quote:
+                    quote = None
+            elif character in ('"', "'"):
+                quote = character
+            elif character == "(":
+                parenthesis_depth += 1
+            elif character == ")":
+                parenthesis_depth = max(0, parenthesis_depth - 1)
+            elif character == "[":
+                bracket_depth += 1
+            elif character == "]":
+                bracket_depth = max(0, bracket_depth - 1)
+            elif character == "{" and parenthesis_depth == bracket_depth == 0:
+                block_end = find_css_block_end(css_without_comments, index)
+                yield (
+                    css_without_comments[header_start:index].strip(),
+                    css_without_comments[index + 1:block_end],
+                )
+                index = block_end + 1
+                break
+            elif character == ";" and parenthesis_depth == bracket_depth == 0:
+                index += 1
+                break
+            index += 1
+        else:
+            assert not css_without_comments[header_start:].strip(), "incomplete CSS rule"
+
+
+def selector_group(header: str) -> tuple[str, ...]:
+    return tuple(" ".join(selector.split()) for selector in split_css_components(header, ","))
+
+
+def parse_relevant_css_declarations(rule_body: str, context: str) -> dict[str, str]:
+    declarations = {}
+    for raw_declaration in split_css_components(strip_css_comments(rule_body), ";"):
+        assert ":" in raw_declaration, f"invalid declaration in {context}: {raw_declaration!r}"
+        property_name, value = raw_declaration.split(":", 1)
+        property_name = property_name.strip()
+        assert property_name not in declarations, f"duplicate {property_name!r} in {context}"
+        declarations[property_name] = " ".join(value.split())
+    return declarations
 
 
 def css_rule_group_declarations(css: str, selectors: tuple[str, ...]) -> dict[str, str]:
-    matches = [
-        declarations
-        for actual_selectors, declarations in top_level_css_rules(css)
-        if actual_selectors == selectors
-    ]
+    expected_selectors = frozenset(selectors)
+    matches = []
+    for header, body in css_rule_blocks(css):
+        if header.startswith("@"):
+            continue
+        actual_selectors = selector_group(header)
+        if len(actual_selectors) != len(selectors):
+            continue
+        if frozenset(actual_selectors) == expected_selectors:
+            context = ", ".join(repr(selector) for selector in actual_selectors)
+            matches.append(parse_relevant_css_declarations(body, context))
     assert len(matches) == 1, f"expected one {selectors!r} rule group, found {len(matches)}"
     return matches[0]
 
 
 def css_block_body(css: str, header: str) -> str:
-    css_without_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
-    matches = list(
-        re.finditer(
-            rf"^[ \t]*{re.escape(header)}[ \t]*\{{",
-            css_without_comments,
-            flags=re.MULTILINE,
-        )
-    )
+    expected_header = " ".join(header.split())
+    matches = [
+        body
+        for actual_header, body in css_rule_blocks(css)
+        if " ".join(actual_header.split()) == expected_header
+    ]
     assert len(matches) == 1, f"expected one {header!r} block, found {len(matches)}"
+    return matches[0]
 
-    depth = 1
-    body_start = matches[0].end()
-    for index in range(body_start, len(css_without_comments)):
-        if css_without_comments[index] == "{":
-            depth += 1
-        elif css_without_comments[index] == "}":
-            depth -= 1
-            if depth == 0:
-                return css_without_comments[body_start:index]
-    raise AssertionError(f"unclosed {header!r} block")
+
+def qualified_css_selector_groups(css: str):
+    for header, body in css_rule_blocks(css):
+        if header.startswith("@"):
+            yield from qualified_css_selector_groups(body)
+        else:
+            yield selector_group(header)
+
+
+def assert_task3_selectors_are_dark_scoped(css: str) -> None:
+    for selectors in qualified_css_selector_groups(css):
+        for selector in selectors:
+            if not TASK3_DARK_ONLY_CLASS_PATTERN.search(selector):
+                continue
+            assert DARK_THEME_ATTRIBUTE_PATTERN.search(selector), (
+                f"Task 3 selector {selector!r} is outside dark scope"
+            )
 
 
 def parse_toast_icon_map(toast: str) -> dict[str, str]:
@@ -595,7 +754,24 @@ def parse_toast_icon_map(toast: str) -> dict[str, str]:
     return icon_map
 
 
+def assert_toast_renders_icon_map(toast: str) -> None:
+    html_templates = list(
+        re.finditer(
+            r"\bconst\s+html\s*=\s*`(?P<body>(?:\\.|[^`])*)`\s*;",
+            toast,
+            flags=re.DOTALL,
+        )
+    )
+    assert len(html_templates) == 1, f"expected one showToast HTML template, found {len(html_templates)}"
+    assert re.search(
+        r"<i\s+class=['\"]bi\s+\$\{iconMap\[type\]\}['\"]\s*>\s*</i>",
+        html_templates[0].group("body"),
+    ), "showToast HTML must consume iconMap[type]"
+
+
 def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
+    assert_task3_selectors_are_dark_scoped(css)
+
     for selectors, expected_declarations in EXPECTED_SHARED_RULES:
         assert css_rule_group_declarations(css, selectors) == expected_declarations
 
@@ -612,6 +788,7 @@ def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
     ) == EXPECTED_COARSE_POINTER_DECLARATIONS
 
     assert parse_toast_icon_map(toast) == EXPECTED_TOAST_ICON_MAP
+    assert_toast_renders_icon_map(toast)
 
 
 def mark_dark_theme_attribute(selector: str) -> str | None:
@@ -866,3 +1043,57 @@ def test_shared_contract_rejects_wrong_toast_status_mapping_hidden_by_comment():
 
     with pytest.raises(AssertionError):
         assert_shared_dark_theme_contract(read_text("static/css/custom.css"), toast)
+
+
+@pytest.mark.parametrize(
+    "selector",
+    (
+        '[data-bs-theme="light"] .surface-leather',
+        ".surface-leather",
+    ),
+    ids=("light", "unscoped"),
+)
+def test_shared_contract_boundary_rejects_additive_non_dark_task_selector(selector):
+    css = read_text("static/css/custom.css")
+    css += f"\n{selector} {{ background-size: cover; }}\n"
+
+    with pytest.raises(AssertionError, match="outside dark scope"):
+        assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_shared_contract_boundary_rejects_hardcoded_rendered_toast_icon():
+    toast = read_text("static/js/toast.js").replace(
+        "${iconMap[type]}",
+        "bi-question-circle-fill",
+    )
+
+    with pytest.raises(AssertionError, match="iconMap"):
+        assert_shared_dark_theme_contract(read_text("static/css/custom.css"), toast)
+
+
+def test_shared_contract_boundary_accepts_reordered_canonical_selector_group():
+    css = read_text("static/css/custom.css")
+    original_group = ",\n".join(SHARED_CONTROL_MOTION_SELECTORS)
+    reordered_group = ",\n".join(reversed(SHARED_CONTROL_MOTION_SELECTORS))
+    assert original_group in css
+
+    css = css.replace(original_group, reordered_group, 1)
+    assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_shared_contract_boundary_accepts_unrelated_quoted_css_content():
+    css = read_text("static/css/custom.css")
+    css += '\n.unrelated-content::before { content: "a;b{c}\\\"d"; }\n'
+
+    assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_shared_contract_boundary_accepts_unrelated_duplicate_fallback_declarations():
+    css = read_text("static/css/custom.css")
+    css += (
+        "\n.unrelated-fallback { "
+        "color: rgb(255 0 0); color: color(display-p3 1 0 0); "
+        "}\n"
+    )
+
+    assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
