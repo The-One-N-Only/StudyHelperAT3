@@ -27,31 +27,34 @@ function renderWorkspaceDetail() {
     const workspaceName = window.WORKSPACE_NAME || 'Workspace';
 
     pageRoot.innerHTML = `
-        <div class="container-fluid py-4">
+        <div class="container-fluid py-4 archive-page archive-page-workspace">
+            <span class="archive-illustration illustration-books" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-flourish" aria-hidden="true"></span>
+            <div class="archive-content">
             <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-4">
                 <div>
-                    <h3 class="mb-1">${escapeHtml(workspaceName)}</h3>
+                    <h3 class="archive-page-title mb-1">${escapeHtml(workspaceName)}</h3>
                     <p class="text-muted mb-0">Use the workspace page to take notes, preview your selected source, and manage your studio.</p>
                 </div>
                 <div class="d-flex gap-2">
-                    <button class="btn btn-outline-secondary btn-sm" id="renameWorkspaceBtn">Rename</button>
-                    <button class="btn btn-primary btn-sm" id="refreshWorkspaceBtn">Refresh</button>
+                    <button class="btn btn-outline-secondary btn-secondary-wood btn-sm" id="renameWorkspaceBtn">Rename</button>
+                    <button class="btn btn-primary btn-secondary-wood btn-sm" id="refreshWorkspaceBtn">Refresh</button>
                 </div>
             </div>
 
             <div class="row g-4">
                 <div class="col-lg-7">
-                    <div class="card h-100 workspace-main-panel">
+                    <div class="card h-100 surface-leather workspace-main-panel">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <div>
                                 <h5 class="mb-1">Workspace Notes</h5>
                                 <small class="text-muted">Draft ideas and explore the current source here.</small>
                             </div>
-                            <button class="btn btn-sm btn-outline-primary" id="saveQuickNoteBtn">Save quick note</button>
+                            <button class="btn btn-sm btn-outline-primary btn-secondary-wood" id="saveQuickNoteBtn">Save quick note</button>
                         </div>
                         <div class="card-body d-flex flex-column gap-4">
                             <div>
-                                <textarea id="quickNoteInput" class="form-control h-100" rows="10" placeholder="Write your thoughts, outline key ideas, or summarise the selected source..."></textarea>
+                                <textarea id="quickNoteInput" class="form-control quick-note-input h-100" rows="10" placeholder="Write your thoughts, outline key ideas, or summarise the selected source..."></textarea>
                             </div>
                             <div>
                                 <div class="d-flex align-items-center justify-content-between mb-2">
@@ -59,15 +62,15 @@ function renderWorkspaceDetail() {
                                         <h6 class="mb-0">Selected source preview</h6>
                                         <small class="text-muted">Choose a source from the studio and review it inline.</small>
                                     </div>
-                                    <span id="sourceBadge" class="badge bg-secondary">${currentWorkspaceItems.length} sources</span>
+                                    <span id="sourceBadge" class="badge bg-secondary archive-count-badge">${currentWorkspaceItems.length} sources</span>
                                 </div>
-                                <div id="selectedSourceViewer" class="border rounded p-2 bg-body-secondary" style="min-height: 320px;"></div>
+                                <div id="selectedSourceViewer" class="border rounded p-2 bg-body-secondary source-preview-shell" style="min-height: 320px;"></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="col-lg-5">
-                    <div class="card h-100 workspace-right-panel resizable-panel">
+                    <div class="card h-100 surface-leather workspace-right-panel resizable-panel">
                         <div class="card-body d-flex flex-column h-100">
                             <div class="d-flex align-items-center justify-content-between mb-3">
                                 <div>
@@ -91,17 +94,17 @@ function renderWorkspaceDetail() {
                                     <div class="d-flex flex-column h-100">
                                         <div class="mb-3 d-flex align-items-center justify-content-between">
                                             <h6 class="mb-0">Past notes</h6>
-                                            <button class="btn btn-sm btn-outline-primary" id="createNoteBtn">Add note</button>
+                                            <button class="btn btn-sm btn-outline-primary btn-secondary-wood" id="createNoteBtn">Add note</button>
                                         </div>
                                         <div id="notesListContainer" class="overflow-auto"></div>
                                     </div>
                                 </div>
                                 <div class="tab-pane fade h-100" id="studio-chat" role="tabpanel">
                                     <div class="d-flex flex-column h-100">
-                                        <div id="alexanderChatMessages" class="border rounded p-3 mb-3 overflow-auto" style="min-height: 220px;"></div>
+                                        <div id="alexanderChatMessages" class="border rounded p-3 mb-3 overflow-auto chat-messages" style="min-height: 220px;"></div>
                                         <div class="input-group">
-                                            <input id="alexanderChatInput" type="text" class="form-control" placeholder="Ask Alexander a question...">
-                                            <button class="btn btn-primary" id="alexanderSendBtn" type="button">Send</button>
+                                            <input id="alexanderChatInput" type="text" class="form-control chat-input" placeholder="Ask Alexander a question...">
+                                            <button class="btn btn-primary btn-brass" id="alexanderSendBtn" type="button">Send</button>
                                         </div>
                                         <small class="text-muted mt-2">Alexander is a local placeholder until your AI key is configured.</small>
                                     </div>
@@ -111,7 +114,8 @@ function renderWorkspaceDetail() {
                     </div>
                 </div>
             </div>
-            <div id="noteEditorModal"></div>
+                <div id="noteEditorModal"></div>
+            </div>
         </div>
     `;
 
@@ -184,14 +188,14 @@ function renderSourcesList() {
     currentWorkspaceItems.forEach((item) => {
         const itemButton = document.createElement('button');
         itemButton.type = 'button';
-        itemButton.className = `list-group-item list-group-item-action text-start ${item.id === selectedWorkspaceItemId ? 'active' : ''}`;
+        itemButton.className = `list-group-item list-group-item-action workspace-source-item text-start ${item.id === selectedWorkspaceItemId ? 'active' : ''}`;
         itemButton.innerHTML = `
             <div class="d-flex w-100 justify-content-between">
                 <div class="pe-2">
                     <h6 class="mb-1 text-truncate">${escapeHtml(item.title)}</h6>
                     <p class="mb-0 text-muted small text-truncate">${escapeHtml(item.summary || '')}</p>
                 </div>
-                <small class="text-muted align-self-start">${escapeHtml(item.source_name)}</small>
+                <small class="text-muted workspace-source-name align-self-start">${escapeHtml(item.source_name)}</small>
             </div>
         `;
         itemButton.addEventListener('click', () => {
@@ -226,10 +230,10 @@ function renderSelectedSource() {
                     <h5 class="mb-1 text-truncate">${escapeHtml(item.title)}</h5>
                     <p class="text-muted small mb-0">${escapeHtml(item.source_name)} • ${escapeHtml(item.source_url || '')}</p>
                 </div>
-                ${item.source_url ? `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm">Open</a>` : ''}
+                ${item.source_url ? `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-secondary-wood btn-sm">Open</a>` : ''}
             </div>
         </div>
-        <div id="selectedSourcePreview" class="rounded overflow-hidden border bg-white" style="min-height: 320px;"></div>
+        <div id="selectedSourcePreview" class="rounded overflow-hidden border bg-white source-preview-content" style="min-height: 320px;"></div>
     `;
 
     renderSelectedSourcePreview(item);
@@ -303,7 +307,7 @@ function renderNotesTab(notes) {
 
     notes.forEach((note) => {
         const noteBtn = document.createElement('button');
-        noteBtn.className = 'btn btn-sm btn-outline-secondary w-100 text-start mb-2 text-truncate';
+        noteBtn.className = 'btn btn-sm btn-outline-secondary btn-secondary-wood note-item w-100 text-start mb-2 text-truncate';
         noteBtn.dataset.id = note.id;
         noteBtn.title = note.title;
         noteBtn.textContent = '📝 ' + note.title;
@@ -475,7 +479,7 @@ function renderAlexanderMessages() {
     container.innerHTML = '';
     alexanderMessages.forEach((message) => {
         const messageEl = document.createElement('div');
-        messageEl.className = `mb-3 p-3 rounded ${message.role === 'agent' ? 'bg-light text-dark' : 'bg-primary text-white'}`;
+        messageEl.className = `mb-3 p-3 rounded chat-row chat-message ${message.role === 'agent' ? 'bg-light text-dark chat-row-agent chat-message-agent chat-avatar' : 'bg-primary text-white chat-row-user chat-message-user'}`;
         messageEl.innerHTML = `<strong>${message.role === 'agent' ? 'Alexander' : 'You'}</strong><div class="mt-1">${escapeHtml(message.text)}</div>`;
         container.appendChild(messageEl);
     });

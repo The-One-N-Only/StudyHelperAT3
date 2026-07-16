@@ -3236,3 +3236,46 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
     assert css_rule_group_declarations(mobile, ('[data-bs-theme="dark"] .archive-page-upload > .illustration-compass',)) == {"height": "120px", "left": "-2rem", "width": "120px"}
     assert css.index("@media (max-width: 575.98px)") > css.index('[data-bs-theme="dark"] .archive-page-upload .illustration-compass')
     assert_task_selectors_are_dark_scoped(css, ("archive-page-upload", "upload-content", "upload-panel", "upload-actions", "file-list-panel", "file-icon", "file-size"), frozenset(), "Task 7", "a dark-only upload rule")
+
+
+def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
+    workspace = read_text("static/js/pages/workspace.js")
+    css = read_text("static/css/custom.css")
+    required = (
+        "archive-page archive-page-workspace",
+        "archive-page-title",
+        "archive-illustration illustration-books",
+        "archive-illustration illustration-flourish",
+        "surface-leather workspace-main-panel",
+        "surface-leather workspace-right-panel",
+        "btn-secondary-wood",
+        "archive-count-badge",
+        "quick-note-input",
+        "source-preview-shell",
+        "workspace-source-item",
+        "workspace-source-name",
+        "note-item",
+        "chat-messages",
+        "chat-row-agent",
+        "chat-row-user",
+        "chat-message-agent",
+        "chat-message-user",
+        "chat-avatar",
+        "btn-brass",
+    )
+    for marker in required:
+        assert marker in workspace
+
+    for preserved in (
+        "workspace-tabs nav nav-pills",
+        "loadWorkspaceDetails()",
+        "renderSelectedSource()",
+        "loadWorkspaceNotes()",
+        "sendAlexanderMessage",
+        "studyHelperAI.chat(value)",
+    ):
+        assert preserved in workspace
+
+    user_bubble_background = "#553D1F"
+    assert "rgb(138 102 53 / 0.42)" in css
+    assert contrast_ratio("#E7E1DA", user_bubble_background) >= 4.5
