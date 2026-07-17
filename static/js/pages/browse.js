@@ -116,22 +116,28 @@ export function initBrowse(root) {
         </div>
     `;
  
-    loadWhitelistDomains().then(() => {
-        renderWhitelistCheckboxes();
-    });
- 
     registerEvents();
     renderSidebar();
-    restoreBrowseState();
 
-    const initialQuery = getInitialBrowseQuery();
-    if (initialQuery) {
-        const searchInput = pageRoot.querySelector('#searchInput');
-        if (searchInput) {
-            searchInput.value = initialQuery;
+    const runInitialSearch = () => {
+        restoreBrowseState();
+
+        const initialQuery = getInitialBrowseQuery();
+        if (initialQuery) {
+            const searchInput = pageRoot.querySelector('#searchInput');
+            if (searchInput) {
+                searchInput.value = initialQuery;
+            }
+            performSearch();
         }
-        performSearch();
-    }
+    };
+
+    loadWhitelistDomains().then(() => {
+        renderWhitelistCheckboxes();
+        runInitialSearch();
+    }).catch(() => {
+        runInitialSearch();
+    });
 }
 function registerEvents() {
     const searchInput = pageRoot.querySelector('#searchInput');
