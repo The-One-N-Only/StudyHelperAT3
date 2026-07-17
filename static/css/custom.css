@@ -454,7 +454,8 @@ p {
 
 :root:not([data-bs-theme="dark"]) .form-check-input {
     background-color: var(--paper-100);
-    border-color: hsl(33 30% 55% / 0.60);
+    /* Opaque ink keeps the unchecked boundary above WCAG non-text 3:1. */
+    border-color: var(--ink-500);
 }
 
 :root:not([data-bs-theme="dark"]) .form-check-input:checked {

@@ -1,3 +1,4 @@
+from colorsys import hls_to_rgb
 from hashlib import sha256
 from pathlib import Path
 import re
@@ -469,11 +470,24 @@ def assert_light_dropdown_open_state_contract(css: str) -> None:
 
 
 def contrast_ratio(foreground: str, background: str) -> float:
-    def relative_luminance(hex_color: str) -> float:
-        channels = [
-            int(hex_color[index : index + 2], 16) / 255
-            for index in (1, 3, 5)
-        ]
+    return contrast_ratio_from_channels(
+        hex_color_channels(foreground),
+        hex_color_channels(background),
+    )
+
+
+def hex_color_channels(hex_color: str) -> tuple[float, float, float]:
+    return tuple(
+        int(hex_color[index : index + 2], 16) / 255
+        for index in (1, 3, 5)
+    )
+
+
+def contrast_ratio_from_channels(
+    foreground: tuple[float, float, float],
+    background: tuple[float, float, float],
+) -> float:
+    def relative_luminance(channels: tuple[float, float, float]) -> float:
         linear = [
             channel / 12.92
             if channel <= 0.04045
@@ -489,6 +503,51 @@ def contrast_ratio(foreground: str, background: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
+def css_color_contrast_ratio(
+    foreground: str,
+    background: str,
+    tokens: dict[str, str],
+) -> float:
+    background_channels = hex_color_channels(tokens.get(background, background))
+    if foreground.startswith("var("):
+        foreground_channels = hex_color_channels(tokens[foreground[4:-1]])
+        alpha = 1.0
+    else:
+        match = re.fullmatch(
+            r"hsl\(\s*([0-9.]+)\s+([0-9.]+)%\s+([0-9.]+)%\s*/\s*([0-9.]+)\s*\)",
+            foreground,
+        )
+        assert match is not None, f"unsupported test color: {foreground}"
+        hue, saturation, lightness, alpha = map(float, match.groups())
+        foreground_channels = hls_to_rgb(
+            hue / 360,
+            lightness / 100,
+            saturation / 100,
+        )
+
+    composite = tuple(
+        foreground_channel * alpha + background_channel * (1 - alpha)
+        for foreground_channel, background_channel in zip(
+            foreground_channels,
+            background_channels,
+        )
+    )
+    return contrast_ratio_from_channels(composite, background_channels)
+
+
+def assert_light_unchecked_form_check_contrast(css: str) -> None:
+    border = css_rule_group_declarations(
+        light_css_from(css),
+        (f"{LIGHT_GUARD} .form-check-input",),
+    )["border-color"]
+    ratio = css_color_contrast_ratio(
+        border,
+        EXPECTED_LIGHT_ROOT_DECLARATIONS["--paper-100"],
+        EXPECTED_LIGHT_ROOT_DECLARATIONS,
+    )
+    assert ratio >= 3, f"unchecked form-check boundary contrast is {ratio:.2f}:1"
+
+
 def assert_light_bootstrap_owned_state_contract(css: str) -> None:
     light = light_css_from(css)
     assert css_rule_group_declarations(light, (LIGHT_GUARD,)) == {
@@ -501,7 +560,7 @@ def assert_light_bootstrap_owned_state_contract(css: str) -> None:
         (f"{LIGHT_GUARD} .form-check-input",),
     ) == {
         "background-color": "var(--paper-100)",
-        "border-color": "hsl(33 30% 55% / 0.60)",
+        "border-color": "var(--ink-500)",
     }
     assert css_rule_group_declarations(
         light,
@@ -778,6 +837,7 @@ def write_mutated_png(
     target: Path,
     *,
     header: bytes | None = None,
+    palette: bytes | None = None,
     scanlines: bytes | None = None,
 ) -> None:
     chunks = png_chunks(source.read_bytes())
@@ -787,6 +847,8 @@ def write_mutated_png(
         payload = original_payload
         if chunk_type == b"IHDR" and header is not None:
             payload = header
+        elif chunk_type == b"PLTE" and palette is not None:
+            payload = palette
         elif chunk_type == b"IDAT" and scanlines is not None:
             if wrote_image_data:
                 continue
@@ -807,6 +869,52 @@ def png_header_and_scanlines(path: Path) -> tuple[bytes, bytes]:
         payload for chunk_type, payload in chunks if chunk_type == b"IDAT"
     )
     return header, zlib.decompress(image_data)
+
+
+def paeth_predictor(left: int, above: int, upper_left: int) -> int:
+    estimate = left + above - upper_left
+    left_distance = abs(estimate - left)
+    above_distance = abs(estimate - above)
+    upper_left_distance = abs(estimate - upper_left)
+    if left_distance <= above_distance and left_distance <= upper_left_distance:
+        return left
+    if above_distance <= upper_left_distance:
+        return above
+    return upper_left
+
+
+def unfilter_indexed_png_scanlines(
+    scanlines: bytes,
+    width: int,
+    height: int,
+) -> bytes:
+    row_length = width + 1
+    previous = bytearray(width)
+    decoded = bytearray()
+    for row_index in range(height):
+        row_start = row_index * row_length
+        filter_type = scanlines[row_start]
+        filtered = scanlines[row_start + 1 : row_start + row_length]
+        if filter_type == 0:
+            current = bytearray(filtered)
+        else:
+            current = bytearray(width)
+            for column, value in enumerate(filtered):
+                left = current[column - 1] if column else 0
+                above = previous[column]
+                upper_left = previous[column - 1] if column else 0
+                if filter_type == 1:
+                    predictor = left
+                elif filter_type == 2:
+                    predictor = above
+                elif filter_type == 3:
+                    predictor = (left + above) // 2
+                else:
+                    predictor = paeth_predictor(left, above, upper_left)
+                current[column] = (value + predictor) & 0xFF
+        decoded.extend(current)
+        previous = current
+    return bytes(decoded)
 
 
 def read_png_dimensions(path: Path) -> tuple[int, int]:
@@ -876,6 +984,11 @@ def read_png_dimensions(path: Path) -> tuple[int, int]:
     filter_bytes = scanlines[::scanline_length]
     assert all(filter_byte <= 4 for filter_byte in filter_bytes), (
         f"{path.name} has an out-of-range PNG filter byte"
+    )
+    decoded_indices = unfilter_indexed_png_scanlines(scanlines, width, height)
+    palette_entries = len(palette) // 3
+    assert all(index < palette_entries for index in decoded_indices), (
+        f"{path.name} has a decoded palette index outside PLTE"
     )
     return width, height
 
@@ -969,6 +1082,28 @@ def test_png_validator_rejects_out_of_range_filter_bytes(tmp_path):
     write_mutated_png(source, mutated, scanlines=bytes(invalid_filter))
 
     with pytest.raises(AssertionError, match="filter byte"):
+        read_png_dimensions(mutated)
+
+
+def test_png_validator_rejects_decoded_index_outside_palette(tmp_path):
+    source = ROOT / "static" / "img" / "textures" / LIGHT_TEXTURE_NAMES[0]
+    chunks = png_chunks(source.read_bytes())
+    header = next(payload for chunk_type, payload in chunks if chunk_type == b"IHDR")
+    palette = next(payload for chunk_type, payload in chunks if chunk_type == b"PLTE")
+    width, height = struct.unpack(">II", header[:8])
+    scanlines = bytearray((width + 1) * height)
+    scanlines[0] = 1
+    scanlines[1] = 1
+    scanlines[2] = 1
+    mutated = tmp_path / "palette-index.png"
+    write_mutated_png(
+        source,
+        mutated,
+        palette=palette[:6],
+        scanlines=bytes(scanlines),
+    )
+
+    with pytest.raises(AssertionError, match="palette index"):
         read_png_dimensions(mutated)
 
 
@@ -1191,6 +1326,29 @@ def test_light_bootstrap_owned_runtime_states_use_old_book_palette():
     assert 'class="btn btn-secondary" id="cancelNoteBtn"' in workspace
     assert 'class="btn-close" id="closeModalBtn"' in workspace
     assert 'class="btn-close" data-bs-dismiss="alert"' in layout
+
+
+def test_light_unchecked_form_check_boundary_meets_non_text_contrast():
+    translucent_border = "hsl(33 30% 55% / 0.60)"
+    paper = EXPECTED_LIGHT_ROOT_DECLARATIONS["--paper-100"]
+    old_ratio = css_color_contrast_ratio(
+        translucent_border,
+        paper,
+        EXPECTED_LIGHT_ROOT_DECLARATIONS,
+    )
+    assert old_ratio == pytest.approx(1.52, abs=0.02)
+
+    css = read_text("static/css/custom.css")
+    assert_light_unchecked_form_check_contrast(css)
+    assert light_css_from(css).count("border-color: var(--ink-500);") == 1
+    with pytest.raises(AssertionError, match="boundary contrast"):
+        assert_light_unchecked_form_check_contrast(
+            css.replace(
+                "border-color: var(--ink-500);",
+                f"border-color: {translucent_border};",
+                1,
+            )
+        )
 
 
 @pytest.mark.parametrize(
