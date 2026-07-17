@@ -24,6 +24,26 @@ SVG_NAMES = (
 )
 DARK_ROOT_SELECTOR = '[data-bs-theme="dark"]'
 DARK_BODY_SELECTOR = '[data-bs-theme="dark"] body'
+LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
+FORCED_COLORS_LIGHT_FOCUS_SELECTORS = (
+    f"{LIGHT_GUARD} .archive-wordmark:focus-visible",
+    f"{LIGHT_GUARD} .icon-button:focus-visible",
+    f"{LIGHT_GUARD} .btn:focus-visible",
+    f"{LIGHT_GUARD} .btn-close:focus-visible",
+    f"{LIGHT_GUARD} .form-check-input:focus",
+    f"{LIGHT_GUARD} .form-check-input:focus-visible",
+    f"{LIGHT_GUARD} .form-control:focus",
+    f"{LIGHT_GUARD} .form-select:focus",
+    f"{LIGHT_GUARD} .archive-dropdown:focus-visible",
+    f"{LIGHT_GUARD} .navbar-brand:focus-visible",
+    f"{LIGHT_GUARD} .workspace-tabs .nav-link:focus-visible",
+    f"{LIGHT_GUARD} .workspace-source-item:focus-visible",
+    f"{LIGHT_GUARD} .nav-sidebar .list-group-item:focus-visible",
+    f"{LIGHT_GUARD} input:focus-visible",
+    f"{LIGHT_GUARD} select:focus-visible",
+    f"{LIGHT_GUARD} textarea:focus-visible",
+    f"{LIGHT_GUARD} a:focus-visible",
+)
 DARK_THEME_ATTRIBUTE_PATTERN = re.compile(
     r'''\[\s*data-bs-theme\s*=\s*(?:"dark"|'dark'|dark)\s*\]'''
 )
@@ -151,6 +171,81 @@ TASK3_DARK_ONLY_CLASSES = (
     "illustration-open-book",
     "illustration-flourish",
 )
+TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
+    {
+        (".surface-leather",),
+        (".btn-secondary-wood",),
+        (f"{LIGHT_GUARD} .btn-secondary-wood",),
+        (
+            f"{LIGHT_GUARD} .btn-secondary-wood:hover",
+            f"{LIGHT_GUARD} .btn-secondary-wood:active",
+        ),
+        (
+            f"{LIGHT_GUARD} button",
+            f"{LIGHT_GUARD} .btn",
+            f"{LIGHT_GUARD} input",
+            f"{LIGHT_GUARD} select",
+            f"{LIGHT_GUARD} textarea",
+            f"{LIGHT_GUARD} .btn-secondary-wood",
+            f"{LIGHT_GUARD} .btn-brass",
+            f"{LIGHT_GUARD} .btn-ghost",
+            f"{LIGHT_GUARD} .icon-button",
+            f"{LIGHT_GUARD} .archive-dropdown",
+            f"{LIGHT_GUARD} .form-control",
+            f"{LIGHT_GUARD} .form-select",
+            f"{LIGHT_GUARD} .navbar-brand",
+        ),
+        (
+            f"{LIGHT_GUARD} .btn-brass",
+            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+        ),
+        (f"{LIGHT_GUARD} .btn-ghost",),
+        (f"{LIGHT_GUARD} .btn-ghost:hover",),
+        (f"{LIGHT_GUARD} .icon-button",),
+        (f"{LIGHT_GUARD} .icon-button:hover",),
+        (f"{LIGHT_GUARD} .icon-button-danger:hover",),
+        (f'{LIGHT_GUARD} .icon-button[aria-pressed="true"]',),
+        (f"{LIGHT_GUARD} .icon-button:focus-visible",),
+        (
+            f"{LIGHT_GUARD} .icon-button .bi",
+            f"{LIGHT_GUARD} .icon-button .text-muted",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-dropdown",
+            f"{LIGHT_GUARD} .form-select",
+        ),
+        (
+            f"{LIGHT_GUARD} .btn:focus-visible",
+            f"{LIGHT_GUARD} .icon-button:focus-visible",
+            f"{LIGHT_GUARD} .archive-dropdown:focus-visible",
+            f"{LIGHT_GUARD} .navbar-brand:focus-visible",
+        ),
+        (f"{LIGHT_GUARD} .archive-count-badge",),
+        (f"{LIGHT_GUARD} .archive-category-badge",),
+        (f"{LIGHT_GUARD} .archive-illustration",),
+        (f"{LIGHT_GUARD} .illustration-compass",),
+        (f"{LIGHT_GUARD} .illustration-sextant",),
+        (f"{LIGHT_GUARD} .illustration-books",),
+        (f"{LIGHT_GUARD} .illustration-open-book",),
+        (f"{LIGHT_GUARD} .illustration-flourish",),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+        ),
+        (f"{LIGHT_GUARD} .archive-page-upload .illustration-compass",),
+        (f"{LIGHT_GUARD} .archive-page-upload .illustration-sextant",),
+        (f"{LIGHT_GUARD} .archive-page-upload > .illustration-flourish",),
+        (f"{LIGHT_GUARD} .archive-page-upload > .illustration-sextant",),
+        (f"{LIGHT_GUARD} .archive-page-upload > .illustration-compass",),
+        FORCED_COLORS_LIGHT_FOCUS_SELECTORS,
+    }
+)
 TASK4_NAVIGATION_CLASSES = (
     "archive-navbar",
     "archive-wordmark",
@@ -166,6 +261,19 @@ TASK4_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
         (".nav-sidebar-overlay.d-none",),
         (".nav-sidebar",),
         (".nav-sidebar .list-group-item",),
+        (f"{LIGHT_GUARD} .archive-navbar",),
+        (f"{LIGHT_GUARD} .archive-wordmark",),
+        (f"{LIGHT_GUARD} .archive-wordmark:hover",),
+        (f"{LIGHT_GUARD} .archive-wordmark:focus-visible",),
+        (f"{LIGHT_GUARD} .archive-navbar .navbar-text",),
+        (f"{LIGHT_GUARD} .nav-sidebar-overlay",),
+        (f"{LIGHT_GUARD} .nav-sidebar",),
+        (f"{LIGHT_GUARD} .nav-sidebar .list-group-item",),
+        (
+            f"{LIGHT_GUARD} .nav-sidebar .list-group-item:hover",
+            f"{LIGHT_GUARD} .nav-sidebar .list-group-item:focus-visible",
+        ),
+        FORCED_COLORS_LIGHT_FOCUS_SELECTORS,
     }
 )
 TASK5_DASHBOARD_CLASSES = (
@@ -182,6 +290,34 @@ TASK5_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
         (".workspace-card",),
         (".workspace-card:hover",),
         (".workspace-card-add",),
+        (f"{LIGHT_GUARD} .archive-page-title",),
+        (f"{LIGHT_GUARD} .home-search-group",),
+        (f"{LIGHT_GUARD} .workspace-card",),
+        (
+            f"{LIGHT_GUARD} .workspace-card:not(.workspace-card-add):hover",
+            f"{LIGHT_GUARD} .workspace-card:not(.workspace-card-add):focus-within",
+        ),
+        (f"{LIGHT_GUARD} .workspace-card-add",),
+        (f"{LIGHT_GUARD} .workspace-card-add h5",),
+        (
+            f"{LIGHT_GUARD} .workspace-card-add:hover",
+            f"{LIGHT_GUARD} .workspace-card-add:focus-within",
+        ),
+        (f"{LIGHT_GUARD} .archive-page.archive-page-browse",),
+        (f"{LIGHT_GUARD} .archive-page",),
+        (f"{LIGHT_GUARD} .archive-content",),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+        ),
+        (f"{LIGHT_GUARD} .archive-page .archive-page-title",),
+        (f"{LIGHT_GUARD} .archive-page-home .workspace-card",),
     }
 )
 EXPECTED_DARK_ICON_COLORS = {
@@ -1241,6 +1377,24 @@ def css_block_body(css: str, header: str) -> str:
     return matches[0]
 
 
+def css_block_body_containing_selector(css: str, header: str, selector: str) -> str:
+    expected_header = " ".join(header.split())
+    matches = []
+    for actual_header, body in css_rule_blocks(css):
+        if " ".join(actual_header.split()) != expected_header:
+            continue
+        if any(
+            selector in selector_group(nested_header)
+            for nested_header, _ in css_rule_blocks(body)
+            if not nested_header.startswith("@")
+        ):
+            matches.append(body)
+    assert len(matches) == 1, (
+        f"expected one {header!r} block containing {selector!r}, found {len(matches)}"
+    )
+    return matches[0]
+
+
 def expand_nested_selector(selector: str, parent_selector: str | None) -> str:
     result = []
     index = 0
@@ -1379,28 +1533,13 @@ def strip_trailing_static_dom_states(selector: str) -> str:
 
 
 def assert_task3_selectors_are_dark_scoped(css: str) -> None:
-    for selector in qualified_css_selectors(css):
-        if not any(name in css_unescape(selector) for name in TASK3_DARK_ONLY_CLASSES):
-            continue
-        semantic_source = strip_trailing_static_dom_states(selector)
-        try:
-            semantic_selectors = soupsieve.compile(semantic_source).selectors.selectors
-        except soupsieve.SelectorSyntaxError as error:
-            raise AssertionError(
-                f"unsupported relevant Task 3 selector: {selector!r}"
-            ) from error
-
-        for semantic_selector in semantic_selectors:
-            if isinstance(semantic_selector, SelectorNull):
-                raise AssertionError(
-                    f"unsupported relevant Task 3 selector: {selector!r}"
-                )
-            if not semantic_selector_targets_task3_class(semantic_selector):
-                continue
-            assert semantic_selector_has_dark_ancestry(semantic_selector), (
-                f"Task 3 selector {selector!r} is outside dark scope: "
-                "lacks positive dark ancestry/root"
-            )
+    assert_task_selectors_are_dark_scoped(
+        css,
+        TASK3_DARK_ONLY_CLASSES,
+        TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS,
+        "Task 3",
+        "an exact Old Book light-theme rule",
+    )
 
 
 def assert_task_selectors_are_dark_scoped(
@@ -1410,6 +1549,7 @@ def assert_task_selectors_are_dark_scoped(
     task_label: str,
     neutral_rule_description: str,
 ) -> None:
+    seen_allowed_groups: dict[tuple[str, ...], int] = {}
     for selectors in qualified_css_selector_groups(css):
         relevant_selectors = tuple(
             selector
@@ -1420,7 +1560,24 @@ def assert_task_selectors_are_dark_scoped(
             continue
 
         normalized_group = tuple(" ".join(selector.split()) for selector in selectors)
-        if normalized_group in allowed_theme_neutral_groups:
+        approved_groups = tuple(
+            approved_group
+            for approved_group in allowed_theme_neutral_groups
+            if len(approved_group) == len(normalized_group)
+            and frozenset(approved_group) == frozenset(normalized_group)
+        )
+        assert len(approved_groups) <= 1, (
+            f"ambiguous approved {task_label} selector group: {normalized_group!r}"
+        )
+        if approved_groups:
+            approved_group = approved_groups[0]
+            seen_allowed_groups[approved_group] = (
+                seen_allowed_groups.get(approved_group, 0) + 1
+            )
+            assert seen_allowed_groups[approved_group] == 1, (
+                f"duplicate approved {task_label} selector group outside dark scope: "
+                f"{normalized_group!r}"
+            )
             continue
 
         for selector in relevant_selectors:
@@ -1719,7 +1876,11 @@ def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
     for selectors, expected_declarations in EXPECTED_SHARED_RULES:
         assert css_rule_group_declarations(css, selectors) == expected_declarations
 
-    reduced_motion = css_block_body(css, "@media (prefers-reduced-motion: reduce)")
+    reduced_motion = css_block_body_containing_selector(
+        css,
+        "@media (prefers-reduced-motion: reduce)",
+        REDUCED_MOTION_SELECTORS[0],
+    )
     assert (
         css_rule_group_declarations(reduced_motion, REDUCED_MOTION_SELECTORS)
         == EXPECTED_REDUCED_MOTION_DECLARATIONS
@@ -1937,7 +2098,11 @@ def test_shared_dark_theme_dropdowns_animate_open_and_close():
 
 def test_reduced_motion_collapses_shared_transition_delay_and_duration():
     css = read_text("static/css/custom.css")
-    media = css_block_body(css, "@media (prefers-reduced-motion: reduce)")
+    media = css_block_body_containing_selector(
+        css,
+        "@media (prefers-reduced-motion: reduce)",
+        REDUCED_MOTION_SELECTORS[0],
+    )
     assert (
         css_rule_group_declarations(media, REDUCED_MOTION_SELECTORS)
         == EXPECTED_REDUCED_MOTION_DECLARATIONS
@@ -1968,11 +2133,14 @@ def test_shared_contract_rejects_moved_material_declaration():
 
 
 def test_shared_contract_rejects_wrong_material_declaration():
-    css = read_text("static/css/custom.css").replace(
+    css = read_text("static/css/custom.css")
+    dark_start = css.index("/* Candlelit Archive: dark theme foundation */")
+    dark_css = css[dark_start:].replace(
         "background-blend-mode: multiply;",
         "background-blend-mode: screen;",
         1,
     )
+    css = css[:dark_start] + dark_css
 
     with pytest.raises(AssertionError):
         assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
@@ -2018,6 +2186,20 @@ def test_shared_contract_boundary_accepts_reordered_canonical_selector_group():
     css = read_text("static/css/custom.css")
     original_group = ",\n".join(SHARED_CONTROL_MOTION_SELECTORS)
     reordered_group = ",\n".join(reversed(SHARED_CONTROL_MOTION_SELECTORS))
+    assert original_group in css
+
+    css = css.replace(original_group, reordered_group, 1)
+    assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_shared_contract_boundary_accepts_reordered_approved_light_selector_group():
+    css = read_text("static/css/custom.css")
+    selectors = (
+        f"{LIGHT_GUARD} .btn-brass",
+        f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+    )
+    original_group = ",\n".join(selectors)
+    reordered_group = ",\n".join(reversed(selectors))
     assert original_group in css
 
     css = css.replace(original_group, reordered_group, 1)
@@ -2846,6 +3028,52 @@ TASK6_DARK_ONLY_CLASSES = (
     "save-icon-light",
     "save-icon-dark",
 )
+TASK6_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
+    {
+        (f"{LIGHT_GUARD} .archive-page.archive-page-browse",),
+        (f"{LIGHT_GUARD} .browse-search-shell",),
+        (
+            f"{LIGHT_GUARD} .ai-overview-panel",
+            f"{LIGHT_GUARD} .source-summary-panel",
+        ),
+        (
+            f"{LIGHT_GUARD} .ai-overview-panel .card-title",
+            f"{LIGHT_GUARD} .source-summary-panel .card-title",
+        ),
+        (f"{LIGHT_GUARD} .ai-overview-panel .card-body",),
+        (f"{LIGHT_GUARD} .source-summary-panel .list-group-item",),
+        (f"{LIGHT_GUARD} .result-card",),
+        (
+            f"{LIGHT_GUARD} .result-card:hover",
+            f"{LIGHT_GUARD} .result-card:focus-within",
+        ),
+        (f"{LIGHT_GUARD} .result-card img",),
+        (f"{LIGHT_GUARD} .result-card .card-title",),
+        (f"{LIGHT_GUARD} .result-source",),
+        (f"{LIGHT_GUARD} .result-card .card-text",),
+        (f"{LIGHT_GUARD} .result-card-actions",),
+        (f"{LIGHT_GUARD} .result-card .save-btn",),
+        (f"{LIGHT_GUARD} .result-card .save-btn:hover",),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+        ),
+        (f"{LIGHT_GUARD} .archive-page-browse",),
+        (f"{LIGHT_GUARD} .browse-results-layout",),
+        (f"{LIGHT_GUARD} #sidebarContainer.browse-sidebar",),
+        (f"{LIGHT_GUARD} .browse-results-pane",),
+        (
+            f"{LIGHT_GUARD} .browse-results-row .col",
+            f"{LIGHT_GUARD} .browse-results-row .result-card",
+        ),
+    }
+)
 
 
 def card_runtime(source: str | None = None) -> dict:
@@ -2905,7 +3133,7 @@ def assert_browse_css_contract(css: str) -> None:
     assert_task_selectors_are_dark_scoped(
         css,
         TASK6_DARK_ONLY_CLASSES,
-        frozenset(),
+        TASK6_ALLOWED_LIGHT_SELECTOR_GROUPS,
         "Task 6",
         "a dark-only browse/result rule",
     )
@@ -3262,7 +3490,32 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
     mobile = css_block_body(css, "@media (max-width: 575.98px)")
     assert css_rule_group_declarations(mobile, ('[data-bs-theme="dark"] .archive-page-upload > .illustration-compass',)) == {"height": "120px", "left": "-2rem", "width": "120px"}
     assert css.index("@media (max-width: 575.98px)") > css.index('[data-bs-theme="dark"] .archive-page-upload .illustration-compass')
-    assert_task_selectors_are_dark_scoped(css, ("archive-page-upload", "upload-content", "upload-panel", "upload-actions", "file-list-panel", "file-icon", "file-size"), frozenset(), "Task 7", "a dark-only upload rule")
+    assert_task_selectors_are_dark_scoped(
+        css,
+        ("archive-page-upload", "upload-content", "upload-panel", "upload-actions", "file-list-panel", "file-icon", "file-size"),
+        frozenset(
+            {
+                (f"{LIGHT_GUARD} .upload-content",),
+                (f"{LIGHT_GUARD} .upload-panel",),
+                (f"{LIGHT_GUARD} .upload-actions",),
+                (f"{LIGHT_GUARD} .file-list-panel",),
+                (
+                    f"{LIGHT_GUARD} .file-list-panel .card-header",
+                    f"{LIGHT_GUARD} .file-list-panel .list-group-item",
+                ),
+                (f"{LIGHT_GUARD} .file-list-panel .flex-grow-1",),
+                (f"{LIGHT_GUARD} .file-icon",),
+                (f"{LIGHT_GUARD} .file-size",),
+                (f"{LIGHT_GUARD} .archive-page-upload .illustration-compass",),
+                (f"{LIGHT_GUARD} .archive-page-upload .illustration-sextant",),
+                (f"{LIGHT_GUARD} .archive-page-upload > .illustration-flourish",),
+                (f"{LIGHT_GUARD} .archive-page-upload > .illustration-sextant",),
+                (f"{LIGHT_GUARD} .archive-page-upload > .illustration-compass",),
+            }
+        ),
+        "Task 7",
+        "a dark-only upload rule",
+    )
 
 
 def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
@@ -3297,12 +3550,65 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     for selectors, expected in exact_rules:
         assert css_rule_group_declarations(css, selectors) == expected
 
-    assert_task_selectors_are_dark_scoped(css, (
-        "archive-page-workspace", "workspace-main-panel", "workspace-right-panel", "quick-note-input",
-        "source-preview-shell", "source-preview-content", "workspace-tabs", "workspace-source-item",
-        "workspace-source-name", "note-item", "note-icon-light", "note-icon-dark", "chat-messages",
-        "chat-row-agent", "chat-row-user",
-    ), frozenset({(".workspace-tabs .nav-link",)}), "Task 8", "the existing neutral tab-radius rule")
+    assert_task_selectors_are_dark_scoped(
+        css,
+        (
+            "archive-page-workspace", "workspace-main-panel", "workspace-right-panel",
+            "quick-note-input", "source-preview-shell", "source-preview-content",
+            "workspace-tabs", "workspace-source-item", "workspace-source-name",
+            "note-item", "note-icon-light", "note-icon-dark", "chat-messages",
+            "chat-row-agent", "chat-row-user",
+        ),
+        frozenset({
+            (".workspace-tabs .nav-link",),
+            (
+                f"{LIGHT_GUARD} .workspace-main-panel",
+                f"{LIGHT_GUARD} .workspace-right-panel",
+            ),
+            (
+                f"{LIGHT_GUARD} .workspace-main-panel .card-header",
+                f"{LIGHT_GUARD} .workspace-right-panel .card-header",
+            ),
+            (f"{LIGHT_GUARD} .quick-note-input",),
+            (f"{LIGHT_GUARD} .quick-note-input:focus",),
+            (f"{LIGHT_GUARD} .source-preview-shell",),
+            (f"{LIGHT_GUARD} .source-preview-content",),
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link",),
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link:hover",),
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link:focus-visible",),
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link.active",),
+            (f"{LIGHT_GUARD} .workspace-source-item",),
+            (f"{LIGHT_GUARD} .workspace-source-item h6",),
+            (f"{LIGHT_GUARD} .workspace-source-item:hover",),
+            (f"{LIGHT_GUARD} .workspace-source-item:focus-visible",),
+            (f"{LIGHT_GUARD} .workspace-source-item.active",),
+            (f"{LIGHT_GUARD} .workspace-source-name",),
+            (f"{LIGHT_GUARD} .note-item",),
+            (f"{LIGHT_GUARD} .note-icon-light",),
+            (f"{LIGHT_GUARD} .note-icon-dark",),
+            (f"{LIGHT_GUARD} .chat-messages",),
+            (f"{LIGHT_GUARD} .chat-row-agent",),
+            (f"{LIGHT_GUARD} .chat-row-user",),
+            (
+                f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+                f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+                f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+            ),
+            (
+                f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+                f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+                f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+            ),
+            (
+                f"{LIGHT_GUARD} .archive-page-workspace .workspace-main-panel",
+                f"{LIGHT_GUARD} .archive-page-workspace .workspace-right-panel",
+            ),
+            (f"{LIGHT_GUARD} .archive-page-workspace .resizable-panel",),
+            FORCED_COLORS_LIGHT_FOCUS_SELECTORS,
+        }),
+        "Task 8",
+        "the existing neutral tab-radius rule or an exact Old Book light placement",
+    )
 
     desktop_header, mobile_header = "@media (max-width: 991.98px)", "@media (max-width: 575.98px)"
     assert (css.count(desktop_header), css.count(mobile_header)) == (1, 1)
@@ -3363,9 +3669,17 @@ def test_candle_cursor_contract_is_dark_scoped_and_guarded():
         "z-index": "var(--z-candle-glow)",
     }
     assert_task_selectors_are_dark_scoped(
-        css, ("candle-glow",), frozenset(), "Task 9", "an approved neutral rule"
+        css,
+        ("candle-glow",),
+        frozenset({(f"{LIGHT_GUARD} .candle-glow",)}),
+        "Task 9",
+        "the exact Old Book non-dark display guard",
     )
-    reduced = css_block_body(css, "@media (prefers-reduced-motion: reduce)")
+    reduced = css_block_body_containing_selector(
+        css,
+        "@media (prefers-reduced-motion: reduce)",
+        '[data-bs-theme="dark"] .candle-glow',
+    )
     coarse = css_block_body(css, "@media (hover: none), (pointer: coarse)")
     assert css_rule_declarations(reduced, '[data-bs-theme="dark"] .candle-glow') == {
         "animation": "none"
@@ -3373,7 +3687,7 @@ def test_candle_cursor_contract_is_dark_scoped_and_guarded():
     assert css_rule_declarations(coarse, '[data-bs-theme="dark"] .candle-glow') == {
         "display": "none"
     }
-    assert css.count("@media (prefers-reduced-motion: reduce)") == 1
+    assert css.count("@media (prefers-reduced-motion: reduce)") == 2
     assert css.count("@media (hover: none), (pointer: coarse)") == 1
     keyframes = css_block_body(css, "@keyframes candle-flicker")
     frames = list(css_rules(keyframes))
