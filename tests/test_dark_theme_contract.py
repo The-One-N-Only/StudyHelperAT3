@@ -25,6 +25,25 @@ SVG_NAMES = (
 DARK_ROOT_SELECTOR = '[data-bs-theme="dark"]'
 DARK_BODY_SELECTOR = '[data-bs-theme="dark"] body'
 LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
+FORCED_COLORS_LIGHT_FOCUS_SELECTORS = (
+    f"{LIGHT_GUARD} .archive-wordmark:focus-visible",
+    f"{LIGHT_GUARD} .icon-button:focus-visible",
+    f"{LIGHT_GUARD} .btn:focus-visible",
+    f"{LIGHT_GUARD} .btn-close:focus-visible",
+    f"{LIGHT_GUARD} .form-check-input:focus",
+    f"{LIGHT_GUARD} .form-check-input:focus-visible",
+    f"{LIGHT_GUARD} .form-control:focus",
+    f"{LIGHT_GUARD} .form-select:focus",
+    f"{LIGHT_GUARD} .archive-dropdown:focus-visible",
+    f"{LIGHT_GUARD} .navbar-brand:focus-visible",
+    f"{LIGHT_GUARD} .workspace-tabs .nav-link:focus-visible",
+    f"{LIGHT_GUARD} .workspace-source-item:focus-visible",
+    f"{LIGHT_GUARD} .nav-sidebar .list-group-item:focus-visible",
+    f"{LIGHT_GUARD} input:focus-visible",
+    f"{LIGHT_GUARD} select:focus-visible",
+    f"{LIGHT_GUARD} textarea:focus-visible",
+    f"{LIGHT_GUARD} a:focus-visible",
+)
 DARK_THEME_ATTRIBUTE_PATTERN = re.compile(
     r'''\[\s*data-bs-theme\s*=\s*(?:"dark"|'dark'|dark)\s*\]'''
 )
@@ -224,6 +243,7 @@ TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
         (f"{LIGHT_GUARD} .archive-page-upload > .illustration-flourish",),
         (f"{LIGHT_GUARD} .archive-page-upload > .illustration-sextant",),
         (f"{LIGHT_GUARD} .archive-page-upload > .illustration-compass",),
+        FORCED_COLORS_LIGHT_FOCUS_SELECTORS,
     }
 )
 TASK4_NAVIGATION_CLASSES = (
@@ -253,6 +273,7 @@ TASK4_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
             f"{LIGHT_GUARD} .nav-sidebar .list-group-item:hover",
             f"{LIGHT_GUARD} .nav-sidebar .list-group-item:focus-visible",
         ),
+        FORCED_COLORS_LIGHT_FOCUS_SELECTORS,
     }
 )
 TASK5_DASHBOARD_CLASSES = (
@@ -3583,6 +3604,7 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
                 f"{LIGHT_GUARD} .archive-page-workspace .workspace-right-panel",
             ),
             (f"{LIGHT_GUARD} .archive-page-workspace .resizable-panel",),
+            FORCED_COLORS_LIGHT_FOCUS_SELECTORS,
         }),
         "Task 8",
         "the existing neutral tab-radius rule or an exact Old Book light placement",

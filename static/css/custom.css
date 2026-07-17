@@ -251,14 +251,16 @@ body.nav-sidebar-open {
     --bs-secondary: var(--paper-400);
     --bs-secondary-rgb: 183, 152, 113;
     --bs-danger: var(--rubric-700);
-    --bs-link-color: var(--gilt-900);
+    --bs-link-color: var(--ink-700);
     --bs-link-hover-color: var(--rubric-700);
     --bs-body-font-family: var(--font-body);
 }
 
 :root:not([data-bs-theme="dark"]) {
-    /* Dark owns no danger RGB override, so keep this Bootstrap mapping light-only. */
+    /* Bootstrap consumes RGB variants for links and contextual helpers. */
     --bs-danger-rgb: 120, 44, 33;
+    --bs-link-color-rgb: 101, 72, 52;
+    --bs-link-hover-color-rgb: 120, 44, 33;
 }
 
 :root:not([data-bs-theme="dark"]) .candle-glow {
@@ -431,6 +433,84 @@ p {
     border-radius: var(--radius-button);
 }
 
+:root:not([data-bs-theme="dark"]) .btn-secondary {
+    --bs-btn-color: var(--ink-900);
+    --bs-btn-bg: var(--paper-400);
+    --bs-btn-border-color: hsl(33 30% 55% / 0.60);
+    --bs-btn-hover-color: var(--ink-900);
+    --bs-btn-hover-bg: var(--paper-300);
+    --bs-btn-hover-border-color: var(--gilt-900);
+    --bs-btn-focus-shadow-rgb: 146, 93, 7;
+    --bs-btn-active-color: var(--ink-900);
+    --bs-btn-active-bg: var(--paper-400);
+    --bs-btn-active-border-color: var(--gilt-900);
+    --bs-btn-active-shadow: none;
+    --bs-btn-disabled-color: var(--ink-700);
+    --bs-btn-disabled-bg: var(--paper-200);
+    --bs-btn-disabled-border-color: hsl(33 30% 60% / 0.50);
+    --bs-btn-disabled-opacity: 0.65;
+    border-radius: var(--radius-button);
+}
+
+:root:not([data-bs-theme="dark"]) .form-check-input {
+    background-color: var(--paper-100);
+    border-color: hsl(33 30% 55% / 0.60);
+}
+
+:root:not([data-bs-theme="dark"]) .form-check-input:checked {
+    background-color: var(--rubric-500);
+    border-color: var(--rubric-500);
+}
+
+:root:not([data-bs-theme="dark"]) .form-check-input:focus {
+    border-color: var(--gilt-900);
+    box-shadow: var(--shadow-gilt-glow);
+    outline: 0;
+}
+
+:root:not([data-bs-theme="dark"]) .form-check-input[type="checkbox"]:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23EEE6DD' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e");
+}
+
+:root:not([data-bs-theme="dark"]) .form-check-input[type="radio"]:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='2' fill='%23EEE6DD'/%3e%3c/svg%3e");
+}
+
+:root:not([data-bs-theme="dark"]) .btn-close {
+    --bs-btn-close-color: var(--ink-900);
+    --bs-btn-close-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='%2336261B' d='M2.146 2.146a.5.5 0 0 1 .708 0L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854a.5.5 0 0 1 0-.708'/%3e%3c/svg%3e");
+    --bs-btn-close-opacity: 0.75;
+    --bs-btn-close-hover-opacity: 1;
+    --bs-btn-close-focus-opacity: 1;
+    --bs-btn-close-focus-shadow: var(--shadow-gilt-glow);
+    filter: none;
+}
+
+:root:not([data-bs-theme="dark"]) .modal-content {
+    --bs-modal-color: var(--ink-900);
+    --bs-modal-bg: var(--paper-100);
+    --bs-modal-border-color: hsl(33 30% 60% / 0.45);
+}
+
+:root:not([data-bs-theme="dark"]) .modal-header,
+:root:not([data-bs-theme="dark"]) .modal-footer {
+    border-color: hsl(33 30% 60% / 0.45);
+}
+
+:root:not([data-bs-theme="dark"]) .alert {
+    --bs-alert-color: var(--ink-900);
+    --bs-alert-bg: var(--paper-100);
+    --bs-alert-border-color: hsl(33 30% 60% / 0.45);
+    --bs-alert-link-color: var(--ink-900);
+}
+
+:root:not([data-bs-theme="dark"]) .alert-danger {
+    --bs-alert-color: var(--rubric-700);
+    --bs-alert-bg: var(--rubric-50);
+    --bs-alert-border-color: var(--rubric-500);
+    --bs-alert-link-color: var(--rubric-700);
+}
+
 :root:not([data-bs-theme="dark"]) .btn-ghost {
     background: transparent;
     border: 1px solid transparent;
@@ -532,7 +612,8 @@ p {
 
 :root:not([data-bs-theme="dark"]) .form-control:focus,
 :root:not([data-bs-theme="dark"]) .form-select:focus {
-    background-color: var(--paper-300);
+    /* Paper-200 keeps secondary placeholder ink above WCAG AA while still deepening focus. */
+    background-color: var(--paper-200);
     border-color: var(--gilt-900);
     box-shadow: var(--shadow-gilt-glow);
     color: var(--ink-900);
@@ -553,9 +634,10 @@ p {
 }
 
 :root:not([data-bs-theme="dark"]) .archive-count-badge {
-    background: var(--paper-500) !important;
+    /* Ink-900 on paper-400 is 5.34:1; the literal spec pair was only 2.78:1. */
+    background: var(--paper-400) !important;
     border-radius: var(--radius-pill);
-    color: var(--paper-50);
+    color: var(--ink-900);
     font-size: var(--text-caption);
     font-variant-numeric: tabular-nums;
 }
@@ -704,6 +786,101 @@ p {
 :root:not([data-bs-theme="dark"]) #googleCseContainer input.gsc-input {
     background-color: transparent !important;
     color: var(--ink-900);
+}
+
+/* Vendor result CSS loads last, so these runtime surfaces need guarded importance. */
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-results,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-expansionArea,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-webResult.gsc-result,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-result {
+    background: var(--paper-50) !important;
+    border-color: hsl(33 30% 60% / 0.30) !important;
+    color: var(--ink-900) !important;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-title,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-title * {
+    color: var(--rubric-700) !important;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-snippet,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-snippet * {
+    color: var(--ink-700) !important;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-snippet b {
+    color: var(--ink-900) !important;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-visibleUrl,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-visibleUrl-long,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-visibleUrl-short,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-visibleUrl-breadcrumb {
+    color: var(--ink-700) !important;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-adBlock,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-adBlockNoHeight,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-promotion,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gs-promotion {
+    background: var(--paper-100) !important;
+    border-color: hsl(33 30% 60% / 0.45) !important;
+    color: var(--ink-900) !important;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-cursor-box .gsc-cursor-page {
+    background: var(--paper-100) !important;
+    border: 1px solid hsl(33 30% 60% / 0.45) !important;
+    border-radius: var(--radius-button);
+    color: var(--ink-700) !important;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-cursor-box .gsc-cursor-current-page {
+    background: var(--rubric-50) !important;
+    color: var(--rubric-700) !important;
+    font-weight: 600;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-result-info,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-orderby-label {
+    color: var(--ink-700) !important;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-option-menu-container,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-selected-option-container,
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-option-menu-item {
+    background: var(--paper-100) !important;
+    border-color: hsl(33 30% 60% / 0.45) !important;
+    color: var(--ink-900) !important;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-search-button-v2 {
+    background: var(--rubric-500) !important;
+    border-color: var(--rubric-500) !important;
+}
+
+/* CSE completion menus are appended outside #googleCseContainer. */
+:root:not([data-bs-theme="dark"]) .gssb_c,
+:root:not([data-bs-theme="dark"]) .gssb_e,
+:root:not([data-bs-theme="dark"]) .gssb_m,
+:root:not([data-bs-theme="dark"]) .gsc-completion-container {
+    background: var(--paper-100) !important;
+    border-color: hsl(33 30% 60% / 0.45) !important;
+    color: var(--ink-900) !important;
+}
+
+:root:not([data-bs-theme="dark"]) .gssb_a,
+:root:not([data-bs-theme="dark"]) .gsq_a,
+:root:not([data-bs-theme="dark"]) .gsc-completion-title,
+:root:not([data-bs-theme="dark"]) .gsc-completion-snippet {
+    color: var(--ink-900) !important;
+}
+
+:root:not([data-bs-theme="dark"]) .gssb_a:hover,
+:root:not([data-bs-theme="dark"]) .gssb_a.gssb_i,
+:root:not([data-bs-theme="dark"]) .gsc-completion-selected {
+    background: var(--rubric-50) !important;
+    color: var(--rubric-700) !important;
 }
 
 :root:not([data-bs-theme="dark"]) .ai-overview-panel,
@@ -1180,7 +1357,7 @@ p {
         border-bottom: 1px solid hsl(33 30% 60% / 0.30);
         border-right: 0 !important;
         max-width: none;
-        min-width: 0;
+        min-width: 0 !important;
         overflow-y: visible !important;
         width: 100% !important;
     }
@@ -1214,6 +1391,14 @@ p {
 }
 
 @media screen and (max-width: 575.98px) {
+    :root:not([data-bs-theme="dark"]) .browse-dropdown-menu {
+        left: 0;
+        max-width: 100%;
+        min-width: 0 !important;
+        right: auto;
+        width: 100%;
+    }
+
     :root:not([data-bs-theme="dark"]) .archive-page-upload > .illustration-compass {
         height: 120px;
         left: -2rem;
@@ -1238,6 +1423,30 @@ p {
 
     :root:not([data-bs-theme="dark"]) .chat-message-agent {
         max-width: calc(88% - 2.9rem);
+    }
+}
+
+/* Windows High Contrast suppresses box shadows; retain a system-color focus edge. */
+@media (forced-colors: active) {
+    :root:not([data-bs-theme="dark"]) .archive-wordmark:focus-visible,
+    :root:not([data-bs-theme="dark"]) .icon-button:focus-visible,
+    :root:not([data-bs-theme="dark"]) .btn:focus-visible,
+    :root:not([data-bs-theme="dark"]) .btn-close:focus-visible,
+    :root:not([data-bs-theme="dark"]) .form-check-input:focus,
+    :root:not([data-bs-theme="dark"]) .form-check-input:focus-visible,
+    :root:not([data-bs-theme="dark"]) .form-control:focus,
+    :root:not([data-bs-theme="dark"]) .form-select:focus,
+    :root:not([data-bs-theme="dark"]) .archive-dropdown:focus-visible,
+    :root:not([data-bs-theme="dark"]) .navbar-brand:focus-visible,
+    :root:not([data-bs-theme="dark"]) .workspace-tabs .nav-link:focus-visible,
+    :root:not([data-bs-theme="dark"]) .workspace-source-item:focus-visible,
+    :root:not([data-bs-theme="dark"]) .nav-sidebar .list-group-item:focus-visible,
+    :root:not([data-bs-theme="dark"]) input:focus-visible,
+    :root:not([data-bs-theme="dark"]) select:focus-visible,
+    :root:not([data-bs-theme="dark"]) textarea:focus-visible,
+    :root:not([data-bs-theme="dark"]) a:focus-visible {
+        outline: 2px solid Highlight;
+        outline-offset: 2px;
     }
 }
 

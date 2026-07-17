@@ -13,6 +13,17 @@ LIGHT_TEXTURE_NAMES = (
     "leather-texture-light.png",
     "wood-texture-light.png",
 )
+LIGHT_TEXTURE_CONTRACTS = {
+    "leather-texture-light.png": {
+        "dimensions": (760, 760),
+        "max_bytes": 1_400_000,
+    },
+    "wood-texture-light.png": {
+        "dimensions": (576, 360),
+        "max_bytes": 550_000,
+    },
+}
+LIGHT_TEXTURE_TOTAL_MAX_BYTES = 1_900_000
 DARK_TEXTURE_NAMES = (
     "leather-texture.png",
     "wood-texture.png",
@@ -80,7 +91,7 @@ EXPECTED_LIGHT_ROOT_DECLARATIONS = {
     "--bs-secondary": "var(--paper-400)",
     "--bs-secondary-rgb": "183, 152, 113",
     "--bs-danger": "var(--rubric-700)",
-    "--bs-link-color": "var(--gilt-900)",
+    "--bs-link-color": "var(--ink-700)",
     "--bs-link-hover-color": "var(--rubric-700)",
     "--bs-body-font-family": "var(--font-body)",
 }
@@ -170,6 +181,24 @@ EXPECTED_LIGHT_WOOD_BUTTON_STATES = {
     "--bs-btn-hover-bg": "var(--paper-200)",
     "--bs-btn-hover-border-color": "var(--gilt-900)",
     "--bs-btn-hover-color": "var(--ink-900)",
+}
+EXPECTED_LIGHT_SECONDARY_BUTTON_STATES = {
+    "--bs-btn-active-bg": "var(--paper-400)",
+    "--bs-btn-active-border-color": "var(--gilt-900)",
+    "--bs-btn-active-color": "var(--ink-900)",
+    "--bs-btn-active-shadow": "none",
+    "--bs-btn-bg": "var(--paper-400)",
+    "--bs-btn-border-color": "hsl(33 30% 55% / 0.60)",
+    "--bs-btn-color": "var(--ink-900)",
+    "--bs-btn-disabled-bg": "var(--paper-200)",
+    "--bs-btn-disabled-border-color": "hsl(33 30% 60% / 0.50)",
+    "--bs-btn-disabled-color": "var(--ink-700)",
+    "--bs-btn-disabled-opacity": "0.65",
+    "--bs-btn-focus-shadow-rgb": "146, 93, 7",
+    "--bs-btn-hover-bg": "var(--paper-300)",
+    "--bs-btn-hover-border-color": "var(--gilt-900)",
+    "--bs-btn-hover-color": "var(--ink-900)",
+    "border-radius": "var(--radius-button)",
 }
 EXPECTED_LIGHT_ILLUSTRATION_PLACEMENTS = {
     (
@@ -439,12 +468,354 @@ def assert_light_dropdown_open_state_contract(css: str) -> None:
     }
 
 
+def contrast_ratio(foreground: str, background: str) -> float:
+    def relative_luminance(hex_color: str) -> float:
+        channels = [
+            int(hex_color[index : index + 2], 16) / 255
+            for index in (1, 3, 5)
+        ]
+        linear = [
+            channel / 12.92
+            if channel <= 0.04045
+            else ((channel + 0.055) / 1.055) ** 2.4
+            for channel in channels
+        ]
+        return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+    lighter, darker = sorted(
+        (relative_luminance(foreground), relative_luminance(background)),
+        reverse=True,
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def assert_light_bootstrap_owned_state_contract(css: str) -> None:
+    light = light_css_from(css)
+    assert css_rule_group_declarations(light, (LIGHT_GUARD,)) == {
+        "--bs-danger-rgb": "120, 44, 33",
+        "--bs-link-color-rgb": "101, 72, 52",
+        "--bs-link-hover-color-rgb": "120, 44, 33",
+    }
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .form-check-input",),
+    ) == {
+        "background-color": "var(--paper-100)",
+        "border-color": "hsl(33 30% 55% / 0.60)",
+    }
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .form-check-input:checked",),
+    ) == {
+        "background-color": "var(--rubric-500)",
+        "border-color": "var(--rubric-500)",
+    }
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .form-check-input:focus",),
+    ) == {
+        "border-color": "var(--gilt-900)",
+        "box-shadow": "var(--shadow-gilt-glow)",
+        "outline": "0",
+    }
+    for input_type in ("checkbox", "radio"):
+        declarations = css_rule_group_declarations(
+            light,
+            (
+                f'{LIGHT_GUARD} .form-check-input[type="{input_type}"]:checked',
+            ),
+        )
+        assert declarations.keys() == {"background-image"}
+        assert "%23EEE6DD" in declarations["background-image"]
+        assert "%23fff" not in declarations["background-image"].lower()
+
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .btn-secondary",),
+    ) == EXPECTED_LIGHT_SECONDARY_BUTTON_STATES
+
+    close = css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .btn-close",),
+    )
+    close_background = close.pop("--bs-btn-close-bg")
+    assert close == {
+        "--bs-btn-close-color": "var(--ink-900)",
+        "--bs-btn-close-focus-opacity": "1",
+        "--bs-btn-close-focus-shadow": "var(--shadow-gilt-glow)",
+        "--bs-btn-close-hover-opacity": "1",
+        "--bs-btn-close-opacity": "0.75",
+        "filter": "none",
+    }
+    assert "%2336261B" in close_background
+    assert "%23000" not in close_background
+
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .modal-content",),
+    ) == {
+        "--bs-modal-bg": "var(--paper-100)",
+        "--bs-modal-border-color": "hsl(33 30% 60% / 0.45)",
+        "--bs-modal-color": "var(--ink-900)",
+    }
+    assert css_rule_group_declarations(
+        light,
+        (
+            f"{LIGHT_GUARD} .modal-header",
+            f"{LIGHT_GUARD} .modal-footer",
+        ),
+    ) == {"border-color": "hsl(33 30% 60% / 0.45)"}
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .alert",),
+    ) == {
+        "--bs-alert-bg": "var(--paper-100)",
+        "--bs-alert-border-color": "hsl(33 30% 60% / 0.45)",
+        "--bs-alert-color": "var(--ink-900)",
+        "--bs-alert-link-color": "var(--ink-900)",
+    }
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .alert-danger",),
+    ) == {
+        "--bs-alert-bg": "var(--rubric-50)",
+        "--bs-alert-border-color": "var(--rubric-500)",
+        "--bs-alert-color": "var(--rubric-700)",
+        "--bs-alert-link-color": "var(--rubric-700)",
+    }
+
+
+def assert_light_google_cse_result_contract(css: str) -> None:
+    light = light_css_from(css)
+    expected_rules = (
+        (
+            (
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-results",
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-expansionArea",
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-webResult.gsc-result",
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-result",
+            ),
+            {
+                "background": "var(--paper-50) !important",
+                "border-color": "hsl(33 30% 60% / 0.30) !important",
+                "color": "var(--ink-900) !important",
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} #googleCseContainer .gs-title",
+                f"{LIGHT_GUARD} #googleCseContainer .gs-title *",
+            ),
+            {"color": "var(--rubric-700) !important"},
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} #googleCseContainer .gs-snippet",
+                f"{LIGHT_GUARD} #googleCseContainer .gs-snippet *",
+            ),
+            {"color": "var(--ink-700) !important"},
+        ),
+        (
+            (f"{LIGHT_GUARD} #googleCseContainer .gs-snippet b",),
+            {"color": "var(--ink-900) !important"},
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} #googleCseContainer .gs-visibleUrl",
+                f"{LIGHT_GUARD} #googleCseContainer .gs-visibleUrl-long",
+                f"{LIGHT_GUARD} #googleCseContainer .gs-visibleUrl-short",
+                f"{LIGHT_GUARD} #googleCseContainer .gs-visibleUrl-breadcrumb",
+            ),
+            {"color": "var(--ink-700) !important"},
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-adBlock",
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-adBlockNoHeight",
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-promotion",
+                f"{LIGHT_GUARD} #googleCseContainer .gs-promotion",
+            ),
+            {
+                "background": "var(--paper-100) !important",
+                "border-color": "hsl(33 30% 60% / 0.45) !important",
+                "color": "var(--ink-900) !important",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} #googleCseContainer .gsc-cursor-box .gsc-cursor-page",),
+            {
+                "background": "var(--paper-100) !important",
+                "border": "1px solid hsl(33 30% 60% / 0.45) !important",
+                "border-radius": "var(--radius-button)",
+                "color": "var(--ink-700) !important",
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-cursor-box "
+                ".gsc-cursor-current-page",
+            ),
+            {
+                "background": "var(--rubric-50) !important",
+                "color": "var(--rubric-700) !important",
+                "font-weight": "600",
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-result-info",
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-orderby-label",
+            ),
+            {"color": "var(--ink-700) !important"},
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-option-menu-container",
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-selected-option-container",
+                f"{LIGHT_GUARD} #googleCseContainer .gsc-option-menu-item",
+            ),
+            {
+                "background": "var(--paper-100) !important",
+                "border-color": "hsl(33 30% 60% / 0.45) !important",
+                "color": "var(--ink-900) !important",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} #googleCseContainer .gsc-search-button-v2",),
+            {
+                "background": "var(--rubric-500) !important",
+                "border-color": "var(--rubric-500) !important",
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .gssb_c",
+                f"{LIGHT_GUARD} .gssb_e",
+                f"{LIGHT_GUARD} .gssb_m",
+                f"{LIGHT_GUARD} .gsc-completion-container",
+            ),
+            {
+                "background": "var(--paper-100) !important",
+                "border-color": "hsl(33 30% 60% / 0.45) !important",
+                "color": "var(--ink-900) !important",
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .gssb_a",
+                f"{LIGHT_GUARD} .gsq_a",
+                f"{LIGHT_GUARD} .gsc-completion-title",
+                f"{LIGHT_GUARD} .gsc-completion-snippet",
+            ),
+            {"color": "var(--ink-900) !important"},
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .gssb_a:hover",
+                f"{LIGHT_GUARD} .gssb_a.gssb_i",
+                f"{LIGHT_GUARD} .gsc-completion-selected",
+            ),
+            {
+                "background": "var(--rubric-50) !important",
+                "color": "var(--rubric-700) !important",
+            },
+        ),
+    )
+    for selectors, expected in expected_rules:
+        assert css_rule_group_declarations(light, selectors) == expected
+
+
+def assert_light_outline_resets_have_forced_colors_fallback(css: str) -> None:
+    light = light_css_from(css)
+    forced_blocks = css_block_bodies(light, "@media (forced-colors: active)")
+    assert len(forced_blocks) == 1
+
+    reset_selectors = {
+        selector
+        for selectors, declarations in iter_flat_declarations(light)
+        if declarations.get("outline") in {"0", "none", "0px"}
+        for selector in selectors
+        if ":focus" in selector
+    }
+    forced_selectors = set()
+    for selectors, declarations in iter_flat_declarations(forced_blocks[0]):
+        if declarations.get("outline") == "2px solid Highlight":
+            assert declarations.get("outline-offset") == "2px"
+            forced_selectors.update(selectors)
+
+    assert reset_selectors <= forced_selectors
+    assert {
+        f"{LIGHT_GUARD} .archive-wordmark:focus-visible",
+        f"{LIGHT_GUARD} .icon-button:focus-visible",
+        f"{LIGHT_GUARD} .btn:focus-visible",
+        f"{LIGHT_GUARD} .btn-close:focus-visible",
+        f"{LIGHT_GUARD} .form-check-input:focus-visible",
+        f"{LIGHT_GUARD} .form-control:focus",
+        f"{LIGHT_GUARD} .form-select:focus",
+        f"{LIGHT_GUARD} .archive-dropdown:focus-visible",
+        f"{LIGHT_GUARD} .workspace-tabs .nav-link:focus-visible",
+        f"{LIGHT_GUARD} .workspace-source-item:focus-visible",
+        f"{LIGHT_GUARD} .nav-sidebar .list-group-item:focus-visible",
+        f"{LIGHT_GUARD} a:focus-visible",
+    } <= forced_selectors
+
+
+def png_chunks(data: bytes) -> list[tuple[bytes, bytes]]:
+    assert data.startswith(PNG_SIGNATURE)
+    chunks = []
+    offset = len(PNG_SIGNATURE)
+    while offset < len(data):
+        length = struct.unpack(">I", data[offset : offset + 4])[0]
+        chunk_type = data[offset + 4 : offset + 8]
+        payload = data[offset + 8 : offset + 8 + length]
+        chunks.append((chunk_type, payload))
+        offset += 12 + length
+    return chunks
+
+
+def write_mutated_png(
+    source: Path,
+    target: Path,
+    *,
+    header: bytes | None = None,
+    scanlines: bytes | None = None,
+) -> None:
+    chunks = png_chunks(source.read_bytes())
+    encoded = bytearray(PNG_SIGNATURE)
+    wrote_image_data = False
+    for chunk_type, original_payload in chunks:
+        payload = original_payload
+        if chunk_type == b"IHDR" and header is not None:
+            payload = header
+        elif chunk_type == b"IDAT" and scanlines is not None:
+            if wrote_image_data:
+                continue
+            payload = zlib.compress(scanlines, level=9)
+            wrote_image_data = True
+
+        encoded.extend(struct.pack(">I", len(payload)))
+        encoded.extend(chunk_type)
+        encoded.extend(payload)
+        encoded.extend(struct.pack(">I", zlib.crc32(chunk_type + payload) & 0xFFFFFFFF))
+    target.write_bytes(encoded)
+
+
+def png_header_and_scanlines(path: Path) -> tuple[bytes, bytes]:
+    chunks = png_chunks(path.read_bytes())
+    header = next(payload for chunk_type, payload in chunks if chunk_type == b"IHDR")
+    image_data = b"".join(
+        payload for chunk_type, payload in chunks if chunk_type == b"IDAT"
+    )
+    return header, zlib.decompress(image_data)
+
+
 def read_png_dimensions(path: Path) -> tuple[int, int]:
     data = path.read_bytes()
     assert data.startswith(PNG_SIGNATURE), f"{path.name} is not a PNG"
 
     offset = len(PNG_SIGNATURE)
     header = None
+    palette = None
     image_data = bytearray()
     saw_end = False
 
@@ -463,6 +834,9 @@ def read_png_dimensions(path: Path) -> tuple[int, int]:
         if chunk_type == b"IHDR":
             assert header is None and length == 13, f"{path.name} has an invalid IHDR"
             header = struct.unpack(">IIBBBBB", payload)
+        elif chunk_type == b"PLTE":
+            assert palette is None, f"{path.name} has duplicate palette data"
+            palette = payload
         elif chunk_type == b"IDAT":
             image_data.extend(payload)
         elif chunk_type == b"IEND":
@@ -476,11 +850,33 @@ def read_png_dimensions(path: Path) -> tuple[int, int]:
     assert header is not None, f"{path.name} is missing IHDR"
     assert image_data, f"{path.name} is missing image data"
     assert saw_end and offset == len(data), f"{path.name} is not a complete PNG"
-    assert zlib.decompress(image_data), f"{path.name} has unreadable image data"
-
-    width, height, _, _, compression, filter_method, interlace = header
+    width, height, bit_depth, color_type, compression, filter_method, interlace = header
+    assert width > 0 and height > 0, f"{path.name} has invalid dimensions"
     assert compression == 0 and filter_method == 0
-    assert interlace in (0, 1)
+    assert (bit_depth, color_type, interlace) == (8, 3, 0), (
+        f"{path.name} must use the supported 8-bit indexed non-interlaced format"
+    )
+    assert palette is not None and len(palette) % 3 == 0 and 3 <= len(palette) <= 768, (
+        f"{path.name} has invalid indexed palette data"
+    )
+
+    decompressor = zlib.decompressobj()
+    try:
+        scanlines = decompressor.decompress(image_data) + decompressor.flush()
+    except zlib.error as error:
+        raise AssertionError(f"{path.name} has unreadable image data") from error
+    assert decompressor.eof and not decompressor.unused_data, (
+        f"{path.name} has incomplete or trailing compressed image data"
+    )
+
+    scanline_length = width + 1
+    assert len(scanlines) == scanline_length * height, (
+        f"{path.name} has an invalid decompressed scanline length"
+    )
+    filter_bytes = scanlines[::scanline_length]
+    assert all(filter_byte <= 4 for filter_byte in filter_bytes), (
+        f"{path.name} has an out-of-range PNG filter byte"
+    )
     return width, height
 
 
@@ -518,11 +914,62 @@ def test_light_texture_manifest_uses_exact_names_separate_from_dark_assets():
 @pytest.mark.parametrize("name", LIGHT_TEXTURE_NAMES)
 def test_light_texture_asset_is_nonempty_readable_png_with_dimensions(name):
     path = ROOT / "static" / "img" / "textures" / name
+    contract = LIGHT_TEXTURE_CONTRACTS[name]
 
     assert path.stat().st_size > len(PNG_SIGNATURE)
+    assert path.stat().st_size <= contract["max_bytes"]
     width, height = read_png_dimensions(path)
-    assert width > 0
-    assert height > 0
+    assert (width, height) == contract["dimensions"]
+
+
+def test_light_texture_assets_stay_within_combined_transfer_budget():
+    texture_dir = ROOT / "static" / "img" / "textures"
+    total_bytes = sum((texture_dir / name).stat().st_size for name in LIGHT_TEXTURE_NAMES)
+    assert total_bytes <= LIGHT_TEXTURE_TOTAL_MAX_BYTES
+
+
+def test_light_texture_assets_use_optimized_indexed_png_format():
+    texture_dir = ROOT / "static" / "img" / "textures"
+    for name in LIGHT_TEXTURE_NAMES:
+        header, _ = png_header_and_scanlines(texture_dir / name)
+        _, _, bit_depth, color_type, _, _, interlace = struct.unpack(
+            ">IIBBBBB", header
+        )
+        assert (bit_depth, color_type, interlace) == (8, 3, 0)
+
+
+def test_png_validator_rejects_unsupported_committed_asset_format(tmp_path):
+    source = ROOT / "static" / "img" / "textures" / LIGHT_TEXTURE_NAMES[0]
+    header, _ = png_header_and_scanlines(source)
+    unsupported_header = bytearray(header)
+    unsupported_header[8] = 16
+    mutated = tmp_path / "unsupported.png"
+    write_mutated_png(source, mutated, header=bytes(unsupported_header))
+
+    with pytest.raises(AssertionError, match="supported 8-bit indexed"):
+        read_png_dimensions(mutated)
+
+
+def test_png_validator_rejects_incomplete_scanlines(tmp_path):
+    source = ROOT / "static" / "img" / "textures" / LIGHT_TEXTURE_NAMES[0]
+    _, scanlines = png_header_and_scanlines(source)
+    mutated = tmp_path / "short-scanline.png"
+    write_mutated_png(source, mutated, scanlines=scanlines[:-1])
+
+    with pytest.raises(AssertionError, match="scanline length"):
+        read_png_dimensions(mutated)
+
+
+def test_png_validator_rejects_out_of_range_filter_bytes(tmp_path):
+    source = ROOT / "static" / "img" / "textures" / LIGHT_TEXTURE_NAMES[0]
+    _, scanlines = png_header_and_scanlines(source)
+    invalid_filter = bytearray(scanlines)
+    invalid_filter[0] = 5
+    mutated = tmp_path / "bad-filter.png"
+    write_mutated_png(source, mutated, scanlines=bytes(invalid_filter))
+
+    with pytest.raises(AssertionError, match="filter byte"):
+        read_png_dimensions(mutated)
 
 
 def test_light_foundation_has_exact_tokens_and_bootstrap_mappings():
@@ -531,7 +978,9 @@ def test_light_foundation_has_exact_tokens_and_bootstrap_mappings():
         == EXPECTED_LIGHT_ROOT_DECLARATIONS
     )
     assert css_rule_group_declarations(light_css(), (LIGHT_GUARD,)) == {
-        "--bs-danger-rgb": "120, 44, 33"
+        "--bs-danger-rgb": "120, 44, 33",
+        "--bs-link-color-rgb": "101, 72, 52",
+        "--bs-link-hover-color-rgb": "120, 44, 33",
     }
 
 
@@ -726,9 +1175,53 @@ def test_light_button_state_contract_rejects_disabled_blue_fallback(
 ):
     css = read_text("static/css/custom.css")
     assert_light_button_state_contract(css)
-    assert light_css_from(css).count(declaration) == 1
+    assert light_css_from(css).count(declaration) >= 1
     with pytest.raises(AssertionError):
         assert_light_button_state_contract(css.replace(declaration, mutation, 1))
+
+
+def test_light_bootstrap_owned_runtime_states_use_old_book_palette():
+    css = read_text("static/css/custom.css")
+    assert_light_bootstrap_owned_state_contract(css)
+
+    browse = read_text("static/js/pages/browse.js")
+    workspace = read_text("static/js/pages/workspace.js")
+    layout = read_text("templates/layout.html")
+    assert 'class="form-check-input" type="checkbox"' in browse
+    assert 'class="btn btn-secondary" id="cancelNoteBtn"' in workspace
+    assert 'class="btn-close" id="closeModalBtn"' in workspace
+    assert 'class="btn-close" data-bs-dismiss="alert"' in layout
+
+
+@pytest.mark.parametrize(
+    ("declaration", "mutation"),
+    (
+        (
+            "--bs-link-color-rgb: 101, 72, 52;",
+            "--bs-link-color-rgb: 13, 110, 253;",
+        ),
+        (
+            "background-color: var(--rubric-500);",
+            "background-color: #0d6efd;",
+        ),
+        (
+            "--bs-btn-bg: var(--paper-400);",
+            "--bs-btn-bg: #6c757d;",
+        ),
+    ),
+    ids=("link-blue", "checked-blue", "secondary-gray"),
+)
+def test_light_bootstrap_owned_state_contract_rejects_vendor_mutations(
+    declaration,
+    mutation,
+):
+    css = read_text("static/css/custom.css")
+    assert_light_bootstrap_owned_state_contract(css)
+    assert light_css_from(css).count(declaration) == 1
+    with pytest.raises(AssertionError):
+        assert_light_bootstrap_owned_state_contract(
+            css.replace(declaration, mutation, 1)
+        )
 
 
 def test_light_inputs_dropdowns_badges_offcanvas_and_focus_match_contract():
@@ -789,11 +1282,24 @@ def test_light_inputs_dropdowns_badges_offcanvas_and_focus_match_contract():
     }
     assert css_rule_group_declarations(
         css,
+        (
+            f"{LIGHT_GUARD} .form-control:focus",
+            f"{LIGHT_GUARD} .form-select:focus",
+        ),
+    ) == {
+        "background-color": "var(--paper-200)",
+        "border-color": "var(--gilt-900)",
+        "box-shadow": "var(--shadow-gilt-glow)",
+        "color": "var(--ink-900)",
+        "outline": "0",
+    }
+    assert css_rule_group_declarations(
+        css,
         (f"{LIGHT_GUARD} .archive-count-badge",),
     ) == {
-        "background": "var(--paper-500) !important",
+        "background": "var(--paper-400) !important",
         "border-radius": "var(--radius-pill)",
-        "color": "var(--paper-50)",
+        "color": "var(--ink-900)",
         "font-size": "var(--text-caption)",
         "font-variant-numeric": "tabular-nums",
     }
@@ -829,6 +1335,26 @@ def test_light_inputs_dropdowns_badges_offcanvas_and_focus_match_contract():
         "box-shadow": "var(--shadow-gilt-glow)",
         "outline": "0",
     }
+
+
+def test_light_accessibility_corrections_meet_wcag_aa():
+    tokens = EXPECTED_LIGHT_ROOT_DECLARATIONS
+    assert contrast_ratio(tokens["--paper-50"], tokens["--paper-500"]) < 4.5
+    assert contrast_ratio(tokens["--ink-700"], tokens["--paper-300"]) < 4.5
+
+    assert contrast_ratio(tokens["--ink-900"], tokens["--paper-400"]) >= 4.5
+    assert contrast_ratio(tokens["--ink-700"], tokens["--paper-200"]) >= 4.5
+    assert contrast_ratio(tokens["--ink-700"], tokens["--paper-50"]) >= 4.5
+    assert contrast_ratio(tokens["--rubric-700"], tokens["--paper-50"]) >= 4.5
+
+
+def test_light_count_badge_uses_accessible_in_family_pair():
+    declarations = css_rule_group_declarations(
+        light_css(),
+        (f"{LIGHT_GUARD} .archive-count-badge",),
+    )
+    assert declarations["background"] == "var(--paper-400) !important"
+    assert declarations["color"] == "var(--ink-900)"
 
 
 def test_light_dropdown_open_state_contract_rejects_pointer_event_mutation():
@@ -900,6 +1426,23 @@ def test_light_scrollbars_motion_and_reduced_motion_match_contract():
         "transition-delay": "0s !important",
         "transition-duration": "0.01ms !important",
     }
+
+
+def test_light_outline_resets_have_forced_colors_focus_fallbacks():
+    assert_light_outline_resets_have_forced_colors_fallback(
+        read_text("static/css/custom.css")
+    )
+
+
+def test_light_forced_colors_contract_rejects_missing_button_fallback():
+    css = read_text("static/css/custom.css")
+    assert_light_outline_resets_have_forced_colors_fallback(css)
+    selector = f"    {LIGHT_GUARD} .btn-close:focus-visible,\n"
+    assert light_css_from(css).count(selector) == 1
+    with pytest.raises(AssertionError):
+        assert_light_outline_resets_have_forced_colors_fallback(
+            css.replace(selector, "", 1)
+        )
 
 
 def test_light_css_forbids_light_attribute_selectors_and_pure_hex_colors():
@@ -1155,6 +1698,49 @@ def test_light_google_cse_shell_uses_parchment_instead_of_vendor_white():
         "background-color": "transparent !important",
         "color": "var(--ink-900)",
     }
+
+
+def test_light_google_cse_runtime_results_and_completion_use_old_book_palette():
+    css = read_text("static/css/custom.css")
+    browse = read_text("static/js/pages/browse.js")
+    assert "window.google.search.cse.element.render({" in browse
+    assert "div: 'googleCseContainer'" in browse
+    assert "tag: 'search'" in browse
+    assert_light_google_cse_result_contract(css)
+
+
+@pytest.mark.parametrize(
+    ("declaration", "mutation"),
+    (
+        (
+            "background: var(--paper-50) !important;",
+            "background: white !important;",
+        ),
+        (
+            "color: var(--rubric-700) !important;",
+            "color: #1558d6 !important;",
+        ),
+        (
+            "background: var(--paper-100) !important;",
+            "background: white !important;",
+        ),
+    ),
+    ids=("result-white", "title-blue", "completion-white"),
+)
+def test_light_google_cse_result_contract_rejects_vendor_mutations(
+    declaration,
+    mutation,
+):
+    css = read_text("static/css/custom.css")
+    assert_light_google_cse_result_contract(css)
+    marker = "/* Google CSE"
+    marker_index = light_css_from(css).index(marker)
+    cse_css = css[marker_index:]
+    assert declaration in cse_css
+    with pytest.raises(AssertionError):
+        assert_light_google_cse_result_contract(
+            css[:marker_index] + cse_css.replace(declaration, mutation, 1)
+        )
 
 
 def test_light_source_tags_use_accessible_ink_at_caption_size():
@@ -1553,7 +2139,7 @@ def test_light_component_layouts_stack_cleanly_at_existing_breakpoints():
         "border-bottom": "1px solid hsl(33 30% 60% / 0.30)",
         "border-right": "0 !important",
         "max-width": "none",
-        "min-width": "0",
+        "min-width": "0 !important",
         "overflow-y": "visible !important",
         "width": "100% !important",
     }
@@ -1584,6 +2170,16 @@ def test_light_component_layouts_stack_cleanly_at_existing_breakpoints():
         narrow[0],
         (f"{LIGHT_GUARD} .browse-search-input",),
     ) == {"min-width": "0", "width": "100%"}
+    assert css_rule_group_declarations(
+        mobile[0],
+        (f"{LIGHT_GUARD} .browse-dropdown-menu",),
+    ) == {
+        "left": "0",
+        "max-width": "100%",
+        "min-width": "0 !important",
+        "right": "auto",
+        "width": "100%",
+    }
     assert css_rule_group_declarations(
         mobile[0],
         (f"{LIGHT_GUARD} .archive-page .archive-page-title",),
