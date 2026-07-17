@@ -156,6 +156,7 @@ TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
     {
         (".surface-leather",),
         (".btn-secondary-wood",),
+        (f"{LIGHT_GUARD} .btn-secondary-wood",),
         (
             f"{LIGHT_GUARD} .btn-secondary-wood:hover",
             f"{LIGHT_GUARD} .btn-secondary-wood:active",
@@ -208,6 +209,21 @@ TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
         (f"{LIGHT_GUARD} .illustration-books",),
         (f"{LIGHT_GUARD} .illustration-open-book",),
         (f"{LIGHT_GUARD} .illustration-flourish",),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+        ),
+        (f"{LIGHT_GUARD} .archive-page-upload .illustration-compass",),
+        (f"{LIGHT_GUARD} .archive-page-upload .illustration-sextant",),
+        (f"{LIGHT_GUARD} .archive-page-upload > .illustration-flourish",),
+        (f"{LIGHT_GUARD} .archive-page-upload > .illustration-sextant",),
+        (f"{LIGHT_GUARD} .archive-page-upload > .illustration-compass",),
     }
 )
 TASK4_NAVIGATION_CLASSES = (
@@ -253,6 +269,18 @@ TASK5_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
         (".workspace-card",),
         (".workspace-card:hover",),
         (".workspace-card-add",),
+        (f"{LIGHT_GUARD} .archive-page",),
+        (f"{LIGHT_GUARD} .archive-content",),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+        ),
     }
 )
 EXPECTED_DARK_ICON_COLORS = {
@@ -1495,11 +1523,21 @@ def assert_task_selectors_are_dark_scoped(
             continue
 
         normalized_group = tuple(" ".join(selector.split()) for selector in selectors)
-        if normalized_group in allowed_theme_neutral_groups:
-            seen_allowed_groups[normalized_group] = (
-                seen_allowed_groups.get(normalized_group, 0) + 1
+        approved_groups = tuple(
+            approved_group
+            for approved_group in allowed_theme_neutral_groups
+            if len(approved_group) == len(normalized_group)
+            and frozenset(approved_group) == frozenset(normalized_group)
+        )
+        assert len(approved_groups) <= 1, (
+            f"ambiguous approved {task_label} selector group: {normalized_group!r}"
+        )
+        if approved_groups:
+            approved_group = approved_groups[0]
+            seen_allowed_groups[approved_group] = (
+                seen_allowed_groups.get(approved_group, 0) + 1
             )
-            assert seen_allowed_groups[normalized_group] == 1, (
+            assert seen_allowed_groups[approved_group] == 1, (
                 f"duplicate approved {task_label} selector group outside dark scope: "
                 f"{normalized_group!r}"
             )
@@ -2111,6 +2149,20 @@ def test_shared_contract_boundary_accepts_reordered_canonical_selector_group():
     css = read_text("static/css/custom.css")
     original_group = ",\n".join(SHARED_CONTROL_MOTION_SELECTORS)
     reordered_group = ",\n".join(reversed(SHARED_CONTROL_MOTION_SELECTORS))
+    assert original_group in css
+
+    css = css.replace(original_group, reordered_group, 1)
+    assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
+
+
+def test_shared_contract_boundary_accepts_reordered_approved_light_selector_group():
+    css = read_text("static/css/custom.css")
+    selectors = (
+        f"{LIGHT_GUARD} .btn-brass",
+        f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+    )
+    original_group = ",\n".join(selectors)
+    reordered_group = ",\n".join(reversed(selectors))
     assert original_group in css
 
     css = css.replace(original_group, reordered_group, 1)
@@ -2939,6 +2991,21 @@ TASK6_DARK_ONLY_CLASSES = (
     "save-icon-light",
     "save-icon-dark",
 )
+TASK6_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
+    {
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+        ),
+        (f"{LIGHT_GUARD} .archive-page-browse",),
+    }
+)
 
 
 def card_runtime(source: str | None = None) -> dict:
@@ -2998,7 +3065,7 @@ def assert_browse_css_contract(css: str) -> None:
     assert_task_selectors_are_dark_scoped(
         css,
         TASK6_DARK_ONLY_CLASSES,
-        frozenset(),
+        TASK6_ALLOWED_LIGHT_SELECTOR_GROUPS,
         "Task 6",
         "a dark-only browse/result rule",
     )
@@ -3355,7 +3422,21 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
     mobile = css_block_body(css, "@media (max-width: 575.98px)")
     assert css_rule_group_declarations(mobile, ('[data-bs-theme="dark"] .archive-page-upload > .illustration-compass',)) == {"height": "120px", "left": "-2rem", "width": "120px"}
     assert css.index("@media (max-width: 575.98px)") > css.index('[data-bs-theme="dark"] .archive-page-upload .illustration-compass')
-    assert_task_selectors_are_dark_scoped(css, ("archive-page-upload", "upload-content", "upload-panel", "upload-actions", "file-list-panel", "file-icon", "file-size"), frozenset(), "Task 7", "a dark-only upload rule")
+    assert_task_selectors_are_dark_scoped(
+        css,
+        ("archive-page-upload", "upload-content", "upload-panel", "upload-actions", "file-list-panel", "file-icon", "file-size"),
+        frozenset(
+            {
+                (f"{LIGHT_GUARD} .archive-page-upload .illustration-compass",),
+                (f"{LIGHT_GUARD} .archive-page-upload .illustration-sextant",),
+                (f"{LIGHT_GUARD} .archive-page-upload > .illustration-flourish",),
+                (f"{LIGHT_GUARD} .archive-page-upload > .illustration-sextant",),
+                (f"{LIGHT_GUARD} .archive-page-upload > .illustration-compass",),
+            }
+        ),
+        "Task 7",
+        "a dark-only upload rule",
+    )
 
 
 def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
@@ -3395,7 +3476,19 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
         "source-preview-shell", "source-preview-content", "workspace-tabs", "workspace-source-item",
         "workspace-source-name", "note-item", "note-icon-light", "note-icon-dark", "chat-messages",
         "chat-row-agent", "chat-row-user",
-    ), frozenset({(".workspace-tabs .nav-link",)}), "Task 8", "the existing neutral tab-radius rule")
+    ), frozenset({
+        (".workspace-tabs .nav-link",),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+            f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+        ),
+    }), "Task 8", "the existing neutral tab-radius rule or an exact Old Book light placement")
 
     desktop_header, mobile_header = "@media (max-width: 991.98px)", "@media (max-width: 575.98px)"
     assert (css.count(desktop_header), css.count(mobile_header)) == (1, 1)

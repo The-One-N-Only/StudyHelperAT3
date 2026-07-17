@@ -134,16 +134,97 @@ EXPECTED_LIGHT_ILLUSTRATIONS = {
         "0.10",
     ),
 }
+EXPECTED_LIGHT_PRIMARY_BUTTON_STATES = {
+    "--bs-btn-active-bg": "var(--rubric-700)",
+    "--bs-btn-active-border-color": "transparent",
+    "--bs-btn-active-color": "var(--paper-50)",
+    "--bs-btn-active-shadow": "none",
+    "--bs-btn-bg": "var(--rubric-500)",
+    "--bs-btn-border-color": "transparent",
+    "--bs-btn-color": "var(--paper-50)",
+    "--bs-btn-disabled-bg": "var(--rubric-500)",
+    "--bs-btn-disabled-border-color": "transparent",
+    "--bs-btn-disabled-color": "var(--paper-50)",
+    "--bs-btn-disabled-opacity": "0.65",
+    "--bs-btn-focus-shadow-rgb": "146, 93, 7",
+    "--bs-btn-hover-bg": "var(--rubric-700)",
+    "--bs-btn-hover-border-color": "transparent",
+    "--bs-btn-hover-color": "var(--paper-50)",
+    "background-image": "linear-gradient(hsl(0 0% 100% / 0.12), transparent 40%)",
+    "border-radius": "var(--radius-button)",
+}
+EXPECTED_LIGHT_WOOD_BUTTON_STATES = {
+    "--bs-btn-active-bg": "var(--paper-300)",
+    "--bs-btn-active-border-color": "var(--gilt-900)",
+    "--bs-btn-active-color": "var(--ink-900)",
+    "--bs-btn-active-shadow": "none",
+    "--bs-btn-bg": "var(--paper-100)",
+    "--bs-btn-border-color": "hsl(33 30% 60% / 0.50)",
+    "--bs-btn-color": "var(--ink-900)",
+    "--bs-btn-disabled-bg": "var(--paper-200)",
+    "--bs-btn-disabled-border-color": "hsl(33 30% 60% / 0.50)",
+    "--bs-btn-disabled-color": "var(--ink-700)",
+    "--bs-btn-disabled-opacity": "0.65",
+    "--bs-btn-focus-shadow-rgb": "146, 93, 7",
+    "--bs-btn-hover-bg": "var(--paper-200)",
+    "--bs-btn-hover-border-color": "var(--gilt-900)",
+    "--bs-btn-hover-color": "var(--ink-900)",
+}
+EXPECTED_LIGHT_ILLUSTRATION_PLACEMENTS = {
+    (
+        f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+        f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+        f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+    ): {
+        "bottom": "0",
+        "height": "160px",
+        "left": "0",
+        "width": "240px",
+    },
+    (
+        f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+        f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+        f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+    ): {
+        "bottom": "0",
+        "height": "180px",
+        "right": "0",
+        "transform": "scaleX(-1)",
+        "width": "180px",
+    },
+    (f"{LIGHT_GUARD} .archive-page-upload .illustration-compass",): {
+        "height": "180px",
+        "left": "1rem",
+        "top": "1rem",
+        "width": "180px",
+    },
+    (f"{LIGHT_GUARD} .archive-page-upload .illustration-sextant",): {
+        "height": "200px",
+        "right": "1rem",
+        "top": "24%",
+        "width": "200px",
+    },
+    (f"{LIGHT_GUARD} .archive-page-upload > .illustration-flourish",): {
+        "bottom": "0",
+        "height": "180px",
+        "right": "0",
+        "transform": "scaleX(-1)",
+        "width": "180px",
+    },
+}
 
 
 def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
-def light_css() -> str:
-    css = read_text("static/css/custom.css")
+def light_css_from(css: str) -> str:
     assert css.count(DARK_CSS_MARKER) == 1
     return css[: css.index(DARK_CSS_MARKER)]
+
+
+def light_css() -> str:
+    return light_css_from(read_text("static/css/custom.css"))
 
 
 def strip_css_comments(css: str) -> str:
@@ -281,6 +362,80 @@ def iter_flat_declarations(css: str):
             yield from iter_flat_declarations(body)
             continue
         yield selector_group(header), parse_css_declarations(body, header)
+
+
+def assert_light_illustration_geometry_contract(css: str) -> None:
+    light = light_css_from(css)
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .archive-page",),
+    ) == {
+        "min-height": "calc(100vh - 58px)",
+        "overflow": "hidden",
+        "position": "relative",
+    }
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .archive-content",),
+    ) == {"position": "relative", "z-index": "var(--z-content)"}
+    for selectors, expected in EXPECTED_LIGHT_ILLUSTRATION_PLACEMENTS.items():
+        assert css_rule_group_declarations(light, selectors) == expected
+
+    desktop = css_block_bodies(
+        light,
+        "@media screen and (max-width: 991.98px)",
+    )
+    tablet = css_block_bodies(
+        light,
+        "@media screen and (max-width: 767.98px)",
+    )
+    mobile = css_block_bodies(
+        light,
+        "@media screen and (max-width: 575.98px)",
+    )
+    assert len(desktop) == len(tablet) == len(mobile) == 1
+    assert css_rule_group_declarations(
+        desktop[0],
+        (f"{LIGHT_GUARD} .archive-page-upload > .illustration-sextant",),
+    ) == {"display": "none"}
+    assert css_rule_group_declarations(
+        tablet[0],
+        (f"{LIGHT_GUARD} .archive-page-browse",),
+    ) == {"overflow": "visible"}
+    assert css_rule_group_declarations(
+        mobile[0],
+        (f"{LIGHT_GUARD} .archive-page-upload > .illustration-compass",),
+    ) == {"height": "120px", "left": "-2rem", "width": "120px"}
+
+
+def assert_light_button_state_contract(css: str) -> None:
+    light = light_css_from(css)
+    assert css_rule_group_declarations(
+        light,
+        (
+            f"{LIGHT_GUARD} .btn-brass",
+            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+        ),
+    ) == EXPECTED_LIGHT_PRIMARY_BUTTON_STATES
+    assert css_rule_group_declarations(
+        light,
+        (f"{LIGHT_GUARD} .btn-secondary-wood",),
+    ) == EXPECTED_LIGHT_WOOD_BUTTON_STATES
+
+
+def assert_light_dropdown_open_state_contract(css: str) -> None:
+    assert css_rule_group_declarations(
+        light_css_from(css),
+        (
+            f"{LIGHT_GUARD} .dropdown-menu.show",
+            f"{LIGHT_GUARD} .browse-dropdown-menu.show",
+        ),
+    ) == {
+        "opacity": "1",
+        "pointer-events": "auto",
+        "transition": "opacity 180ms ease-out, visibility 0s linear 0s",
+        "visibility": "visible",
+    }
 
 
 def read_png_dimensions(path: Path) -> tuple[int, int]:
@@ -458,6 +613,20 @@ def test_light_illustrations_use_gilt_masks_and_visible_spec_opacities():
         ) == {"--illustration-image": image, "opacity": opacity}
 
 
+def test_light_illustrations_have_layered_page_geometry_and_responsive_placements():
+    assert_light_illustration_geometry_contract(read_text("static/css/custom.css"))
+
+
+def test_light_illustration_geometry_contract_rejects_dimension_mutation():
+    css = read_text("static/css/custom.css")
+    assert_light_illustration_geometry_contract(css)
+    assert "width: 240px;" in light_css_from(css)
+    with pytest.raises(AssertionError):
+        assert_light_illustration_geometry_contract(
+            css.replace("width: 240px;", "width: 241px;", 1)
+        )
+
+
 def test_light_navbar_and_sidebar_use_paper_and_ink_without_dark_leakage():
     css = light_css()
     assert css_rule_group_declarations(
@@ -506,19 +675,13 @@ def test_light_button_hierarchy_uses_rubric_wood_and_ink():
             f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
         ),
     )
-    assert primary == {
-        "--bs-btn-active-bg": "var(--rubric-700)",
-        "--bs-btn-active-border-color": "transparent",
-        "--bs-btn-active-color": "var(--paper-50)",
-        "--bs-btn-bg": "var(--rubric-500)",
-        "--bs-btn-border-color": "transparent",
-        "--bs-btn-color": "var(--paper-50)",
-        "--bs-btn-hover-bg": "var(--rubric-700)",
-        "--bs-btn-hover-border-color": "transparent",
-        "--bs-btn-hover-color": "var(--paper-50)",
-        "background-image": "linear-gradient(hsl(0 0% 100% / 0.12), transparent 40%)",
-        "border-radius": "var(--radius-button)",
-    }
+    assert primary == EXPECTED_LIGHT_PRIMARY_BUTTON_STATES
+    assert_light_button_state_contract(read_text("static/css/custom.css"))
+    browse = read_text("static/js/pages/browse.js")
+    upload = read_text("static/js/pages/upload.js")
+    assert 'btn btn-outline-primary btn-secondary-wood" id="loadMoreBtn"' in browse
+    assert "loadMoreBtn.disabled = true" in browse
+    assert 'btn btn-primary btn-brass w-100" id="uploadBtn" disabled' in upload
     assert css_rule_group_declarations(
         css,
         (f"{LIGHT_GUARD} .btn-ghost",),
@@ -540,6 +703,31 @@ def test_light_button_hierarchy_uses_rubric_wood_and_ink():
         css,
         (f"{LIGHT_GUARD} .icon-button:focus-visible",),
     ) == {"color": "var(--ink-900) !important"}
+
+
+@pytest.mark.parametrize(
+    ("declaration", "mutation"),
+    (
+        (
+            "--bs-btn-disabled-bg: var(--rubric-500);",
+            "--bs-btn-disabled-bg: #0d6efd;",
+        ),
+        (
+            "--bs-btn-disabled-bg: var(--paper-200);",
+            "--bs-btn-disabled-bg: #0d6efd;",
+        ),
+    ),
+    ids=("rubric-upload", "wood-load-more"),
+)
+def test_light_button_state_contract_rejects_disabled_blue_fallback(
+    declaration,
+    mutation,
+):
+    css = read_text("static/css/custom.css")
+    assert_light_button_state_contract(css)
+    assert light_css_from(css).count(declaration) == 1
+    with pytest.raises(AssertionError):
+        assert_light_button_state_contract(css.replace(declaration, mutation, 1))
 
 
 def test_light_inputs_dropdowns_badges_offcanvas_and_focus_match_contract():
@@ -585,6 +773,7 @@ def test_light_inputs_dropdowns_badges_offcanvas_and_focus_match_contract():
         "transition": "opacity 180ms ease-in, visibility 0s linear 180ms",
         "visibility": "hidden",
     }
+    assert_light_dropdown_open_state_contract(read_text("static/css/custom.css"))
     assert css_rule_group_declarations(
         css,
         (
@@ -639,6 +828,16 @@ def test_light_inputs_dropdowns_badges_offcanvas_and_focus_match_contract():
         "box-shadow": "var(--shadow-gilt-glow)",
         "outline": "0",
     }
+
+
+def test_light_dropdown_open_state_contract_rejects_pointer_event_mutation():
+    css = read_text("static/css/custom.css")
+    assert_light_dropdown_open_state_contract(css)
+    assert light_css_from(css).count("pointer-events: auto;") == 1
+    with pytest.raises(AssertionError):
+        assert_light_dropdown_open_state_contract(
+            css.replace("pointer-events: auto;", "pointer-events: none;", 1)
+        )
 
 
 def test_light_scrollbars_motion_and_reduced_motion_match_contract():
