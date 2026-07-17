@@ -237,15 +237,15 @@ body.nav-sidebar-open {
     --shadow-warm-raised: 0 2px 10px 0 hsl(28 60% 4% / 0.55), 0 0 0 1px hsl(35 40% 40% / 0.06);
     --shadow-warm-glow: 0 0 0 1px var(--gold-500), 0 0 18px 2px hsl(35 70% 55% / 0.25);
 
-    --candle-x: 50%;
-    --candle-y: 30%;
-    --candle-radius: 380px;
+    --candle-x: 100%;
+    --candle-y: 100%;
+    --candle-radius: 100px;
 
     --z-bg-base: 0;
     --z-bg-illustration: 1;
     --z-content: 10;
-    --z-candle-glow: 40;
-    --z-overlay: 50;
+    --z-candle-glow: 10000;
+    --z-overlay: 10000;
 
     --bs-body-bg: var(--bg-950);
     --bs-body-color: var(--text-primary);

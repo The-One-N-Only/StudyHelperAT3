@@ -12,3 +12,5 @@ reportlab>=4.2.0
 pytest>=8.0.0
 anthropic>=0.25.0
 torch
+transformers>=4.40.0
+numpy>=1.26.0
