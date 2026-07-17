@@ -3,7 +3,7 @@ import re
 import requests
 import src.whitelist as whitelist
 import src.db as db
-import src.pubmed as pubmed
+#import src.pubmed as pubmed
 
 USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")

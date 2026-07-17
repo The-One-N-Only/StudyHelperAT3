@@ -215,7 +215,7 @@ body.nav-sidebar-open {
     --gilt-100: #F8BB59;
 
     --rubric-700: #782C21;
-    --rubric-500: #98372A;
+    --rubric-500: #6a3129;
     --rubric-50: #F4DBD7;
     --folio-blue: #4A7FA5;
 
@@ -1566,24 +1566,26 @@ p {
 }
 
 [data-bs-theme="dark"] .surface-leather {
-    background-color: var(--surface-800);
+    background-color: #5e321d; 
     background-image:
-        linear-gradient(var(--surface-800), var(--surface-800)),
-        url("/static/img/textures/leather-texture.png");
+        url("/static/img/textures/wood-texture.png"); 
     background-blend-mode: multiply;
     background-position: 0 0;
     background-repeat: repeat, repeat;
     background-size: auto, 420px;
+    
+    transform: rotate(0deg); 
+    transform-origin: center; 
     border: 1px solid hsl(35 40% 45% / 0.18);
     border-radius: var(--radius-panel);
     box-shadow: var(--shadow-warm-raised);
 }
 
+/* Now handles the Buttons using Leather Texture */
 [data-bs-theme="dark"] .btn-secondary-wood {
-    background-color: var(--surface-700);
+    background-color: #673013;
     background-image:
-        linear-gradient(var(--surface-700), var(--surface-700)),
-        url("/static/img/textures/wood-texture.png");
+        url("/static/img/textures/leather-texture.png"); /* Swapped to leather */
     background-blend-mode: multiply;
     background-position: 0 0;
     background-repeat: repeat, repeat;
