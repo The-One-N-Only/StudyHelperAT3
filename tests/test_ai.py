@@ -133,15 +133,23 @@ def _unexpected_lookup(*_args, **_kwargs):
 
 
 @pytest.mark.parametrize(
-    "invoke",
+    ("invoke", "expected"),
     [
-        lambda: answer.answer_prompt("What is photosynthesis?", user_id=7),
-        lambda: answer.chat_with_sources(
-            [{"role": "user", "content": "What is photosynthesis?"}], user_id=7
+        (
+            lambda: answer.answer_prompt("What is photosynthesis?", user_id=7),
+            {"status": False, "error": AI_NOT_CONFIGURED_ERROR},
+        ),
+        (
+            lambda: answer.chat_with_sources(
+                [{"role": "user", "content": "What is photosynthesis?"}], user_id=7
+            ),
+            {"status": False, "error": AI_NOT_CONFIGURED_ERROR},
         ),
     ],
 )
-def test_answer_entry_points_fail_before_context_lookup_without_client(monkeypatch, invoke):
+def test_answer_entry_points_fail_before_context_lookup_without_client(
+    monkeypatch, invoke, expected
+):
     monkeypatch.setattr(answer, "client", None, raising=False)
     monkeypatch.setattr(answer, "search_files_for_context", _unexpected_lookup)
     monkeypatch.setattr(answer, "gather_whitelisted_context", _unexpected_lookup)
@@ -151,8 +159,7 @@ def test_answer_entry_points_fail_before_context_lookup_without_client(monkeypat
 
     result = invoke()
 
-    assert result["status"] is False
-    assert result["error"] == AI_NOT_CONFIGURED_ERROR
+    assert result == expected
 
 
 class FakeMessages:
@@ -246,8 +253,7 @@ def test_answer_provider_error_is_logged_and_sanitised(monkeypatch):
 
     result = answer.answer_prompt("Explain the topic", user_id=7)
 
-    assert result["status"] is False
-    assert result["error"] == AI_PROVIDER_ERROR
+    assert result == {"status": False, "error": AI_PROVIDER_ERROR}
     assert provider_detail not in str(result)
     log_exception.assert_called_once()
 

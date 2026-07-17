@@ -176,8 +176,7 @@ def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optio
     if client is None:
         return {
             "status": False,
-            "error": AI_NOT_CONFIGURED_ERROR,
-            "answer": None
+            "error": AI_NOT_CONFIGURED_ERROR
         }
 
     try:
@@ -227,8 +226,7 @@ Format your answer clearly with key points where appropriate."""
         logging.exception("Anthropic request failed while answering prompt for user %s", user_id)
         return {
             "status": False,
-            "error": AI_PROVIDER_ERROR,
-            "answer": None
+            "error": AI_PROVIDER_ERROR
         }
 
 
