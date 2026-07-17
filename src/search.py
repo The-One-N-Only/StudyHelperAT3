@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import re
@@ -99,6 +100,24 @@ def result_identity(item):
         return ("display", source_name, title)
 
     return None
+
+
+def with_response_dedupe_metadata(item):
+    """Return a result copy carrying the server's canonical dedupe keys."""
+    if not isinstance(item, Mapping):
+        return item
+
+    response_item = dict(item)
+    identity = result_identity(item)
+    response_item["_dedupe_identity"] = (
+        json.dumps(identity, ensure_ascii=False, separators=(",", ":"))
+        if identity is not None
+        else ""
+    )
+    response_item["_canonical_source_url"] = canonical_source_url(
+        item.get("source_url")
+    )
+    return response_item
 
 
 def deduplicate_results(results):

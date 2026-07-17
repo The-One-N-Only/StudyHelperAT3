@@ -4,6 +4,25 @@ import src.search as search
 import src.whitelist as whitelist
 
 
+RESPONSE_METADATA_VECTORS = (
+    (
+        {"source_name": "Archive", "title": "ﬀ"},
+        '["display","archive","ff"]',
+        "",
+    ),
+    (
+        {"source_name": "Archive", "source_id": 1e-7},
+        '["source_id","archive","1e-07"]',
+        "",
+    ),
+    (
+        {"source_url": "https://EXAMPLE.test:080/path#intro"},
+        '["url","https://example.test:80/path"]',
+        "https://example.test:80/path",
+    ),
+)
+
+
 def test_result_identity_normalizes_source_but_preserves_source_id_case():
     first = {
         "source_name": "  WikiPEDIA\n Archive ",
@@ -117,6 +136,29 @@ def test_deduplicate_results_preserves_multiple_identity_less_records():
     ]
 
 
+@pytest.mark.parametrize(
+    ("record", "expected_identity", "expected_url"), RESPONSE_METADATA_VECTORS
+)
+def test_response_dedupe_metadata_is_deterministic_copy_without_mutating_input(
+    record, expected_identity, expected_url
+):
+    original = {**record, "provider_payload": {"rank": 1}}
+    original_snapshot = {
+        **original,
+        "provider_payload": dict(original["provider_payload"]),
+    }
+
+    decorated = search.with_response_dedupe_metadata(original)
+
+    assert decorated is not original
+    assert decorated["_dedupe_identity"] == expected_identity
+    assert decorated["_canonical_source_url"] == expected_url
+    assert search.with_response_dedupe_metadata(original) == decorated
+    assert original == original_snapshot
+    assert "_dedupe_identity" not in original
+    assert "_canonical_source_url" not in original
+
+
 def test_browse_search_all_deduplicates_cards_without_changing_source_counts(monkeypatch):
     import app as flask_app
 
@@ -154,6 +196,8 @@ def test_browse_search_all_deduplicates_cards_without_changing_source_counts(mon
             "title": "Unique whitelist result",
         },
     ]
+    dedicated_snapshot = [dict(item) for item in dedicated_results]
+    whitelist_snapshot = [dict(item) for item in whitelist_results]
     monkeypatch.setattr(
         flask_app.search,
         "wikipedia",
@@ -183,7 +227,21 @@ def test_browse_search_all_deduplicates_cards_without_changing_source_counts(mon
         "Dedicated result",
         "Unique whitelist result",
     ]
+    assert [item["_dedupe_identity"] for item in payload["results"]] == [
+        '["source_id","wikipedia","wiki-1"]',
+        '["source_id","wikipedia","wiki-2"]',
+        '["source_id","open archive","archive-3"]',
+    ]
+    assert [item["_canonical_source_url"] for item in payload["results"]] == [
+        "https://example.test/shared",
+        "https://example.test/dedicated",
+        "https://example.test/unique",
+    ]
     assert payload["source_counts"] == {"wikipedia": 2, "whitelist": 3}
+    assert dedicated_results == dedicated_snapshot
+    assert whitelist_results == whitelist_snapshot
+    assert all("_dedupe_identity" not in item for item in dedicated_results)
+    assert all("_dedupe_identity" not in item for item in whitelist_results)
 
 
 def test_whitelist_search_calls_per_domain(monkeypatch):

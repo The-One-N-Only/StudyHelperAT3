@@ -328,6 +328,9 @@ def browse_search_all():
 
     logging.info(f"User {user_id} performed multi-source search for '{query}' across {len(sources)} sources")
     all_results = search.deduplicate_results(all_results)
+    all_results = [
+        search.with_response_dedupe_metadata(item) for item in all_results
+    ]
 
     return jsonify({
         'status': True,

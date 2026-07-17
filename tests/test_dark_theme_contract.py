@@ -17,17 +17,34 @@ import src.search as search_api
 
 
 ROOT = Path(__file__).resolve().parents[1]
-IDENTITY_NORMALIZATION_VECTORS = (
-    {"name": "dotless-i", "left": "I", "right": "ı", "equal": False},
-    {"name": "sharp-s", "left": "Straße", "right": "STRASSE", "equal": True},
-    {"name": "final-sigma", "left": "Σ", "right": "ς", "equal": True},
-)
-SCALAR_SOURCE_ID_VECTORS = (
-    {"value": True, "normalized": "true"},
-    {"value": False, "normalized": "false"},
-    {"value": 1, "normalized": "1"},
-    {"value": 1.0, "normalized": "1"},
-    {"value": 1.5, "normalized": "1.5"},
+SERVER_IDENTITY_METADATA_VECTORS = (
+    {
+        "name": "ligature-casefold",
+        "records": (
+            {"source_name": "Archive", "title": "ﬀ"},
+            {"source_name": "archive", "title": "FF"},
+        ),
+        "identity": '["display","archive","ff"]',
+        "canonical_url": "",
+    },
+    {
+        "name": "numeric-exponent",
+        "records": (
+            {"source_name": "Archive", "source_id": 1e-7, "title": "Exponent numeric"},
+            {"source_name": "archive", "source_id": "1e-07", "title": "Exponent string"},
+        ),
+        "identity": '["source_id","archive","1e-07"]',
+        "canonical_url": "",
+    },
+    {
+        "name": "leading-zero-port",
+        "records": (
+            {"source_url": "https://EXAMPLE.test:080/path#intro", "title": "Port 080"},
+            {"source_url": "https://example.test:80/path", "title": "Port 80"},
+        ),
+        "identity": '["url","https://example.test:80/path"]',
+        "canonical_url": "https://example.test:80/path",
+    },
 )
 SVG_NAMES = (
     "compass-rose.svg",
@@ -3176,6 +3193,7 @@ const restoredState = {
       source_url: "https://example.test/second",
       title: "Restored second",
     },
+    ...__SERVER_METADATA_RECORDS__,
   ],
 };
 globalThis.localStorage = {
@@ -3332,24 +3350,53 @@ process.stdout.write(JSON.stringify({
 
 
 BROWSE_IDENTITY_RUNTIME_HARNESS = r"""
-const vectors = __IDENTITY_NORMALIZATION_VECTORS__;
-const scalarIds = __SCALAR_SOURCE_ID_VECTORS__;
+const vectors = __SERVER_IDENTITY_METADATA_VECTORS__;
 const {
-  normalizeIdentityText,
   canonicalSourceUrl,
   resultIdentity,
+  deduplicateResults,
+  mergeUniqueResults,
 } = await import(process.argv[1]);
+const inheritedMetadataRecord = Object.assign(
+  Object.create({
+    _dedupe_identity: '["display","wrong","identity"]',
+    _canonical_source_url: "https://wrong.test/identity",
+  }),
+  { source_name: " Open  Archive ", title: "Entry" },
+);
+const identitylessLegacy = { description: "Opaque provider record" };
+const identitylessNewFormat = {
+  ...identitylessLegacy,
+  _dedupe_identity: "",
+  _canonical_source_url: "",
+};
+const identitylessMerge = mergeUniqueResults(
+  [identitylessLegacy],
+  [identitylessNewFormat],
+);
 
 process.stdout.write(JSON.stringify({
-  normalized: vectors.map((vector) => ({
-    name: vector.name,
-    left: normalizeIdentityText(vector.left),
-    right: normalizeIdentityText(vector.right),
-  })),
-  scalarIds: scalarIds.map((vector) => resultIdentity({
-    source_name: "Archive",
-    source_id: vector.value,
-  })[2]),
+  vectors: vectors.map((vector) => {
+    const records = vector.records.map((record) => ({
+      ...record,
+      _dedupe_identity: vector.identity,
+      _canonical_source_url: vector.canonical_url,
+    }));
+    const merged = mergeUniqueResults([records[0]], records);
+    return {
+      name: vector.name,
+      identities: records.map((record) => resultIdentity(record)),
+      deduplicatedTitles: deduplicateResults(records).map((record) => record.title),
+      mergedTitles: merged.results.map((record) => record.title),
+      addedCount: merged.addedCount,
+    };
+  }),
+  legacyIdentity: resultIdentity({ source_name: " Open  Archive ", title: "Entry" }),
+  inheritedMetadataIdentity: resultIdentity(inheritedMetadataRecord),
+  identitylessMetadataMerge: {
+    resultCount: identitylessMerge.results.length,
+    addedCount: identitylessMerge.addedCount,
+  },
   malformedBackslashUrl: canonicalSourceUrl("https://example.com\\archive"),
 }));
 """
@@ -3459,10 +3506,14 @@ def browse_runtime(source: str | None = None) -> dict:
 
 
 def restored_browse_runtime(source: str | None = None) -> dict:
+    harness = RESTORED_BROWSE_RUNTIME_HARNESS.replace(
+        "__SERVER_METADATA_RECORDS__",
+        json.dumps(server_metadata_records(), ensure_ascii=False),
+    )
     return run_task6_module_harness(
         source or read_text("static/js/pages/browse.js"),
         BROWSE_IMPORT_REPLACEMENTS,
-        RESTORED_BROWSE_RUNTIME_HARNESS,
+        harness,
         "restored browse",
     )
 
@@ -3479,14 +3530,11 @@ def deferred_browse_runtime(source: str | None = None) -> dict:
 def browse_identity_runtime(source: str | None = None) -> dict:
     browse_source = source or read_text("static/js/pages/browse.js")
     browse_source += (
-        "\nexport { normalizeIdentityText, canonicalSourceUrl, resultIdentity };\n"
+        "\nexport { canonicalSourceUrl, resultIdentity, deduplicateResults, mergeUniqueResults };\n"
     )
     harness = BROWSE_IDENTITY_RUNTIME_HARNESS.replace(
-        "__IDENTITY_NORMALIZATION_VECTORS__",
-        json.dumps(IDENTITY_NORMALIZATION_VECTORS, ensure_ascii=False),
-    ).replace(
-        "__SCALAR_SOURCE_ID_VECTORS__",
-        json.dumps(SCALAR_SOURCE_ID_VECTORS),
+        "__SERVER_IDENTITY_METADATA_VECTORS__",
+        json.dumps(SERVER_IDENTITY_METADATA_VECTORS, ensure_ascii=False),
     )
     return run_task6_module_harness(
         browse_source,
@@ -3494,6 +3542,18 @@ def browse_identity_runtime(source: str | None = None) -> dict:
         harness,
         "browse identity",
     )
+
+
+def server_metadata_records() -> list[dict]:
+    return [
+        {
+            **record,
+            "_dedupe_identity": vector["identity"],
+            "_canonical_source_url": vector["canonical_url"],
+        }
+        for vector in SERVER_IDENTITY_METADATA_VECTORS
+        for record in vector["records"]
+    ]
 
 
 def render_server_result_card(item: dict) -> str:
@@ -3790,25 +3850,43 @@ def test_task2_browse_runtime_ignores_stale_initial_and_load_more_responses():
     assert rendered["requestSizes"] == [10, 10, 20, 10, 20]
 
 
-def test_task2_browse_runtime_identity_normalization_matches_python_vectors():
+def test_task2_browse_runtime_uses_server_identity_metadata_across_batches():
     rendered = browse_identity_runtime()
-    expected_normalized = []
-    for vector in IDENTITY_NORMALIZATION_VECTORS:
-        left = search_api.normalize_identity_text(vector["left"])
-        right = search_api.normalize_identity_text(vector["right"])
-        assert (left == right) is vector["equal"]
-        expected_normalized.append(
-            {"name": vector["name"], "left": left, "right": right}
+    expected = []
+    for vector in SERVER_IDENTITY_METADATA_VECTORS:
+        for record in vector["records"]:
+            original = dict(record)
+            decorated = search_api.with_response_dedupe_metadata(record)
+            assert decorated["_dedupe_identity"] == vector["identity"]
+            assert decorated["_canonical_source_url"] == vector["canonical_url"]
+            assert record == original
+
+        first_title = vector["records"][0]["title"]
+        expected.append(
+            {
+                "name": vector["name"],
+                "identities": [vector["identity"], vector["identity"]],
+                "deduplicatedTitles": [first_title],
+                "mergedTitles": [first_title],
+                "addedCount": 0,
+            }
         )
 
-    assert rendered["normalized"] == expected_normalized
-    assert rendered["scalarIds"] == [
-        vector["normalized"] for vector in SCALAR_SOURCE_ID_VECTORS
+    assert rendered["vectors"] == expected
+    assert rendered["legacyIdentity"] == ["display", "open archive", "entry"]
+    assert rendered["inheritedMetadataIdentity"] == [
+        "display",
+        "open archive",
+        "entry",
     ]
+    assert rendered["identitylessMetadataMerge"] == {
+        "resultCount": 1,
+        "addedCount": 0,
+    }
     assert rendered["malformedBackslashUrl"] == ""
 
 
-def test_task2_restored_browse_deduplicates_legacy_state_and_restores_exact_inputs():
+def test_task2_restored_browse_deduplicates_legacy_and_server_metadata_state():
     rendered = restored_browse_runtime()
 
     assert rendered["query"] == "restored archive"
@@ -3822,7 +3900,13 @@ def test_task2_restored_browse_deduplicates_legacy_state_and_restores_exact_inpu
         "wikipedia",
         "whitelist_en.wikipedia.org",
     ]
-    assert rendered["renderedTitles"] == ["Restored first", "Restored second"]
+    assert rendered["renderedTitles"] == [
+        "Restored first",
+        "Restored second",
+        "ﬀ",
+        "Exponent numeric",
+        "Port 080",
+    ]
     assert rendered["initialButtonDisabled"] is False
     assert rendered["loadBody"] == {
         "query": "restored archive",

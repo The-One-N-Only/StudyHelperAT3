@@ -5,6 +5,12 @@ import { createCard } from '../card.js';
 
 const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
+const DEDUPE_IDENTITY_PROPERTY = '_dedupe_identity';
+const CANONICAL_SOURCE_URL_PROPERTY = '_canonical_source_url';
+const RESPONSE_METADATA_PROPERTIES = new Set([
+    DEDUPE_IDENTITY_PROPERTY,
+    CANONICAL_SOURCE_URL_PROPERTY
+]);
 let pageRoot = null;
 let currentSearchResults = [];
 let currentSourceCounts = {};
@@ -20,11 +26,7 @@ let searchGeneration = 0;
 function normalizeIdentityText(value) {
     if (value === null || value === undefined) return '';
     if (!['string', 'number', 'boolean'].includes(typeof value)) return '';
-    const collapsed = String(value).trim().replace(/\s+/gu, ' ');
-    return collapsed
-        .toLowerCase()
-        .replace(/\u00df/gu, 'ss')
-        .replace(/\u03c2/gu, '\u03c3');
+    return String(value).trim().replace(/\s+/gu, ' ').toLowerCase();
 }
 
 function normalizeSourceId(value) {
@@ -79,8 +81,18 @@ function canonicalSourceUrl(value) {
     return `${scheme}://${userinfo}${normalizedHostAndPort}${match[3]}${match[4] || ''}`;
 }
 
+function hasResponseDedupeMetadata(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    return Object.prototype.hasOwnProperty.call(item, DEDUPE_IDENTITY_PROPERTY)
+        || Object.prototype.hasOwnProperty.call(item, CANONICAL_SOURCE_URL_PROPERTY);
+}
+
 function resultIdentity(item) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    if (hasResponseDedupeMetadata(item)) {
+        const identity = item[DEDUPE_IDENTITY_PROPERTY];
+        return typeof identity === 'string' && identity ? identity : null;
+    }
 
     const sourceName = normalizeIdentityText(item.source_name);
     const sourceId = normalizeSourceId(item.source_id);
@@ -101,6 +113,21 @@ function resultIdentity(item) {
     return null;
 }
 
+function resultIdentityKey(item) {
+    const identity = resultIdentity(item);
+    if (typeof identity === 'string') return identity;
+    return identity ? JSON.stringify(identity) : '';
+}
+
+function resultCanonicalSourceUrl(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return '';
+    if (hasResponseDedupeMetadata(item)) {
+        const sourceUrl = item[CANONICAL_SOURCE_URL_PROPERTY];
+        return typeof sourceUrl === 'string' ? sourceUrl : '';
+    }
+    return canonicalSourceUrl(item.source_url);
+}
+
 function deduplicateResults(results) {
     if (!Array.isArray(results)) return [];
 
@@ -108,11 +135,8 @@ function deduplicateResults(results) {
     const seenIdentities = new Set();
     const seenUrls = new Set();
     results.forEach((item) => {
-        const identity = resultIdentity(item);
-        const identityKey = identity ? JSON.stringify(identity) : '';
-        const sourceUrl = item && typeof item === 'object' && !Array.isArray(item)
-            ? canonicalSourceUrl(item.source_url)
-            : '';
+        const identityKey = resultIdentityKey(item);
+        const sourceUrl = resultCanonicalSourceUrl(item);
 
         if (identityKey && seenIdentities.has(identityKey)) return;
         if (sourceUrl && seenUrls.has(sourceUrl)) return;
@@ -124,7 +148,7 @@ function deduplicateResults(results) {
     return uniqueResults;
 }
 
-function structuralFallbackKey(value, ancestors = new Set()) {
+function structuralFallbackKey(value, ancestors = new Set(), isRoot = true) {
     if (value === null) return 'null';
     if (typeof value === 'string') return `string:${JSON.stringify(value)}`;
     if (typeof value === 'boolean') return `boolean:${value}`;
@@ -134,13 +158,16 @@ function structuralFallbackKey(value, ancestors = new Set()) {
     ancestors.add(value);
     let key = '';
     if (Array.isArray(value)) {
-        const entries = value.map((entry) => structuralFallbackKey(entry, ancestors));
+        const entries = value.map((entry) => structuralFallbackKey(entry, ancestors, false));
         if (entries.every(Boolean)) key = `array:[${entries.join(',')}]`;
     } else {
-        const entries = Object.keys(value).sort().map((name) => {
-            const entryKey = structuralFallbackKey(value[name], ancestors);
-            return entryKey ? `${JSON.stringify(name)}:${entryKey}` : '';
-        });
+        const entries = Object.keys(value)
+            .filter((name) => !isRoot || !RESPONSE_METADATA_PROPERTIES.has(name))
+            .sort()
+            .map((name) => {
+                const entryKey = structuralFallbackKey(value[name], ancestors, false);
+                return entryKey ? `${JSON.stringify(name)}:${entryKey}` : '';
+            });
         if (entries.every(Boolean)) key = `object:{${entries.join(',')}}`;
     }
     ancestors.delete(value);
