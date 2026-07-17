@@ -1,3 +1,4 @@
+import math
 import os
 import re
 from collections.abc import Mapping
@@ -28,7 +29,11 @@ def canonical_source_url(value):
         return ""
 
     raw_value = value.strip()
-    if not raw_value or any(character.isspace() for character in raw_value):
+    if (
+        not raw_value
+        or "\\" in raw_value
+        or any(character.isspace() for character in raw_value)
+    ):
         return ""
 
     try:
@@ -67,8 +72,18 @@ def result_identity(item):
 
     source_name = normalize_identity_text(item.get("source_name"))
     source_id_value = item.get("source_id")
-    if isinstance(source_id_value, (str, int, float, bool)):
+    if isinstance(source_id_value, str):
         source_id = str(source_id_value).strip()
+    elif isinstance(source_id_value, bool):
+        source_id = "true" if source_id_value else "false"
+    elif isinstance(source_id_value, int):
+        source_id = str(source_id_value)
+    elif isinstance(source_id_value, float) and math.isfinite(source_id_value):
+        source_id = (
+            str(int(source_id_value))
+            if source_id_value.is_integer()
+            else str(source_id_value)
+        )
     else:
         source_id = ""
 

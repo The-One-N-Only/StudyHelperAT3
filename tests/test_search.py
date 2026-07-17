@@ -29,6 +29,23 @@ def test_canonical_source_url_normalizes_host_and_removes_fragment():
     ) == "https://example.com/Archive/Entry?view=Full"
     assert search.canonical_source_url("javascript://example.com/archive") == ""
     assert search.canonical_source_url("/archive/entry") == ""
+    assert search.canonical_source_url("https://example.com\\archive") == ""
+
+
+def test_result_identity_formats_json_scalar_source_ids_consistently():
+    vectors = (
+        (True, "true"),
+        (False, "false"),
+        (1, "1"),
+        (1.0, "1"),
+        (1.5, "1.5"),
+    )
+
+    for source_id, expected in vectors:
+        identity = search.result_identity(
+            {"source_name": "Archive", "source_id": source_id}
+        )
+        assert identity == ("source_id", "archive", expected)
 
 
 def test_deduplicate_results_rejects_different_provider_ids_for_same_url():

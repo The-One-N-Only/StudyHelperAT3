@@ -15,12 +15,23 @@ let lastSearchFilters = null;
 let isLoadingMore = false;
 let resultWindow = 10;
 let searchExhausted = false;
+let searchGeneration = 0;
 
 function normalizeIdentityText(value) {
     if (value === null || value === undefined) return '';
     if (!['string', 'number', 'boolean'].includes(typeof value)) return '';
     const collapsed = String(value).trim().replace(/\s+/gu, ' ');
-    return collapsed.toUpperCase().toLowerCase();
+    return collapsed
+        .toLowerCase()
+        .replace(/\u00df/gu, 'ss')
+        .replace(/\u03c2/gu, '\u03c3');
+}
+
+function normalizeSourceId(value) {
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'boolean') return String(value);
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    return '';
 }
 
 function canonicalSourceUrl(value) {
@@ -72,9 +83,7 @@ function resultIdentity(item) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
 
     const sourceName = normalizeIdentityText(item.source_name);
-    const sourceId = ['string', 'number', 'boolean'].includes(typeof item.source_id)
-        ? String(item.source_id).trim()
-        : '';
+    const sourceId = normalizeSourceId(item.source_id);
     if (sourceName && sourceId) {
         return ['source_id', sourceName, sourceId];
     }
@@ -115,11 +124,51 @@ function deduplicateResults(results) {
     return uniqueResults;
 }
 
+function structuralFallbackKey(value, ancestors = new Set()) {
+    if (value === null) return 'null';
+    if (typeof value === 'string') return `string:${JSON.stringify(value)}`;
+    if (typeof value === 'boolean') return `boolean:${value}`;
+    if (typeof value === 'number' && Number.isFinite(value)) return `number:${value}`;
+    if (!value || typeof value !== 'object' || ancestors.has(value)) return '';
+
+    ancestors.add(value);
+    let key = '';
+    if (Array.isArray(value)) {
+        const entries = value.map((entry) => structuralFallbackKey(entry, ancestors));
+        if (entries.every(Boolean)) key = `array:[${entries.join(',')}]`;
+    } else {
+        const entries = Object.keys(value).sort().map((name) => {
+            const entryKey = structuralFallbackKey(value[name], ancestors);
+            return entryKey ? `${JSON.stringify(name)}:${entryKey}` : '';
+        });
+        if (entries.every(Boolean)) key = `object:{${entries.join(',')}}`;
+    }
+    ancestors.delete(value);
+    return key;
+}
+
 function mergeUniqueResults(existing, incoming) {
     const existingResults = deduplicateResults(existing);
+    const existingFallbackCounts = new Map();
+    existingResults.forEach((item) => {
+        if (resultIdentity(item) !== null) return;
+        const key = structuralFallbackKey(item);
+        if (!key) return;
+        existingFallbackCounts.set(key, (existingFallbackCounts.get(key) || 0) + 1);
+    });
+
+    const incomingFallbackCounts = new Map();
+    const unseenIncoming = (Array.isArray(incoming) ? incoming : []).filter((item) => {
+        if (resultIdentity(item) !== null) return true;
+        const key = structuralFallbackKey(item);
+        if (!key) return true;
+        const occurrence = (incomingFallbackCounts.get(key) || 0) + 1;
+        incomingFallbackCounts.set(key, occurrence);
+        return occurrence > (existingFallbackCounts.get(key) || 0);
+    });
     const mergedResults = deduplicateResults([
         ...existingResults,
-        ...(Array.isArray(incoming) ? incoming : [])
+        ...unseenIncoming
     ]);
     return {
         results: mergedResults,
@@ -603,6 +652,7 @@ function performSearch() {
         return;
     }
 
+    const generation = ++searchGeneration;
     const filters = buildFilters();
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
     resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Searching...</p></div>';
@@ -622,6 +672,7 @@ function performSearch() {
     })
         .then((r) => r.json())
         .then((result) => {
+            if (generation !== searchGeneration) return;
             if (result.status) {
                 currentSearchResults = deduplicateResults(result.results);
                 currentSourceCounts = result.source_counts || {};
@@ -633,6 +684,7 @@ function performSearch() {
             }
         })
         .catch(() => {
+            if (generation !== searchGeneration) return;
             showToast('Search failed', 'danger');
             showNoResults();
         });
@@ -681,6 +733,7 @@ function loadMoreResults() {
         return;
     }
 
+    const generation = searchGeneration;
     isLoadingMore = true;
     const nextWindow = resultWindow + 10;
     const loadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
@@ -708,10 +761,12 @@ function loadMoreResults() {
         })
     })
         .then((r) => {
+            if (generation !== searchGeneration) return null;
             if (!r.ok) throw new Error('Load more request failed');
             return r.json();
         })
         .then((result) => {
+            if (generation !== searchGeneration || !result) return;
             if (result.status) {
                 const merged = mergeUniqueResults(currentSearchResults, result.results);
                 currentSearchResults = merged.results;
@@ -728,9 +783,11 @@ function loadMoreResults() {
             }
         })
         .catch(() => {
+            if (generation !== searchGeneration) return;
             showToast('Failed to load more results', 'danger');
         })
         .finally(() => {
+            if (generation !== searchGeneration) return;
             isLoadingMore = false;
             const currentLoadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
             const currentLoadMoreText = pageRoot.querySelector('#loadMoreText');

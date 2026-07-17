@@ -13,8 +13,22 @@ import soupsieve
 from soupsieve.css_parser import PSEUDO_SIMPLE_NO_MATCH, css_unescape
 from soupsieve.css_types import SelectorNull
 
+import src.search as search_api
+
 
 ROOT = Path(__file__).resolve().parents[1]
+IDENTITY_NORMALIZATION_VECTORS = (
+    {"name": "dotless-i", "left": "I", "right": "ı", "equal": False},
+    {"name": "sharp-s", "left": "Straße", "right": "STRASSE", "equal": True},
+    {"name": "final-sigma", "left": "Σ", "right": "ς", "equal": True},
+)
+SCALAR_SOURCE_ID_VECTORS = (
+    {"value": True, "normalized": "true"},
+    {"value": False, "normalized": "false"},
+    {"value": 1, "normalized": "1"},
+    {"value": 1.0, "normalized": "1"},
+    {"value": 1.5, "normalized": "1.5"},
+)
 SVG_NAMES = (
     "compass-rose.svg",
     "sextant.svg",
@@ -3041,19 +3055,49 @@ const third = {
   source_url: "https://example.test/third",
   title: "Third",
 };
+const malformed = {
+  title: "Malformed",
+  description: "Opaque provider record",
+  metadata: { z: 1, a: 2 },
+};
+const malformedReordered = {
+  metadata: { a: 2, z: 1 },
+  description: "Opaque provider record",
+  title: "Malformed",
+};
 const responses = [
   {
-    status: true,
-    results: [
-      first,
-      { ...first, source_name: " wikipedia ", source_url: "https://example.test/id-copy", title: "Repeated ID" },
-      second,
-      { source_name: "JSTOR", source_id: "jstor-4", source_url: "https://example.test/first#copy", title: "Repeated URL" },
-    ],
-    source_counts: { wikipedia: 2, pubmed: 2 },
+    ok: true,
+    payload: {
+      status: true,
+      results: [
+        first,
+        { ...first, source_name: " wikipedia ", source_url: "https://example.test/id-copy", title: "Repeated ID" },
+        second,
+        { source_name: "JSTOR", source_id: "jstor-4", source_url: "https://example.test/first#copy", title: "Repeated URL" },
+        malformed,
+        malformedReordered,
+      ],
+      source_counts: { wikipedia: 2, pubmed: 2 },
+    },
   },
-  { status: true, results: [first, second, third], source_counts: { wikipedia: 1, pubmed: 1 } },
-  { status: true, results: [first, second, third], source_counts: { wikipedia: 1, pubmed: 1 } },
+  { ok: false, payload: { status: false } },
+  {
+    ok: true,
+    payload: {
+      status: true,
+      results: [first, second, malformedReordered, malformed, third],
+      source_counts: { wikipedia: 1, pubmed: 1 },
+    },
+  },
+  {
+    ok: true,
+    payload: {
+      status: true,
+      results: [first, second, malformedReordered, malformed, third],
+      source_counts: { wikipedia: 1, pubmed: 1 },
+    },
+  },
 ];
 globalThis.fetch = async (url, options) => {
   fetchCalls.push({ url, options });
@@ -3062,7 +3106,7 @@ globalThis.fetch = async (url, options) => {
   }
   const response = responses.shift();
   invariant(response, "unexpected extra search request");
-  return { ok: true, async json() { return response; } };
+  return { ok: response.ok, async json() { return response.payload; } };
 };
 globalThis.toastCalls = [];
 
@@ -3072,11 +3116,18 @@ await go.dispatch("click");
 await flushPromises();
 await controls.get("#loadMoreBtn").dispatch("click");
 await flushPromises();
+const retryState = {
+  disabled: controls.get("#loadMoreBtn").disabled,
+  text: controls.get("#loadMoreText").textContent,
+  spinner: controls.get("#loadMoreSpinner").style.display,
+};
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
 await controls.get("#loadMoreBtn").dispatch("click");
 await flushPromises();
 
 const searchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
-invariant(searchCalls.length === 3, "search did not issue three cumulative windows");
+invariant(searchCalls.length === 4, "search did not retry and issue three successful windows");
 invariant(searchCalls[0].options.method === "POST", "search method changed");
 const body = JSON.parse(searchCalls[0].options.body);
 invariant(body.query === "archive", "search query changed");
@@ -3088,6 +3139,7 @@ process.stdout.write(JSON.stringify({
   body,
   requestSizes: searchCalls.map((call) => JSON.parse(call.options.body).num_results),
   renderedTitles: globalThis.renderedItems.map((item) => item.title),
+  retryState,
   loadMoreDisabled: controls.get("#loadMoreBtn").disabled,
   loadMoreText: controls.get("#loadMoreText").textContent,
 }));
@@ -3166,6 +3218,139 @@ process.stdout.write(JSON.stringify({
   renderedTitles: globalThis.renderedItems.map((item) => item.title),
   initialButtonDisabled,
   loadBody,
+}));
+"""
+
+
+DEFERRED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.toastCalls = [];
+const fetchCalls = [];
+
+function deferredResponse() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+function response(results) {
+  return {
+    ok: true,
+    async json() { return { status: true, results, source_counts: { wikipedia: results.length } }; },
+  };
+}
+
+const oldInitial = deferredResponse();
+const staleLoad = deferredResponse();
+const newestLoad = deferredResponse();
+const fresh = {
+  source_name: "Wikipedia",
+  source_id: "fresh-1",
+  source_url: "https://example.test/fresh",
+  title: "Fresh",
+};
+const newest = {
+  source_name: "Wikipedia",
+  source_id: "newest-1",
+  source_url: "https://example.test/newest",
+  title: "Newest",
+};
+const newestExtra = {
+  source_name: "Wikipedia",
+  source_id: "newest-2",
+  source_url: "https://example.test/newest-extra",
+  title: "Newest extra",
+};
+
+globalThis.fetch = async (url, options) => {
+  fetchCalls.push({ url, options });
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+
+  const body = JSON.parse(options.body);
+  if (body.query === "archive" && body.num_results === 10) return oldInitial.promise;
+  if (body.query === "fresh" && body.num_results === 10) return response([fresh]);
+  if (body.query === "fresh" && body.num_results === 20) return staleLoad.promise;
+  if (body.query === "newest" && body.num_results === 10) return response([newest]);
+  if (body.query === "newest" && body.num_results === 20) return newestLoad.promise;
+  throw new Error("unexpected search request: " + JSON.stringify(body));
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+
+search.value = "fresh";
+await go.dispatch("click");
+await flushPromises();
+oldInitial.resolve(response([{
+  source_name: "Wikipedia",
+  source_id: "old-initial",
+  source_url: "https://example.test/old-initial",
+  title: "Old initial",
+}]));
+await flushPromises();
+const afterInitialRace = globalThis.renderedItems.map((item) => item.title);
+
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+search.value = "newest";
+await go.dispatch("click");
+await flushPromises();
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+
+staleLoad.resolve(response([{
+  source_name: "Wikipedia",
+  source_id: "stale-load",
+  source_url: "https://example.test/stale-load",
+  title: "Stale load",
+}]));
+await flushPromises();
+const duringNewestLoad = {
+  titles: globalThis.renderedItems.map((item) => item.title),
+  disabled: controls.get("#loadMoreBtn").disabled,
+  text: controls.get("#loadMoreText").textContent,
+  spinner: controls.get("#loadMoreSpinner").style.display,
+};
+
+newestLoad.resolve(response([newest, newestExtra]));
+await flushPromises();
+const searchBodies = fetchCalls
+  .filter((call) => call.url === "/api/browse/search-all")
+  .map((call) => JSON.parse(call.options.body));
+process.stdout.write(JSON.stringify({
+  afterInitialRace,
+  duringNewestLoad,
+  finalTitles: globalThis.renderedItems.map((item) => item.title),
+  requestQueries: searchBodies.map((body) => body.query),
+  requestSizes: searchBodies.map((body) => body.num_results),
+}));
+"""
+
+
+BROWSE_IDENTITY_RUNTIME_HARNESS = r"""
+const vectors = __IDENTITY_NORMALIZATION_VECTORS__;
+const scalarIds = __SCALAR_SOURCE_ID_VECTORS__;
+const {
+  normalizeIdentityText,
+  canonicalSourceUrl,
+  resultIdentity,
+} = await import(process.argv[1]);
+
+process.stdout.write(JSON.stringify({
+  normalized: vectors.map((vector) => ({
+    name: vector.name,
+    left: normalizeIdentityText(vector.left),
+    right: normalizeIdentityText(vector.right),
+  })),
+  scalarIds: scalarIds.map((vector) => resultIdentity({
+    source_name: "Archive",
+    source_id: vector.value,
+  })[2]),
+  malformedBackslashUrl: canonicalSourceUrl("https://example.com\\archive"),
 }));
 """
 
@@ -3279,6 +3464,35 @@ def restored_browse_runtime(source: str | None = None) -> dict:
         BROWSE_IMPORT_REPLACEMENTS,
         RESTORED_BROWSE_RUNTIME_HARNESS,
         "restored browse",
+    )
+
+
+def deferred_browse_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        DEFERRED_BROWSE_RUNTIME_HARNESS,
+        "deferred browse",
+    )
+
+
+def browse_identity_runtime(source: str | None = None) -> dict:
+    browse_source = source or read_text("static/js/pages/browse.js")
+    browse_source += (
+        "\nexport { normalizeIdentityText, canonicalSourceUrl, resultIdentity };\n"
+    )
+    harness = BROWSE_IDENTITY_RUNTIME_HARNESS.replace(
+        "__IDENTITY_NORMALIZATION_VECTORS__",
+        json.dumps(IDENTITY_NORMALIZATION_VECTORS, ensure_ascii=False),
+    ).replace(
+        "__SCALAR_SOURCE_ID_VECTORS__",
+        json.dumps(SCALAR_SOURCE_ID_VECTORS),
+    )
+    return run_task6_module_harness(
+        browse_source,
+        BROWSE_IMPORT_REPLACEMENTS,
+        harness,
+        "browse identity",
     )
 
 
@@ -3537,10 +3751,61 @@ def test_task6_browse_runtime_keeps_go_search_listener_and_payload():
 def test_task2_browse_pagination_merges_cumulative_windows_until_exhausted():
     rendered = browse_runtime()
 
-    assert rendered["renderedTitles"] == ["First", "Second", "Third"]
-    assert rendered["requestSizes"] == [10, 20, 30]
+    assert rendered["renderedTitles"] == [
+        "First",
+        "Second",
+        "Malformed",
+        "Malformed",
+        "Third",
+    ]
+    assert rendered["requestSizes"] == [10, 20, 20, 30]
+    assert rendered["requestSizes"][1:] == [20, 20, 30]
+    assert rendered["retryState"] == {
+        "disabled": False,
+        "text": "Load More Results",
+        "spinner": "none",
+    }
     assert rendered["loadMoreDisabled"] is True
     assert rendered["loadMoreText"] == "No more results."
+
+
+def test_task2_browse_runtime_ignores_stale_initial_and_load_more_responses():
+    rendered = deferred_browse_runtime()
+
+    assert rendered["afterInitialRace"] == ["Fresh"]
+    assert rendered["duringNewestLoad"] == {
+        "titles": ["Newest"],
+        "disabled": True,
+        "text": "Loading...",
+        "spinner": "inline-block",
+    }
+    assert rendered["finalTitles"] == ["Newest", "Newest extra"]
+    assert rendered["requestQueries"] == [
+        "archive",
+        "fresh",
+        "fresh",
+        "newest",
+        "newest",
+    ]
+    assert rendered["requestSizes"] == [10, 10, 20, 10, 20]
+
+
+def test_task2_browse_runtime_identity_normalization_matches_python_vectors():
+    rendered = browse_identity_runtime()
+    expected_normalized = []
+    for vector in IDENTITY_NORMALIZATION_VECTORS:
+        left = search_api.normalize_identity_text(vector["left"])
+        right = search_api.normalize_identity_text(vector["right"])
+        assert (left == right) is vector["equal"]
+        expected_normalized.append(
+            {"name": vector["name"], "left": left, "right": right}
+        )
+
+    assert rendered["normalized"] == expected_normalized
+    assert rendered["scalarIds"] == [
+        vector["normalized"] for vector in SCALAR_SOURCE_ID_VECTORS
+    ]
+    assert rendered["malformedBackslashUrl"] == ""
 
 
 def test_task2_restored_browse_deduplicates_legacy_state_and_restores_exact_inputs():
