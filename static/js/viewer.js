@@ -29,14 +29,14 @@ function renderGoogleBooksFallback(url) {
     `;
 }
 
-function loadGoogleBooksScript() {
+function loadGoogleBooksScript(apiKey) {
     if (googleBooksScriptLoaded) {
         return Promise.resolve();
     }
     if (googleBooksScriptLoadPromise) {
         return googleBooksScriptLoadPromise;
     }
-    const scriptSrc = GOOGLE_BOOKS_JSAPI_URL;
+    const scriptSrc = apiKey ? `${GOOGLE_BOOKS_JSAPI_URL}?key=${encodeURIComponent(apiKey)}` : GOOGLE_BOOKS_JSAPI_URL;
     googleBooksScriptLoadPromise = new Promise((resolve, reject) => {
         const existingScript = Array.from(document.scripts).find(script => script.src.startsWith(GOOGLE_BOOKS_JSAPI_URL));
         if (existingScript) {
@@ -77,33 +77,61 @@ function loadGoogleBooksScript() {
 
 function openGoogleBooksViewer(item, body) {
     body.classList.remove('viewer-mode-reader');
+    body.style.minHeight = '500px';
     body.innerHTML = '<div class="text-center py-5"><div class="spinner-border" role="status"></div><p>Loading Google Books preview...</p></div>';
 
+    let fallbackFired = false;
+    const timeoutDuration = 8000;
+    const renderTimeout = setTimeout(() => {
+        fallbackFired = true;
+        const msg = 'Google Books rendering timeout after 8 seconds. Opening fallback in new tab.';
+        console.error(msg);
+        body.innerHTML = renderGoogleBooksFallback(item.source_url);
+        try {
+            window.open(item.source_url, '_blank', 'noopener');
+        } catch (popupError) {
+            console.error('Failed to open fallback tab:', popupError);
+        }
+    }, timeoutDuration);
+
+    const cleanupRenderTimeout = () => {
+        if (renderTimeout) {
+            clearTimeout(renderTimeout);
+        }
+    };
+
     fetch('/api/config/google-books-key')
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) {
+                throw new Error(`Google Books key endpoint returned ${r.status}`);
+            }
+            return r.json();
+        })
         .then(result => {
             if (!result.status || !result.google_books_api_key) {
                 throw new Error('Google Books API key unavailable');
             }
             const apiKey = result.google_books_api_key;
-            return loadGoogleBooksScript().then(() => apiKey);
+            console.debug('Google Books API key fetched successfully');
+            return loadGoogleBooksScript(apiKey).then(() => apiKey);
         })
         .then(apiKey => {
+            if (fallbackFired) {
+                console.warn('Google Books render fallback already fired before JS API load completed.');
+                return;
+            }
+            console.debug('Google Books JS API loaded; verifying namespace');
             if (!window.google || !window.google.books || typeof google.books.load !== 'function') {
                 throw new Error('Google Books API not available');
             }
 
-            let callbackFired = false;
-            const callbackTimeout = setTimeout(() => {
-                if (!callbackFired) {
-                    console.warn('Google Books viewer did not invoke onLoad callback within 5 seconds. Verify API key referrer restrictions and script load.');
-                }
-            }, 5000);
-
-            google.books.load({ apiKey });
+            google.books.load();
             google.books.setOnLoadCallback(() => {
-                callbackFired = true;
-                clearTimeout(callbackTimeout);
+                if (fallbackFired) {
+                    console.warn('Google Books onLoad callback fired after fallback.');
+                    return;
+                }
+                cleanupRenderTimeout();
                 try {
                     body.innerHTML = '';
                     const rect = body.getBoundingClientRect();
@@ -111,16 +139,21 @@ function openGoogleBooksViewer(item, body) {
                         body.style.minHeight = '500px';
                         console.warn('viewerBody had zero height, applying min-height 500px before Google Books viewer instantiation.');
                     }
+                    console.debug('Instantiating Google Books DefaultViewer');
                     const viewer = new google.books.DefaultViewer(body);
                     viewer.load(item.source_id);
                 } catch (error) {
+                    console.error('Google Books viewer instantiation error:', error);
                     throw error;
                 }
             });
         })
         .catch((error) => {
+            cleanupRenderTimeout();
             console.error('Google Books viewer error:', error);
-            body.innerHTML = renderGoogleBooksFallback(item.source_url);
+            if (!fallbackFired) {
+                body.innerHTML = renderGoogleBooksFallback(item.source_url);
+            }
         });
 }
 
@@ -167,10 +200,12 @@ export function openViewer(item) {
     if (isGoogleBooks) {
         const offcanvasElement = document.getElementById('viewerOffcanvas');
         const onShown = () => {
+            console.debug('viewerOffcanvas shown event received, initializing Google Books viewer');
             offcanvasElement.removeEventListener('shown.bs.offcanvas', onShown);
             openGoogleBooksViewer(item, body);
         };
         offcanvasElement.addEventListener('shown.bs.offcanvas', onShown, { once: true });
+        console.debug('Waiting for viewerOffcanvas shown event before Google Books rendering');
     }
 
     try {

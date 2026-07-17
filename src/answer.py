@@ -9,14 +9,12 @@ import src.proxy as proxy
 import src.search as search
 import src.whitelist as whitelist
 import src.pubmed as pubmed
+import anthropic
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8")
-USE_LOCAL_AI = os.getenv("USE_LOCAL_AI", "1") != "0"
 
-if not USE_LOCAL_AI and ANTHROPIC_API_KEY:
-    import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 def search_files_for_context(user_id: int, query: str, num_results: int = 5) -> dict:
     """

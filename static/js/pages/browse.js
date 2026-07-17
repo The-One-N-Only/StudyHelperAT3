@@ -30,6 +30,11 @@ async function loadWhitelistDomains() {
     }
 }
 
+function getInitialBrowseQuery() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('q') || params.get('query') || '';
+}
+
 export function initBrowse(root) {
     pageRoot = root;
     pageRoot.innerHTML = `
@@ -118,6 +123,15 @@ export function initBrowse(root) {
     registerEvents();
     renderSidebar();
     restoreBrowseState();
+
+    const initialQuery = getInitialBrowseQuery();
+    if (initialQuery) {
+        const searchInput = pageRoot.querySelector('#searchInput');
+        if (searchInput) {
+            searchInput.value = initialQuery;
+        }
+        performSearch();
+    }
 }
 function registerEvents() {
     const searchInput = pageRoot.querySelector('#searchInput');
@@ -576,6 +590,10 @@ function escapeHtml(text) {
 function performSearch() {
     const query = pageRoot.querySelector('#searchInput').value.trim();
     if (!query) return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('q', query);
+    window.history.replaceState({}, '', url);
 
     const sources = getSelectedSources();
     if (sources.length === 0) {

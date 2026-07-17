@@ -3,7 +3,6 @@
 import { showToast } from '../toast.js';
 
 let allWorkspaces = [];
-let currentFilter = '';
 
 export function initHome(root) {
     root.innerHTML = `
@@ -11,11 +10,12 @@ export function initHome(root) {
             <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-4">
                 <div>
                     <h1 class="mb-1">Recent Workspaces</h1>
-                    <p class="text-muted mb-0">Jump back into your most recent work or search for the right workspace.</p>
+                    <p class="text-muted mb-0">Jump back into your most recent work or search for academic sources.</p>
                 </div>
                 <div class="input-group home-search-group" style="max-width: 560px; width: 100%;">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input id="workspaceSearch" type="search" class="form-control" placeholder="Search workspaces..." autocomplete="off">
+                    <input id="workspaceSearch" type="search" class="form-control" placeholder="Search academic sources..." autocomplete="off">
+                    <button class="btn btn-primary" id="homeSearchBtn" type="button">Search</button>
                 </div>
             </div>
 
@@ -23,10 +23,24 @@ export function initHome(root) {
         </div>
     `;
 
-    root.querySelector('#workspaceSearch').addEventListener('input', (event) => {
-        currentFilter = event.target.value.trim().toLowerCase();
-        renderWorkspaceCards();
+    const searchInput = root.querySelector('#workspaceSearch');
+    const searchButton = root.querySelector('#homeSearchBtn');
+
+    const submitSearch = (event) => {
+        event?.preventDefault();
+        const query = searchInput.value.trim();
+        if (!query) {
+            return;
+        }
+        window.location.href = `/browse?q=${encodeURIComponent(query)}`;
+    };
+
+    searchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            submitSearch(event);
+        }
     });
+    searchButton.addEventListener('click', submitSearch);
 
     loadWorkspaces();
 }
@@ -63,19 +77,15 @@ function renderWorkspaceCards() {
     addCard.querySelector('.card').addEventListener('click', createWorkspaceDialog);
     container.appendChild(addCard);
 
-    const filtered = allWorkspaces.filter((workspace) => {
-        return !currentFilter || workspace.name.toLowerCase().includes(currentFilter);
-    });
-
-    if (filtered.length === 0) {
+    if (allWorkspaces.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'col-12';
-        empty.innerHTML = `<div class="alert alert-secondary mb-0">No workspaces match your search. Create a new workspace to get started.</div>`;
+        empty.innerHTML = `<div class="alert alert-secondary mb-0">Create a new workspace to get started.</div>`;
         container.appendChild(empty);
         return;
     }
 
-    filtered.forEach((workspace) => {
+    allWorkspaces.forEach((workspace) => {
         const card = document.createElement('div');
         card.className = 'col';
         card.innerHTML = `
