@@ -117,7 +117,7 @@ def gbooks(query, num_results, filters, *, user_id):
 
 
 def _search_serpapi(query, num_results, scope, *, user_id):
-    """Search whitelisted academic sites using SerpApi."""
+    """Search one whitelisted academic site using SerpApi."""
     if not SERP_API_KEY or not scope:
         return []
 
@@ -165,6 +165,57 @@ def _search_serpapi(query, num_results, scope, *, user_id):
         return results
     except Exception:
         return []
+
+
+def _search_whitelist_site(query, num_results, domain, *, user_id):
+    """Search one whitelisted domain via SerpAPI and return up to ten results."""
+    if not query or not domain:
+        return []
+
+    scope = f"site:{domain}"
+    domain_results = _search_serpapi(query, num_results, scope, user_id=user_id)
+    if domain_results:
+        return domain_results
+
+    fallback_link = f"https://{domain}/"
+    if whitelist.is_allowed(fallback_link):
+        item_data = {
+            "title": f"{domain} homepage",
+            "description": f"Search results for '{query}' were not available from the API.",
+            "thumb_url": "",
+            "thumb_mime": "image/jpeg",
+            "thumb_height": 0,
+            "source_url": fallback_link,
+            "source_name": whitelist.get_display_name_for_domain(domain) if domain else "Whitelisted Source",
+            "source_id": fallback_link,
+        }
+        return [
+            db.get_item_by_source(item_data["source_name"], item_data["source_id"], user_id, True)
+            or db.create_item(item_data, user_id, True)
+        ]
+    return []
+
+
+def whitelist_search(query, num_results, domains=None, *, user_id):
+    """Search each whitelisted domain and return up to ten results per domain."""
+    if not query:
+        return []
+
+    requested_domains = domains or whitelist.get_whitelisted_domains()
+    if not requested_domains:
+        return []
+
+    results = []
+    for domain in requested_domains:
+        domain_items = _search_whitelist_site(query, num_results, domain, user_id=user_id) or []
+        # assign per-domain rank (1..n) so the UI can reveal them incrementally
+        for i, it in enumerate(domain_items[:10], start=1):
+            try:
+                it['whitelist_rank'] = int(it.get('whitelist_rank', i))
+            except Exception:
+                it['whitelist_rank'] = i
+        results.extend(domain_items)
+    return results
 
 
 def google_scholar(query, num_results, *, user_id):
@@ -291,6 +342,11 @@ def _search_with_google_cse(query, num_results):
         except Exception:
             continue
 
-        return results
-    except:
-        return []
+    return results
+
+
+def _search_with_bing_rss(query, num_results):
+    """Fallback stub used by tests: attempt to fetch RSS/ATOM feeds for each scope.
+    The implementation here is minimal and returns an empty list by default.
+    """
+    return []

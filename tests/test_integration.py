@@ -18,7 +18,20 @@ def test_full_workflow(client):
         assert response.status_code == 302
         
         response = client.get('/browse')
-        assert response.status_code == 302
+    assert response.status_code == 302
+
+
+def test_google_books_config_endpoint_returns_key(client, monkeypatch):
+    with client.session_transaction() as sess:
+        sess['user_id'] = 1
+
+    monkeypatch.setenv('GOOGLE_BOOKS_API_KEY', 'test-google-books-key')
+    response = client.get('/api/config/google-books-key')
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['status'] is True
+    assert data['google_books_api_key'] == 'test-google-books-key'
 
 
 def test_browse_search_all_returns_grouped_results(client, monkeypatch):

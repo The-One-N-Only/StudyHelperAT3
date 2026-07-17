@@ -48,7 +48,7 @@ export function initBrowse(root) {
                                 <div class="mb-3">
                                     <label class="form-label mb-2">Sources</label>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="filterWikipedia" value="wikipedia" checked>
+                                        <input class="form-check-input" type="checkbox" id="filterWikipedia" value="wikipedia">
                                         <label class="form-check-label" for="filterWikipedia">Wikipedia</label>
                                     </div>
                                     <div class="form-check">
@@ -56,7 +56,7 @@ export function initBrowse(root) {
                                         <label class="form-check-label" for="filterGBooks">Google Books</label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="filterPubMed" value="pubmed" checked>
+                                        <input class="form-check-input" type="checkbox" id="filterPubMed" value="pubmed">
                                         <label class="form-check-label" for="filterPubMed">PubMed</label>
                                     </div>
                                     <div class="form-check">
@@ -282,17 +282,28 @@ function getSourcesToDisplay() {
 function getVisibleResults() {
     const sources = getSourcesToDisplay();
     const visible = [];
+    const pageSize = 1; // show 1 item per whitelisted site initially
 
     sources.forEach((source) => {
         const items = currentGroupedResults[source] || [];
-        visible.push(...items.slice(0, currentPageIndex));
+        if (source.startsWith('whitelist_')) {
+            const end = pageSize * currentPageIndex;
+            visible.push(...items.slice(0, end));
+        } else {
+            // non-whitelist sources show all their results immediately
+            visible.push(...items);
+        }
     });
 
     return visible;
 }
 
 function hasMoreResults() {
-    return Object.values(currentGroupedResults).some((items) => items.length > currentPageIndex);
+    const pageSize = 1;
+    return Object.entries(currentGroupedResults).some(([key, items]) => {
+        if (!key.startsWith('whitelist_')) return false;
+        return (items || []).length > pageSize * currentPageIndex;
+    });
 }
 
 function getAllResults() {

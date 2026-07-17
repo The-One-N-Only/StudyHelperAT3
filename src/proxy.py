@@ -76,6 +76,8 @@ def fetch_source(url):
         html = reader_html if mode == 'reader' else str(soup)
 
         if mode == 'google_books':
+            # Google Books preview handling is now done client-side in the viewer.
+            # This server-side proxy path exists only to preserve legacy error/fallback behavior.
             html = (
                 '<div class="proxy-google-books p-4">'
                 '<h5>Google Books preview</h5>'

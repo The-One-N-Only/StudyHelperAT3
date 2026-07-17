@@ -89,3 +89,34 @@ def test_whitelist_search_uses_serpapi_when_key_set(monkeypatch):
     assert "site:pubmed.ncbi.nlm.nih.gov" in called[1]["q"]
     assert results[0]["source_url"] == "https://en.wikipedia.org/test"
     assert results[1]["source_url"] == "https://pubmed.ncbi.nlm.nih.gov/test"
+
+
+def test_whitelist_search_returns_ten_results_per_domain(monkeypatch):
+    monkeypatch.setattr(search, "SERP_API_KEY", "test-key")
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        class FakeResponse:
+            status_code = 200
+            def json(self_non):
+                organic_results = []
+                for idx in range(10):
+                    organic_results.append({
+                        "title": f"Result {idx}",
+                        "snippet": "Snippet",
+                        "link": f"https://example.org/result/{idx}"
+                    })
+                return {"organic_results": organic_results}
+        return FakeResponse()
+
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    monkeypatch.setattr(search.whitelist, "is_allowed", lambda url: True)
+    monkeypatch.setattr(search.whitelist, "get_display_name_for_domain", lambda domain: "Example")
+    monkeypatch.setattr(search.whitelist, "get_domain", lambda url: "example.org")
+    monkeypatch.setattr(search.db, "get_item_by_source", lambda source_name, source_id, user_id, add_to_recent_search: None)
+    monkeypatch.setattr(search.db, "create_item", lambda item_data, user_id, add_to_recent_search: item_data)
+    monkeypatch.setattr(search.whitelist, "get_whitelisted_domains", lambda: ["example.org"])
+
+    results = search.whitelist_search("test query", 10, user_id=1)
+
+    assert len(results) == 10
+    assert all(item["source_url"].startswith("https://example.org/result/") for item in results)

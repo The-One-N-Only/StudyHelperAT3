@@ -222,6 +222,13 @@ def logout():
     logging.info(f"User {user_id} logged out")
     return redirect(url_for('login'))
 
+@app.route('/api/config/google-books-key', methods=['GET'])
+def get_google_books_api_key():
+    api_key = os.getenv('GOOGLE_BOOKS_API_KEY', '')
+    if not api_key:
+        return jsonify({'status': False, 'error': 'Google Books API key not configured'}), 404
+    return jsonify({'status': True, 'google_books_api_key': api_key})
+
 @app.route('/api/browse/search', methods=['POST'])
 def browse_search():
     data = request.json
@@ -284,14 +291,17 @@ def browse_search_all():
     data = request.json
     query = data['query']
     num_results = data.get('num_results', 20)
-    sources = data.get('sources', ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist'])
+    default_sources = ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist']
+    requested_sources = data.get('sources')
+    explicit_sources = requested_sources is not None
+    sources = requested_sources if explicit_sources else default_sources
     filters = data.get('filters', {})
     user_id = session.get('user_id')
 
     if not query or not sources:
         return jsonify({'status': False, 'error': 'Query and sources required'}), 400
 
-    # Define per-source search tasks
+    # Define per-source search tasks.
     search_tasks = {
         'wikipedia': (search.wikipedia, (query, num_results)),
         'gbooks': (search.gbooks, (query, num_results, filters)),
@@ -311,6 +321,12 @@ def browse_search_all():
     # If explicit whitelist domains are selected, ignore generic whitelist to prevent duplication.
     if any(src.startswith('whitelist_') for src in requested_sources):
         requested_sources = [src for src in requested_sources if src != 'whitelist']
+
+    # Disable Wikipedia/PubMed only for default source sets, not explicit requests.
+    disabled_sources = []
+    if not explicit_sources:
+        disabled_sources = [src for src in requested_sources if src in ('wikipedia', 'pubmed')]
+        requested_sources = [src for src in requested_sources if src not in ('wikipedia', 'pubmed')]
 
     # Execute searches in parallel
     grouped_results = {}
@@ -346,8 +362,15 @@ def browse_search_all():
                 grouped_results[source] = []
                 source_counts[source] = 0
 
-    # Use the first result from each source group as the initial result set.
-    all_results = [items[0] for items in grouped_results.values() if items]
+    for source in disabled_sources:
+        grouped_results[source] = []
+        source_counts[source] = 0
+
+    # Preserve the full result list from each source group so the browse UI can render
+    # multiple results per source and support the Load More Results flow.
+    all_results = []
+    for items in grouped_results.values():
+        all_results.extend(items or [])
 
     logging.info(f"User {user_id} performed multi-source search for '{query}' across {len(futures)} sources")
 

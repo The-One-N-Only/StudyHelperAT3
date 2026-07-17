@@ -105,34 +105,62 @@ def summarize_source(text: str, title: str = "", atn: str | None = None) -> dict
 
 
 def summarize_search_results(query: str, results: list[dict], atn: str | None = None) -> str:
-    lines = []
-    for result in results[:8]:
-        title = result.get("title", "Untitled")
-        description = result.get("description", "").strip()
-        lines.append(f"{title}: {description}")
-    
-    # Build a clean prompt that doesn't echo back the preamble
-    prompt = "Briefly summarise these search results in 2-3 sentences. Be concise and factual.\n\nSearch results:\n"
-    prompt += "\n".join(lines)
-    prompt += "\n\nSummary:"
-    
-    if atn:
-        prompt = f"For the assessment task: {atn}\n\n" + prompt
-    
-    response = _generate_text(prompt, max_new_tokens=150, temperature=0.3, top_p=0.95)
-    # Extract only the summary portion (after "Summary:" or similar markers)
-    summary = response.strip()#I'm gay
-    # Remove any echoed back instructions or prompt text
+    # Prefer whitelisted-domain results grouped by domain
+    whitelisted_domains = set()
+    try:
+        from src import whitelist as _wh
+        whitelisted_domains = set(_wh.get_whitelisted_domains())
+    except Exception:
+        whitelisted_domains = set()
+
+    grouped = {}
+    for r in results:
+        url = r.get('source_url', '') or ''
+        try:
+            domain = _wh.get_domain(url) if '_wh' in globals() else ''
+        except Exception:
+            domain = ''
+        if domain in whitelisted_domains:
+            grouped.setdefault(domain, []).append(r)
+
+    if grouped:
+        prompt = "You are an academic research assistant. Summarise the following search results across whitelisted academic sources in 2-3 sentences.\n\n"
+        if atn:
+            prompt = f"For the assessment task: {atn}\n\n" + prompt
+        for domain, items in grouped.items():
+            prompt += f"Domain: {domain}\n"
+            try:
+                items_sorted = sorted(items, key=lambda x: int(x.get('whitelist_rank', 999)))
+            except Exception:
+                items_sorted = items
+            for i, it in enumerate(items_sorted[:10], start=1):
+                title = (it.get('title') or 'Untitled')[:200]
+                desc = (it.get('description') or '')[:300]
+                prompt += f"{i}. {title} - {desc}\n"
+            prompt += "\n"
+        prompt += "\nSummary:"
+    else:
+        lines = []
+        for result in results[:8]:
+            title = result.get("title", "Untitled")
+            description = result.get("description", "").strip()
+            lines.append(f"{title}: {description}")
+        prompt = "Briefly summarise these search results in 2-3 sentences. Be concise and factual.\n\nSearch results:\n"
+        prompt += "\n".join(lines)
+        prompt += "\n\nSummary:"
+        if atn:
+            prompt = f"For the assessment task: {atn}\n\n" + prompt
+
+    response = _generate_text(prompt, max_new_tokens=180, temperature=0.3, top_p=0.95)
+    summary = response.strip()
     for marker in ["Search results:", "Assessment task", "You are an"]:
         if marker in summary:
-            # Keep only the part after the marker
             idx = summary.find(marker)
             if idx > -1:
                 summary = summary[idx + len(marker):].strip()
-    # Clean up any remaining artifacts
     summary = summary.replace("Summary:", "").strip()
-    if len(summary) > 500:
-        summary = summary[:500].rsplit(" ", 1)[0] + "..."
+    if len(summary) > 800:
+        summary = summary[:800].rsplit(" ", 1)[0] + "..."
     return summary
 
 

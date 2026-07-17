@@ -33,6 +33,35 @@ def get_domain(url: str) -> str:
         return ''
 
 
+def get_whitelisted_domains() -> list[str]:
+    return list(WHITELIST.get('domains', []))
+
+
+def get_display_name_for_domain(domain: str) -> str:
+    if not domain:
+        return 'Whitelisted Source'
+    domain = domain.lower()
+    domain_names = {
+        'en.wikipedia.org': 'Wikipedia',
+        'web.md': 'WebMD',
+        'scholar.google.com': 'Google Scholar',
+        'pubmed.ncbi.nlm.nih.gov': 'PubMed',
+        'www.jstor.org': 'JSTOR',
+        'eric.ed.gov': 'ERIC',
+        'www.sciencedirect.com': 'ScienceDirect',
+        'link.springer.com': 'Springer',
+        'www.researchgate.net': 'ResearchGate',
+        'www.academia.edu': 'Academia',
+        'books.google.com': 'Google Books',
+        'www.britannica.com': 'Britannica',
+        'www.bbc.co.uk': 'BBC',
+        'www.nationalgeographic.com': 'National Geographic',
+    }
+    if domain in domain_names:
+        return domain_names[domain]
+    return domain.replace('www.', '').replace('.com', '').replace('.org', '').replace('.net', '').replace('.edu', '')
+
+
 def get_whitelist_search_scope() -> list[str]:
     scopes = []
     for domain in WHITELIST.get('domains', []):

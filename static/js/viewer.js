@@ -4,6 +4,9 @@ import { showToast } from './toast.js';
 import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
 
 let viewerOffcanvas;
+let googleBooksScriptLoadPromise = null;
+let googleBooksScriptLoaded = false;
+const GOOGLE_BOOKS_JSAPI_URL = 'https://www.google.com/books/jsapi.js';
 
 function ensureViewerOffcanvas() {
     if (!viewerOffcanvas) {
@@ -14,6 +17,89 @@ function ensureViewerOffcanvas() {
         viewerOffcanvas = new bootstrap.Offcanvas(offcanvasElement);
     }
     return viewerOffcanvas;
+}
+
+function renderGoogleBooksFallback(url) {
+    return `
+        <div class="proxy-google-books p-4">
+            <h5>Google Books preview</h5>
+            <p>Book preview pages are not rendered directly inside StudyHelper.</p>
+            <a href="${url}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">Open Google Books</a>
+        </div>
+    `;
+}
+
+function loadGoogleBooksScript() {
+    if (googleBooksScriptLoaded) {
+        return Promise.resolve();
+    }
+    if (googleBooksScriptLoadPromise) {
+        return googleBooksScriptLoadPromise;
+    }
+    const scriptSrc = GOOGLE_BOOKS_JSAPI_URL;
+    googleBooksScriptLoadPromise = new Promise((resolve, reject) => {
+        const existingScript = Array.from(document.scripts).find(script => script.src.startsWith(GOOGLE_BOOKS_JSAPI_URL));
+        if (existingScript) {
+            if (window.google && window.google.books) {
+                googleBooksScriptLoaded = true;
+                resolve();
+                return;
+            }
+            existingScript.addEventListener('load', () => {
+                googleBooksScriptLoaded = true;
+                resolve();
+            });
+            existingScript.addEventListener('error', () => reject(new Error('Failed to load Google Books script')));
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = scriptSrc;
+        script.async = true;
+        script.onload = () => {
+            googleBooksScriptLoaded = true;
+            resolve();
+        };
+        script.onerror = () => reject(new Error('Failed to load Google Books script'));
+        document.head.appendChild(script);
+    });
+
+    return googleBooksScriptLoadPromise;
+}
+
+function openGoogleBooksViewer(item, body) {
+    body.classList.remove('viewer-mode-reader');
+    body.innerHTML = '<div class="text-center py-5"><div class="spinner-border" role="status"></div><p>Loading Google Books preview...</p></div>';
+
+    fetch('/api/config/google-books-key')
+        .then(r => r.json())
+        .then(result => {
+            if (!result.status || !result.google_books_api_key) {
+                throw new Error('Google Books API key unavailable');
+            }
+            const apiKey = result.google_books_api_key;
+            return loadGoogleBooksScript().then(() => apiKey);
+        })
+        .then(apiKey => {
+            if (!window.google || !google.books || typeof google.books.load !== 'function') {
+                throw new Error('Google Books API not available');
+            }
+
+            google.books.load({ apiKey });
+            google.books.setOnLoadCallback(() => {
+                try {
+                    body.innerHTML = '';
+                    const viewer = new google.books.DefaultViewer(body);
+                    viewer.load(item.source_id);
+                } catch (error) {
+                    throw error;
+                }
+            });
+        })
+        .catch((error) => {
+            console.error('Google Books viewer error:', error);
+            body.innerHTML = renderGoogleBooksFallback(item.source_url);
+        });
 }
 
 export function openViewer(item) {
@@ -28,16 +114,15 @@ export function openViewer(item) {
 
     header.innerHTML = `
         <div class="d-flex align-items-center gap-2">
-            <div class="flex-grow-1">
+            <div class="flex-grow-1 overflow-hidden">
                 <h6 class="fw-semibold text-truncate mb-1">${item.title}</h6>
                 <div class="d-flex flex-wrap gap-2 align-items-center">
                     <span class="badge bg-secondary rounded-pill">${item.source_name}</span>
-                    <small class="text-muted text-truncate">${item.source_url}</small>
+                    <small class="text-muted text-truncate" style="max-width:100%;">
+                        <a href="${item.source_url}" target="_blank" rel="noopener noreferrer" class="text-muted text-decoration-none d-inline-block text-truncate" style="max-width:100%;">${item.source_url}</a>
+                    </small>
                 </div>
             </div>
-            <a href="${item.source_url}" target="_blank" class="btn btn-link btn-sm p-0 ms-auto">
-                <i class="bi bi-box-arrow-up-right"></i>
-            </a>
         </div>
     `;
 
@@ -63,6 +148,8 @@ export function openViewer(item) {
     }
 
     const isPubMed = item.source_name?.toLowerCase() === 'pubmed' || item.source_url?.includes('pubmed.ncbi.nlm.nih.gov');
+    const isGoogleBooks = item.source_name?.toLowerCase() === 'gbooks' || item.source_name?.toLowerCase() === 'google books';
+
     if (isPubMed) {
         body.innerHTML = `
             <div class="alert alert-warning m-3">
@@ -73,6 +160,11 @@ export function openViewer(item) {
                 </div>
             </div>
         `;
+        return;
+    }
+
+    if (isGoogleBooks) {
+        openGoogleBooksViewer(item, body);
         return;
     }
 
