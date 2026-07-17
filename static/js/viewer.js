@@ -46,6 +46,10 @@ function loadGoogleBooksScript() {
                 return;
             }
             existingScript.addEventListener('load', () => {
+                if (!window.google || !window.google.books) {
+                    reject(new Error('Google Books script loaded but window.google.books is unavailable'));
+                    return;
+                }
                 googleBooksScriptLoaded = true;
                 resolve();
             });
@@ -57,6 +61,10 @@ function loadGoogleBooksScript() {
         script.src = scriptSrc;
         script.async = true;
         script.onload = () => {
+            if (!window.google || !window.google.books) {
+                reject(new Error('Google Books script loaded but window.google.books is unavailable'));
+                return;
+            }
             googleBooksScriptLoaded = true;
             resolve();
         };
@@ -81,14 +89,28 @@ function openGoogleBooksViewer(item, body) {
             return loadGoogleBooksScript().then(() => apiKey);
         })
         .then(apiKey => {
-            if (!window.google || !google.books || typeof google.books.load !== 'function') {
+            if (!window.google || !window.google.books || typeof google.books.load !== 'function') {
                 throw new Error('Google Books API not available');
             }
 
+            let callbackFired = false;
+            const callbackTimeout = setTimeout(() => {
+                if (!callbackFired) {
+                    console.warn('Google Books viewer did not invoke onLoad callback within 5 seconds. Verify API key referrer restrictions and script load.');
+                }
+            }, 5000);
+
             google.books.load({ apiKey });
             google.books.setOnLoadCallback(() => {
+                callbackFired = true;
+                clearTimeout(callbackTimeout);
                 try {
                     body.innerHTML = '';
+                    const rect = body.getBoundingClientRect();
+                    if (rect.height === 0) {
+                        body.style.minHeight = '500px';
+                        console.warn('viewerBody had zero height, applying min-height 500px before Google Books viewer instantiation.');
+                    }
                     const viewer = new google.books.DefaultViewer(body);
                     viewer.load(item.source_id);
                 } catch (error) {
@@ -139,6 +161,18 @@ export function openViewer(item) {
     addBtn.onclick = () => addToWorkspaceFromViewer(item, workspaceSelect);
 
     body.innerHTML = '<div class="text-center py-5"><div class="spinner-border" role="status"></div><p>Loading source...</p></div>';
+    const isPubMed = item.source_name?.toLowerCase() === 'pubmed' || item.source_url?.includes('pubmed.ncbi.nlm.nih.gov');
+    const isGoogleBooks = item.source_name?.toLowerCase() === 'gbooks' || item.source_name?.toLowerCase() === 'google books';
+
+    if (isGoogleBooks) {
+        const offcanvasElement = document.getElementById('viewerOffcanvas');
+        const onShown = () => {
+            offcanvasElement.removeEventListener('shown.bs.offcanvas', onShown);
+            openGoogleBooksViewer(item, body);
+        };
+        offcanvasElement.addEventListener('shown.bs.offcanvas', onShown, { once: true });
+    }
+
     try {
         ensureViewerOffcanvas().show();
     } catch (error) {
@@ -146,9 +180,6 @@ export function openViewer(item) {
         console.error(error);
         return;
     }
-
-    const isPubMed = item.source_name?.toLowerCase() === 'pubmed' || item.source_url?.includes('pubmed.ncbi.nlm.nih.gov');
-    const isGoogleBooks = item.source_name?.toLowerCase() === 'gbooks' || item.source_name?.toLowerCase() === 'google books';
 
     if (isPubMed) {
         body.innerHTML = `
@@ -164,7 +195,6 @@ export function openViewer(item) {
     }
 
     if (isGoogleBooks) {
-        openGoogleBooksViewer(item, body);
         return;
     }
 
