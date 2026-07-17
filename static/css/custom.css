@@ -183,14 +183,69 @@ button, .btn, a, input, select, textarea {
 }
 
 /* Sidebar navigation overlay */
-.archive-wordmark {
+.archive-menu-button {
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
+    block-size: 2.5rem;
     border: 0;
     cursor: pointer;
+    flex: 0 0 2.5rem;
+    inline-size: 2.5rem;
+    min-block-size: 2.5rem;
+    min-inline-size: 2.5rem;
     padding-inline: 0;
 }
+
+.archive-menu-icon {
+    display: block;
+    height: 1.5rem;
+    position: relative;
+    width: 1.75rem;
+}
+
+.archive-menu-book,
+.archive-menu-bars {
+    inset: 0;
+    position: absolute;
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.archive-menu-book {
+    -webkit-mask: url("/static/img/illustrations/open-book.svg") center / contain no-repeat;
+    background-color: currentColor;
+    mask: url("/static/img/illustrations/open-book.svg") center / contain no-repeat;
+    opacity: 1;
+    transform: scale(1);
+}
+
+.archive-menu-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.72);
+}
+
+.archive-menu-bars > span {
+    background-color: currentColor;
+    border-radius: 999px;
+    display: block;
+    height: 2px;
+    width: 100%;
+}
+
+.archive-menu-button[aria-expanded="true"] .archive-menu-book {
+    opacity: 0;
+    transform: scale(0.72);
+}
+
+.archive-menu-button[aria-expanded="true"] .archive-menu-bars {
+    opacity: 1;
+    transform: scale(1);
+}
+
 body.nav-sidebar-open {
     overflow: hidden;
 }
@@ -1603,9 +1658,9 @@ p {
 [data-bs-theme="dark"] .surface-leather {
     background-color: var(--surface-800);
     background-image:
-        linear-gradient(var(--surface-800), var(--surface-800)),
+        linear-gradient(hsl(30 43% 12% / 0.52), hsl(30 43% 12% / 0.52)),
         url("/static/img/textures/leather-texture.png");
-    background-blend-mode: multiply;
+    background-blend-mode: normal;
     background-position: 0 0;
     background-repeat: repeat, repeat;
     background-size: auto, 420px;
@@ -1617,9 +1672,9 @@ p {
 [data-bs-theme="dark"] .btn-secondary-wood {
     background-color: var(--surface-700);
     background-image:
-        linear-gradient(var(--surface-700), var(--surface-700)),
+        linear-gradient(hsl(31 51% 12% / 0.38), hsl(31 51% 12% / 0.38)),
         url("/static/img/textures/wood-texture.png");
-    background-blend-mode: multiply;
+    background-blend-mode: normal;
     background-position: 0 0;
     background-repeat: repeat, repeat;
     background-size: auto, 200px;
@@ -1803,7 +1858,7 @@ p {
     mask-position: center;
     mask-repeat: no-repeat;
     mask-size: contain;
-    opacity: 0.06;
+    opacity: 0.14;
     pointer-events: none;
     position: absolute;
     z-index: var(--z-bg-illustration);
@@ -1871,7 +1926,7 @@ p {
 
 @media (hover: none), (pointer: coarse) {
     [data-bs-theme="dark"] .archive-illustration {
-        opacity: 0.045;
+        opacity: 0.10;
     }
 
     [data-bs-theme="dark"] .candle-glow {

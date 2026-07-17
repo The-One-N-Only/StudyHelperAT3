@@ -3,6 +3,8 @@
 import { showToast } from '../toast.js';
 import { studyHelperAI } from '../ai-prompt.js';
 
+const WORKSPACE_IFRAME_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox';
+
 let pageRoot = null;
 let currentWorkspaceId = null;
 let currentWorkspaceItems = [];
@@ -225,6 +227,7 @@ function renderSelectedSource() {
     }
 
     selectedWorkspaceItemId = item.id;
+    const sourceUrl = safeHttpUrl(item.source_url);
     viewer.innerHTML = `
         <div class="mb-3">
             <div class="d-flex align-items-start justify-content-between gap-3">
@@ -232,7 +235,7 @@ function renderSelectedSource() {
                     <h5 class="mb-1 text-truncate">${escapeHtml(item.title)}</h5>
                     <p class="text-muted small mb-0">${escapeHtml(item.source_name)} • ${escapeHtml(item.source_url || '')}</p>
                 </div>
-                ${item.source_url ? `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-secondary-wood btn-sm">Open</a>` : ''}
+                ${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-secondary-wood btn-sm">Open</a>` : ''}
             </div>
         </div>
         <div id="selectedSourcePreview" class="rounded overflow-hidden border bg-white source-preview-content" style="min-height: 320px;"></div>
@@ -241,48 +244,102 @@ function renderSelectedSource() {
     renderSelectedSourcePreview(item);
 }
 
+function safeHttpUrl(value) {
+    if (typeof value !== 'string' || !value.trim()) return '';
+    try {
+        const parsed = new URL(value.trim());
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+        return parsed.href;
+    } catch {
+        return '';
+    }
+}
+
+function safeLocalUploadUrl(value) {
+    if (typeof value !== 'string') return '';
+    const candidate = value.trim();
+    if (!candidate.startsWith('/static/uploads/') || candidate.startsWith('//')) return '';
+    try {
+        const parsed = new URL(candidate, window.location.origin);
+        if (parsed.origin !== window.location.origin) return '';
+        if (!parsed.pathname.startsWith('/static/uploads/')) return '';
+        return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    } catch {
+        return '';
+    }
+}
+
+function sourceExtension(url) {
+    try {
+        const parsed = new URL(url, window.location.origin);
+        const filename = parsed.pathname.split('/').pop() || '';
+        const dotIndex = filename.lastIndexOf('.');
+        return dotIndex >= 0 ? filename.slice(dotIndex + 1).toLowerCase() : '';
+    } catch {
+        return '';
+    }
+}
+
+function createPreviewIframe() {
+    const iframe = document.createElement('iframe');
+    iframe.className = 'w-100 h-100';
+    iframe.style.minHeight = '320px';
+    iframe.style.border = 'none';
+    iframe.setAttribute('sandbox', WORKSPACE_IFRAME_SANDBOX);
+    iframe.setAttribute('referrerpolicy', 'no-referrer');
+    return iframe;
+}
+
+function renderPreviewNotice(container, message, linkUrl = '') {
+    const safeLink = safeHttpUrl(linkUrl);
+    const link = safeLink
+        ? ` <a href="${escapeHtml(safeLink)}" target="_blank" rel="noopener noreferrer">Open source</a>`
+        : '';
+    container.innerHTML = `<div class="p-4 text-muted">${escapeHtml(message)}${link}</div>`;
+}
+
 function renderSelectedSourcePreview(item) {
     const previewContainer = pageRoot.querySelector('#selectedSourcePreview');
     if (!previewContainer) return;
 
-    const url = item.source_url;
-    if (!url) {
-        previewContainer.innerHTML = `<div class="p-4 text-muted">No preview available for this source.</div>`;
+    const remoteUrl = safeHttpUrl(item.source_url);
+    const localUploadUrl = safeLocalUploadUrl(item.source_url);
+    const previewUrl = localUploadUrl || remoteUrl;
+    if (!previewUrl) {
+        renderPreviewNotice(previewContainer, 'No preview available for this source.');
         return;
     }
 
     previewContainer.innerHTML = `<div class="d-flex justify-content-center align-items-center h-100 p-3"><div class="spinner-border" role="status"></div></div>`;
 
-    const fileExtension = (url.split('.').pop() || '').toLowerCase();
-    const directPreviewExtensions = ['pdf', 'htm', 'html'];
-    if (directPreviewExtensions.includes(fileExtension) || url.includes('/static/uploads/')) {
-        const iframe = document.createElement('iframe');
-        iframe.className = 'w-100 h-100';
-        iframe.style.minHeight = '320px';
-        iframe.style.border = 'none';
-        iframe.src = url;
+    const fileExtension = sourceExtension(previewUrl);
+    if (localUploadUrl || fileExtension === 'pdf') {
+        const iframe = createPreviewIframe();
+        iframe.src = previewUrl;
         previewContainer.innerHTML = '';
         previewContainer.appendChild(iframe);
         return;
     }
 
-    fetch(`/api/proxy/source?url=${encodeURIComponent(url)}`)
+    // Remote HTML, including .html/.htm URLs, only enters through sanitized srcdoc.
+    fetch(`/api/proxy/source?url=${encodeURIComponent(remoteUrl)}`)
         .then((response) => response.json())
         .then((result) => {
-            if (result.status && result.html) {
+            if (result.status && typeof result.html === 'string' && result.html) {
                 previewContainer.innerHTML = '';
-                const iframe = document.createElement('iframe');
-                iframe.className = 'w-100 h-100';
-                iframe.style.minHeight = '320px';
-                iframe.style.border = 'none';
+                const iframe = createPreviewIframe();
                 iframe.srcdoc = result.html;
                 previewContainer.appendChild(iframe);
             } else {
-                previewContainer.innerHTML = `<div class="p-4 text-muted">Preview unavailable. <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open source</a></div>`;
+                renderPreviewNotice(
+                    previewContainer,
+                    'Preview unavailable.',
+                    safeHttpUrl(result.fallback_url) || remoteUrl,
+                );
             }
         })
         .catch(() => {
-            previewContainer.innerHTML = `<div class="p-4 text-muted">Failed to load preview. <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open source</a></div>`;
+            renderPreviewNotice(previewContainer, 'Failed to load preview.', remoteUrl);
         });
 }
 

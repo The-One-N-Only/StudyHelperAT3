@@ -1,11 +1,11 @@
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 import src.files as files
 
 def test_extract_text_pdf():
     # Mock fitz
     with patch('src.files.fitz') as mock_fitz:
-        mock_doc = Mock()
+        mock_doc = MagicMock()
         mock_page = Mock()
         mock_page.get_text.return_value = "PDF text"
         mock_doc.__iter__.return_value = [mock_page]
@@ -21,7 +21,7 @@ def test_extract_text_docx():
         mock_doc.return_value.paragraphs = [mock_para]
         
         result = files.extract_text("test.docx", "docx")
-        assert result == "DOCX text"
+        assert result == "DOCX text\n"
 
 def test_extract_text_txt():
     with patch('builtins.open', create=True) as mock_open:

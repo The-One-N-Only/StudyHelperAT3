@@ -3,8 +3,9 @@
 import { showToast } from '../toast.js';
 import { createCard } from '../card.js';
 
-const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist'];
+const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
+const BROWSE_STATE_VERSION = 1;
 const DEDUPE_IDENTITY_PROPERTY = '_dedupe_identity';
 const CANONICAL_SOURCE_URL_PROPERTY = '_canonical_source_url';
 const RESPONSE_METADATA_PROPERTIES = new Set([
@@ -22,6 +23,7 @@ let isLoadingMore = false;
 let resultWindow = 10;
 let searchExhausted = false;
 let searchGeneration = 0;
+let isInitialSearchPending = false;
 
 function normalizeIdentityText(value) {
     if (value === null || value === undefined) return '';
@@ -131,21 +133,51 @@ function resultCanonicalSourceUrl(item) {
 function deduplicateResults(results) {
     if (!Array.isArray(results)) return [];
 
-    const uniqueResults = [];
-    const seenIdentities = new Set();
-    const seenUrls = new Set();
-    results.forEach((item) => {
+    const parents = Array.from({ length: results.length }, (_, index) => index);
+    const ranks = Array(results.length).fill(0);
+    const find = (startIndex) => {
+        let index = startIndex;
+        while (parents[index] !== index) {
+            parents[index] = parents[parents[index]];
+            index = parents[index];
+        }
+        return index;
+    };
+    const union = (left, right) => {
+        let leftRoot = find(left);
+        let rightRoot = find(right);
+        if (leftRoot === rightRoot) return;
+        if (ranks[leftRoot] < ranks[rightRoot]) {
+            [leftRoot, rightRoot] = [rightRoot, leftRoot];
+        }
+        parents[rightRoot] = leftRoot;
+        if (ranks[leftRoot] === ranks[rightRoot]) ranks[leftRoot] += 1;
+    };
+
+    const firstIndexByKey = new Map();
+    results.forEach((item, index) => {
         const identityKey = resultIdentityKey(item);
         const sourceUrl = resultCanonicalSourceUrl(item);
-
-        if (identityKey && seenIdentities.has(identityKey)) return;
-        if (sourceUrl && seenUrls.has(sourceUrl)) return;
-
-        uniqueResults.push(item);
-        if (identityKey) seenIdentities.add(identityKey);
-        if (sourceUrl) seenUrls.add(sourceUrl);
+        const keys = [];
+        if (identityKey) keys.push(`identity:${identityKey}`);
+        if (sourceUrl) keys.push(`url:${sourceUrl}`);
+        keys.forEach((key) => {
+            if (firstIndexByKey.has(key)) {
+                union(index, firstIndexByKey.get(key));
+            } else {
+                firstIndexByKey.set(key, index);
+            }
+        });
     });
-    return uniqueResults;
+
+    const firstIndexByComponent = new Map();
+    results.forEach((_item, index) => {
+        const root = find(index);
+        if (!firstIndexByComponent.has(root)) firstIndexByComponent.set(root, index);
+    });
+    return results.filter(
+        (_item, index) => firstIndexByComponent.get(find(index)) === index
+    );
 }
 
 function structuralFallbackKey(value, ancestors = new Set(), isRoot = true) {
@@ -197,9 +229,10 @@ function mergeUniqueResults(existing, incoming) {
         ...existingResults,
         ...unseenIncoming
     ]);
+    const existingReferences = new Set(existingResults);
     return {
         results: mergedResults,
-        addedCount: mergedResults.length - existingResults.length
+        addedCount: mergedResults.filter((item) => !existingReferences.has(item)).length
     };
 }
 
@@ -374,7 +407,7 @@ function registerEvents() {
     });
 
     sortingSelect?.addEventListener('change', () => {
-        if (currentSearchResults.length > 0) {
+        if (!isInitialSearchPending && currentSearchResults.length > 0) {
             const sortedResults = sortResults(currentSearchResults, sortingSelect.value);
             renderResults(sortedResults);
         }
@@ -496,13 +529,14 @@ function renderWhitelistCheckboxes() {
     if (!container || !whitelistDomains || whitelistDomains.length === 0) return;
     
     let html = '<label class="form-label mb-2 small">Whitelisted Sites</label>';
-    
+
+    // Broad domain fan-out stays opt-in; restored user choices are reapplied below.
     whitelistDomains.forEach((domain, idx) => {
         const displayName = getDisplayNameForDomain(domain);
         const checkId = `filterWhitelist_${idx}`;
         html += `
             <div class="form-check">
-                <input class="form-check-input whitelist-domain-checkbox" type="checkbox" id="${checkId}" value="whitelist_${domain}" checked>
+                <input class="form-check-input whitelist-domain-checkbox" type="checkbox" id="${checkId}" value="whitelist_${domain}">
                 <label class="form-check-label" for="${checkId}">${displayName}</label>
             </div>
         `;
@@ -564,6 +598,7 @@ function buildFilters() {
 function getBrowseState() {
     const searchInput = pageRoot.querySelector('#searchInput');
     return {
+        version: BROWSE_STATE_VERSION,
         query: searchInput?.value.trim() || '',
         sources: getSelectedSources(),
         filters: {
@@ -593,6 +628,7 @@ function restoreBrowseState() {
         if (!stateString) return;
         const state = JSON.parse(stateString);
         if (!state || typeof state !== 'object') return;
+        const isCurrentState = state.version === BROWSE_STATE_VERSION;
 
         const searchInput = pageRoot.querySelector('#searchInput');
         const yearFromEl = pageRoot.querySelector('#filterYearFrom');
@@ -601,14 +637,32 @@ function restoreBrowseState() {
         const sortingEl = pageRoot.querySelector('#filterSorting');
 
         const restoredQuery = typeof state.query === 'string' ? state.query.trim() : '';
-        const restoredSources = Array.isArray(state.sources)
-            ? state.sources.filter((source) => typeof source === 'string')
+        const storedSources = Array.isArray(state.sources)
+            ? state.sources
+                .filter((source) => typeof source === 'string')
+                .map((source) => source.trim())
+                .filter(Boolean)
             : [];
-        const restoredFilters = state.filters
+        const restoredSources = Array.from(new Set(
+            isCurrentState
+                ? storedSources
+                : storedSources.filter(
+                    (source) => !source.toLowerCase().startsWith('whitelist_')
+                )
+        ));
+        const storedFilters = state.filters
             && typeof state.filters === 'object'
             && !Array.isArray(state.filters)
-            ? { ...state.filters }
+            ? state.filters
             : {};
+        const restoredFilters = {
+            min_date: typeof storedFilters.min_date === 'string' ? storedFilters.min_date : '',
+            max_date: typeof storedFilters.max_date === 'string' ? storedFilters.max_date : '',
+            content_type: typeof storedFilters.content_type === 'string'
+                ? storedFilters.content_type
+                : '',
+            sorting: typeof storedFilters.sorting === 'string' ? storedFilters.sorting : ''
+        };
 
         if (searchInput) searchInput.value = restoredQuery;
         if (yearFromEl) yearFromEl.value = restoredFilters.min_date || '';
@@ -629,8 +683,11 @@ function restoreBrowseState() {
 
         currentSearchResults = deduplicateResults(state.results);
         if (currentSearchResults.length > 0) {
-            renderResults(sortResults(currentSearchResults, state.filters?.sorting || ''));
+            renderResults(sortResults(currentSearchResults, restoredFilters.sorting));
             renderSidebar(currentSourceCounts, currentSearchResults);
+        }
+        if (!isCurrentState) {
+            saveBrowseState();
         }
     } catch (err) {
         console.warn('Unable to restore browse state', err);
@@ -682,7 +739,6 @@ function performSearch() {
     const generation = ++searchGeneration;
     const filters = buildFilters();
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
-    resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Searching...</p></div>';
 
     // Save search parameters for "load more" functionality
     lastSearchQuery = query;
@@ -691,15 +747,27 @@ function performSearch() {
     isLoadingMore = false;
     resultWindow = 10;
     searchExhausted = false;
+    isInitialSearchPending = true;
+    currentSearchResults = [];
+    currentSourceCounts = {};
+
+    const sortingSelect = pageRoot.querySelector('#filterSorting');
+    if (sortingSelect) sortingSelect.disabled = true;
+    resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Searching...</p></div>';
+    renderSidebar(currentSourceCounts, currentSearchResults);
 
     fetch('/api/browse/search-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, sources, num_results: 10, filters })
     })
-        .then((r) => r.json())
+        .then((r) => {
+            if (generation !== searchGeneration) return null;
+            if (!r.ok) throw new Error('Search request failed');
+            return r.json();
+        })
         .then((result) => {
-            if (generation !== searchGeneration) return;
+            if (generation !== searchGeneration || !result) return;
             if (result.status) {
                 currentSearchResults = deduplicateResults(result.results);
                 currentSourceCounts = result.source_counts || {};
@@ -714,6 +782,12 @@ function performSearch() {
             if (generation !== searchGeneration) return;
             showToast('Search failed', 'danger');
             showNoResults();
+        })
+        .finally(() => {
+            if (generation !== searchGeneration) return;
+            isInitialSearchPending = false;
+            const currentSortingSelect = pageRoot.querySelector('#filterSorting');
+            if (currentSortingSelect) currentSortingSelect.disabled = false;
         });
 }
 
@@ -756,7 +830,13 @@ function renderResults(results) {
 }
 
 function loadMoreResults() {
-    if (isLoadingMore || searchExhausted || !lastSearchQuery || !lastSearchSources) {
+    if (
+        isInitialSearchPending
+        || isLoadingMore
+        || searchExhausted
+        || !lastSearchQuery
+        || !lastSearchSources
+    ) {
         return;
     }
 

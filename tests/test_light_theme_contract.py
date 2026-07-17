@@ -31,7 +31,7 @@ DARK_TEXTURE_NAMES = (
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 DARK_CSS_MARKER = "/* Candlelit Archive: dark theme foundation */"
-DARK_CSS_SHA256 = "647a291217cab86ac8dc42300a9b5c250b4c22bc5ad32b53e97f12ba90b7a372"
+DARK_CSS_SHA256 = "af35cc50ac4eefd2bcb01942566e2d6b91c8a970f3a3b0b9cb2860f96826209a"
 LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
 CSS_TOKEN_PATTERN = re.compile(
     r'/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
@@ -1249,6 +1249,50 @@ def test_light_navbar_and_sidebar_use_paper_and_ink_without_dark_leakage():
         "border-color": "hsl(33 30% 60% / 0.30)",
         "color": "var(--ink-900)",
     }
+
+
+def test_light_navbar_menu_morph_uses_neutral_current_color_layers():
+    css = light_css()
+    assert css_rule_group_declarations(
+        css,
+        (".archive-menu-book", ".archive-menu-bars"),
+    ) == {
+        "inset": "0",
+        "position": "absolute",
+        "transition": "opacity 160ms ease, transform 160ms ease",
+    }
+    assert css_rule_group_declarations(css, (".archive-menu-book",)) == {
+        "-webkit-mask": (
+            'url("/static/img/illustrations/open-book.svg") center / contain no-repeat'
+        ),
+        "background-color": "currentColor",
+        "mask": 'url("/static/img/illustrations/open-book.svg") center / contain no-repeat',
+        "opacity": "1",
+        "transform": "scale(1)",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .icon-button",),
+    )["color"] == "var(--ink-700) !important"
+
+
+def test_light_navbar_menu_button_stays_square_through_icon_button_cascade():
+    css = light_css()
+    menu_button = css_rule_group_declarations(css, (".archive-menu-button",))
+    assert {
+        menu_button["inline-size"],
+        menu_button["block-size"],
+        menu_button["min-inline-size"],
+        menu_button["min-block-size"],
+    } == {"2.5rem"}
+    assert menu_button["flex"] == "0 0 2.5rem"
+
+    themed_icon = css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .icon-button",),
+    )
+    assert themed_icon["min-width"] == themed_icon["min-height"] == "2rem"
+    assert themed_icon["padding"] == "0.25rem"
 
 
 def test_light_button_hierarchy_uses_rubric_wood_and_ink():

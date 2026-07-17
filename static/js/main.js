@@ -50,6 +50,7 @@ function initNavigation() {
         navOverlay.classList.remove('d-none');
         navOverlay.setAttribute("aria-hidden", "false");
         brandMenuButton.setAttribute("aria-expanded", "true");
+        brandMenuButton.setAttribute("aria-label", "Navigation menu open.");
         document.body.classList.add('nav-sidebar-open');
         (getFocusableElements()[0] || dialog)?.focus();
     };
@@ -60,6 +61,7 @@ function initNavigation() {
         navOverlay.classList.add('d-none');
         navOverlay.setAttribute("aria-hidden", "true");
         brandMenuButton.setAttribute("aria-expanded", "false");
+        brandMenuButton.setAttribute("aria-label", "Open navigation menu");
         document.body.classList.remove('nav-sidebar-open');
         restoreOutsideContent();
         brandMenuButton.focus();
@@ -90,6 +92,9 @@ function initNavigation() {
 
     brandMenuButton.addEventListener('click', openSidebar);
     closeButton?.addEventListener('click', closeSidebar);
+    for (const navigationLink of navOverlay.querySelectorAll('a[href]')) {
+        navigationLink.addEventListener('click', closeSidebar);
+    }
 
     navOverlay.addEventListener('click', (event) => {
         if (event.target === navOverlay) closeSidebar();

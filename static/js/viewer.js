@@ -4,6 +4,7 @@ import { showToast } from './toast.js';
 import { createWorkspaceSelectElement, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
 
 const GOOGLE_BOOKS_API_URL = 'https://www.google.com/books/jsapi.js';
+const PROXY_IFRAME_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox';
 
 let viewerOffcanvas;
 let googleBooksApiPromise;
@@ -360,16 +361,14 @@ function renderProxyContent(body, result) {
     const mode = result.mode || 'iframe';
     if (mode === 'reader') {
         body.classList.add('viewer-mode-reader');
-        const reader = document.createElement('div');
-        reader.className = 'viewer-reader';
-        // Server proxy sanitizes reader HTML before returning it.
-        reader.innerHTML = textValue(result.html);
-        body.appendChild(reader);
-        return;
     }
 
     const iframe = document.createElement('iframe');
-    iframe.className = 'viewer-iframe';
+    iframe.className = mode === 'reader'
+        ? 'viewer-iframe viewer-reader'
+        : 'viewer-iframe';
+    iframe.setAttribute('sandbox', PROXY_IFRAME_SANDBOX);
+    iframe.setAttribute('referrerpolicy', 'no-referrer');
     iframe.srcdoc = textValue(result.html);
     body.appendChild(iframe);
 }

@@ -279,6 +279,10 @@ TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
 )
 TASK4_NAVIGATION_CLASSES = (
     "archive-navbar",
+    "archive-menu-button",
+    "archive-menu-icon",
+    "archive-menu-book",
+    "archive-menu-bars",
     "archive-wordmark",
     "nav-sidebar-open",
     "nav-sidebar-overlay",
@@ -286,7 +290,18 @@ TASK4_NAVIGATION_CLASSES = (
 )
 TASK4_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
     {
-        (".archive-wordmark",),
+        (".archive-menu-button",),
+        (".archive-menu-icon",),
+        (".archive-menu-book", ".archive-menu-bars"),
+        (".archive-menu-book",),
+        (".archive-menu-bars",),
+        (".archive-menu-bars > span",),
+        (
+            '.archive-menu-button[aria-expanded="true"] .archive-menu-book',
+        ),
+        (
+            '.archive-menu-button[aria-expanded="true"] .archive-menu-bars',
+        ),
         ("body.nav-sidebar-open",),
         (".nav-sidebar-overlay",),
         (".nav-sidebar-overlay.d-none",),
@@ -403,6 +418,11 @@ REDUCED_MOTION_SELECTORS = (
     '[data-bs-theme="dark"] *::before',
     '[data-bs-theme="dark"] *::after',
 )
+LIGHT_REDUCED_MOTION_SELECTORS = (
+    f"{LIGHT_GUARD} *",
+    f"{LIGHT_GUARD} *::before",
+    f"{LIGHT_GUARD} *::after",
+)
 EXPECTED_TOAST_ICON_MAP = {
     "success": "bi-check-circle text-success",
     "danger": "bi-x-circle text-danger",
@@ -483,6 +503,7 @@ class FakeElement {
     this.inert = inert;
     this.listeners = new Map();
     this.focusableElements = [];
+    this.navigationLinks = [];
     this.dialogElement = null;
   }
 
@@ -512,7 +533,8 @@ class FakeElement {
     document.activeElement = this;
   }
 
-  querySelectorAll() {
+  querySelectorAll(selector) {
+    if (selector === "a[href]") return this.navigationLinks;
     return this.focusableElements;
   }
 
@@ -528,7 +550,10 @@ class FakeElement {
 const brandMenuButton = new FakeElement(
   "brandMenuButton",
   [],
-  { "aria-expanded": "false" },
+  {
+    "aria-expanded": "false",
+    "aria-label": "Open navigation menu",
+  },
 );
 const navOverlay = new FakeElement(
   "navSidebarOverlay",
@@ -542,6 +567,7 @@ const browseLink = new FakeElement("browseLink");
 const uploadLink = new FakeElement("uploadLink");
 const overlayChild = new FakeElement("overlayChild");
 navOverlay.focusableElements = [closeButton, homeLink, browseLink, uploadLink];
+navOverlay.navigationLinks = [homeLink, browseLink, uploadLink];
 navOverlay.dialogElement = navDialog;
 
 const navbar = new FakeElement("navbar");
@@ -585,6 +611,7 @@ function assertOpen(context, expectedFocus = closeButton) {
   invariant(!navOverlay.classList.contains("d-none"), `${context}: overlay hidden`);
   invariant(navOverlay.getAttribute("aria-hidden") === "false", `${context}: aria-hidden`);
   invariant(brandMenuButton.getAttribute("aria-expanded") === "true", `${context}: aria-expanded`);
+  invariant(brandMenuButton.getAttribute("aria-label") === "Navigation menu open.", `${context}: label`);
   invariant(document.body.classList.contains("nav-sidebar-open"), `${context}: body class`);
   invariant(document.activeElement === expectedFocus, `${context}: initial focus`);
   invariant(navbar.inert, `${context}: navbar not inert`);
@@ -596,6 +623,7 @@ function assertClosed(context) {
   invariant(navOverlay.classList.contains("d-none"), `${context}: overlay visible`);
   invariant(navOverlay.getAttribute("aria-hidden") === "true", `${context}: aria-hidden`);
   invariant(brandMenuButton.getAttribute("aria-expanded") === "false", `${context}: aria-expanded`);
+  invariant(brandMenuButton.getAttribute("aria-label") === "Open navigation menu", `${context}: label`);
   invariant(!document.body.classList.contains("nav-sidebar-open"), `${context}: body class`);
   invariant(document.activeElement === brandMenuButton, `${context}: wordmark focus`);
   invariant(!navbar.inert, `${context}: navbar inert state not restored`);
@@ -633,6 +661,12 @@ dispatchDocument("keydown", { key: "Enter" });
 assertOpen("non-Escape key");
 dispatchDocument("keydown", { key: "Escape" });
 assertClosed("Escape");
+
+for (const navigationLink of [homeLink, browseLink, uploadLink]) {
+  brandMenuButton.dispatch("click");
+  navigationLink.dispatch("click");
+  assertClosed(`${navigationLink.id} click`);
+}
 
 navOverlay.focusableElements = [];
 brandMenuButton.dispatch("click");
@@ -867,10 +901,11 @@ EXPECTED_SHARED_RULES = (
         {
             "background-color": "var(--surface-800)",
             "background-image": (
-                "linear-gradient(var(--surface-800), var(--surface-800)), "
+                "linear-gradient(hsl(30 43% 12% / 0.52), "
+                "hsl(30 43% 12% / 0.52)), "
                 'url("/static/img/textures/leather-texture.png")'
             ),
-            "background-blend-mode": "multiply",
+            "background-blend-mode": "normal",
             "background-position": "0 0",
             "background-repeat": "repeat, repeat",
             "background-size": "auto, 420px",
@@ -884,10 +919,11 @@ EXPECTED_SHARED_RULES = (
         {
             "background-color": "var(--surface-700)",
             "background-image": (
-                "linear-gradient(var(--surface-700), var(--surface-700)), "
+                "linear-gradient(hsl(31 51% 12% / 0.38), "
+                "hsl(31 51% 12% / 0.38)), "
                 'url("/static/img/textures/wood-texture.png")'
             ),
-            "background-blend-mode": "multiply",
+            "background-blend-mode": "normal",
             "background-position": "0 0",
             "background-repeat": "repeat, repeat",
             "background-size": "auto, 200px",
@@ -1112,7 +1148,7 @@ EXPECTED_SHARED_RULES = (
             "mask-position": "center",
             "mask-repeat": "no-repeat",
             "mask-size": "contain",
-            "opacity": "0.06",
+            "opacity": "0.14",
             "pointer-events": "none",
             "position": "absolute",
             "z-index": "var(--z-bg-illustration)",
@@ -1150,18 +1186,85 @@ EXPECTED_REDUCED_MOTION_DECLARATIONS = {
     "transition-delay": "0s !important",
     "transition-duration": "0.01ms !important",
 }
-EXPECTED_COARSE_POINTER_DECLARATIONS = {"opacity": "0.045"}
+EXPECTED_COARSE_POINTER_DECLARATIONS = {"opacity": "0.10"}
 EXPECTED_NAVIGATION_NEUTRAL_RULES = (
     (
-        (".archive-wordmark",),
+        (".archive-menu-button",),
         {
             "-webkit-appearance": "none",
             "appearance": "none",
             "background": "transparent",
+            "block-size": "2.5rem",
             "border": "0",
             "cursor": "pointer",
+            "flex": "0 0 2.5rem",
+            "inline-size": "2.5rem",
+            "min-block-size": "2.5rem",
+            "min-inline-size": "2.5rem",
             "padding-inline": "0",
         },
+    ),
+    (
+        (".archive-menu-icon",),
+        {
+            "display": "block",
+            "height": "1.5rem",
+            "position": "relative",
+            "width": "1.75rem",
+        },
+    ),
+    (
+        (".archive-menu-book", ".archive-menu-bars"),
+        {
+            "inset": "0",
+            "position": "absolute",
+            "transition": "opacity 160ms ease, transform 160ms ease",
+        },
+    ),
+    (
+        (".archive-menu-book",),
+        {
+            "-webkit-mask": (
+                'url("/static/img/illustrations/open-book.svg") center / contain '
+                "no-repeat"
+            ),
+            "background-color": "currentColor",
+            "mask": (
+                'url("/static/img/illustrations/open-book.svg") center / contain '
+                "no-repeat"
+            ),
+            "opacity": "1",
+            "transform": "scale(1)",
+        },
+    ),
+    (
+        (".archive-menu-bars",),
+        {
+            "display": "flex",
+            "flex-direction": "column",
+            "gap": "0.25rem",
+            "justify-content": "center",
+            "opacity": "0",
+            "transform": "scale(0.72)",
+        },
+    ),
+    (
+        (".archive-menu-bars > span",),
+        {
+            "background-color": "currentColor",
+            "border-radius": "999px",
+            "display": "block",
+            "height": "2px",
+            "width": "100%",
+        },
+    ),
+    (
+        ('.archive-menu-button[aria-expanded="true"] .archive-menu-book',),
+        {"opacity": "0", "transform": "scale(0.72)"},
+    ),
+    (
+        ('.archive-menu-button[aria-expanded="true"] .archive-menu-bars',),
+        {"opacity": "1", "transform": "scale(1)"},
     ),
     (("body.nav-sidebar-open",), {"overflow": "hidden"}),
 )
@@ -1684,6 +1787,52 @@ def assert_toast_runtime_contract(toast: str) -> None:
             )
 
 
+def assert_navigation_markup_contract(layout: str) -> None:
+    soup = BeautifulSoup(layout, "html.parser")
+
+    menu_button = soup.select_one("button#brandMenuButton")
+    assert menu_button is not None
+    assert menu_button.get("type") == "button"
+    assert menu_button.get("aria-label") == "Open navigation menu"
+    assert menu_button.get("aria-controls") == "navSidebarOverlay"
+    assert menu_button.get("aria-expanded") == "false"
+    assert set(menu_button.get("class", ())) == {
+        "archive-menu-button",
+        "icon-button",
+    }
+    assert menu_button.get_text(strip=True) == ""
+
+    icon_children = menu_button.find_all("span", recursive=False)
+    assert len(icon_children) == 1
+    icon = icon_children[0]
+    assert set(icon.get("class", ())) == {"archive-menu-icon"}
+    assert icon.get("aria-hidden") == "true"
+
+    layers = icon.find_all("span", recursive=False)
+    assert len(layers) == 2
+    book, bars = layers
+    assert set(book.get("class", ())) == {"archive-menu-book"}
+    assert book.find() is None
+    assert set(bars.get("class", ())) == {"archive-menu-bars"}
+    bar_children = bars.find_all("span", recursive=False)
+    assert len(bar_children) == 3
+    assert all(not bar.attrs and bar.get_text(strip=True) == "" for bar in bar_children)
+
+    wordmark = soup.select_one("a.navbar-brand.archive-wordmark")
+    assert wordmark is not None
+    assert wordmark.get("href") == "/"
+    assert wordmark.get("aria-label") == "StudyLib home"
+    assert wordmark.get_text(strip=True) == "StudyLib"
+    assert set(wordmark.get("class", ())) == {
+        "navbar-brand",
+        "archive-wordmark",
+        "mb-0",
+    }
+    assert menu_button.find_next_sibling() is wordmark
+    assert soup.select_one("button.archive-wordmark") is None
+    assert soup.select_one("#navMenuButton") is None
+
+
 def assert_navigation_runtime_contract(main: str) -> None:
     executable_main, import_count = OPEN_VIEWER_IMPORT_PATTERN.subn(
         "const openViewer = () => {};",
@@ -1752,6 +1901,49 @@ def assert_navigation_css_contract(css: str) -> None:
         *EXPECTED_NAVIGATION_DARK_RULES,
     ):
         assert css_rule_group_declarations(css, selectors) == expected_declarations
+
+    menu_button = css_rule_group_declarations(css, (".archive-menu-button",))
+    assert {
+        menu_button["inline-size"],
+        menu_button["block-size"],
+        menu_button["min-inline-size"],
+        menu_button["min-block-size"],
+    } == {"2.5rem"}
+    assert menu_button["flex"] == "0 0 2.5rem"
+    # Theme-specific 2rem physical minima arrive later; fixed basis prevents flex shrink.
+    for selector in (
+        f"{LIGHT_GUARD} .icon-button",
+        '[data-bs-theme="dark"] .icon-button',
+    ):
+        themed_icon = css_rule_group_declarations(css, (selector,))
+        assert themed_icon["min-width"] == themed_icon["min-height"] == "2rem"
+        assert themed_icon["padding"] == "0.25rem"
+
+    state_selectors = {
+        selector
+        for selectors, declarations in css_rules(css)
+        if {"opacity", "transform"} & declarations.keys()
+        for selector in selectors
+        if ".archive-menu-button" in selector
+        and any(
+            layer in selector for layer in (".archive-menu-book", ".archive-menu-bars")
+        )
+    }
+    assert state_selectors == {
+        '.archive-menu-button[aria-expanded="true"] .archive-menu-book',
+        '.archive-menu-button[aria-expanded="true"] .archive-menu-bars',
+    }
+
+    for selectors in (LIGHT_REDUCED_MOTION_SELECTORS, REDUCED_MOTION_SELECTORS):
+        reduced_motion = css_block_body_containing_selector(
+            css,
+            "@media (prefers-reduced-motion: reduce)",
+            selectors[0],
+        )
+        assert (
+            css_rule_group_declarations(reduced_motion, selectors)
+            == EXPECTED_REDUCED_MOTION_DECLARATIONS
+        )
 
 
 def assert_dashboard_selectors_are_scoped(css: str) -> None:
@@ -1926,6 +2118,75 @@ def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
     assert_toast_runtime_contract(toast)
 
 
+def mutate_css_rule(
+    css: str,
+    selector: str,
+    old: str,
+    new: str,
+    *,
+    occurrence: int = 0,
+) -> str:
+    rule_starts = [
+        match.end()
+        for match in re.finditer(rf"{re.escape(selector)}\s*\{{", css)
+    ]
+    assert len(rule_starts) > occurrence, f"missing {selector!r} occurrence {occurrence}"
+    body_start = rule_starts[occurrence]
+    body_end = css.index("}", body_start)
+    body = css[body_start:body_end]
+    assert old in body, f"missing {old!r} in {selector!r} occurrence {occurrence}"
+    return css[:body_start] + body.replace(old, new, 1) + css[body_end:]
+
+
+def assert_dark_material_visibility_contract(css: str) -> None:
+    materials = (
+        (
+            '[data-bs-theme="dark"] .surface-leather',
+            'url("/static/img/textures/leather-texture.png")',
+        ),
+        (
+            '[data-bs-theme="dark"] .btn-secondary-wood',
+            'url("/static/img/textures/wood-texture.png")',
+        ),
+    )
+    for selector, texture_url in materials:
+        declarations = css_rule_declarations(css, selector)
+        background_image = declarations["background-image"]
+        alphas = tuple(
+            float(value)
+            for value in re.findall(
+                r"hsl\([^()]*/\s*([0-9]+(?:\.[0-9]+)?)\)",
+                background_image,
+            )
+        )
+        assert len(alphas) == 2, f"{selector} must use two alpha-bearing HSL tints"
+        assert alphas[0] == alphas[1], f"{selector} tint endpoints must match"
+        assert all(0 < alpha < 1 for alpha in alphas), (
+            f"{selector} tint alpha must remain translucent"
+        )
+        assert declarations["background-blend-mode"] == "normal"
+        assert background_image.count(texture_url) == 1
+
+    dark_css = css[css.index("/* Candlelit Archive: dark theme foundation */") :]
+    assert "linear-gradient(var(--surface-800), var(--surface-800))" not in dark_css
+    assert "linear-gradient(var(--surface-700), var(--surface-700))" not in dark_css
+
+    illustration = css_rule_group_declarations(
+        css,
+        ('[data-bs-theme="dark"] .archive-illustration',),
+    )
+    assert illustration["opacity"] == "0.14"
+    assert illustration["pointer-events"] == "none"
+    assert illustration["position"] == "absolute"
+    assert illustration["z-index"] == "var(--z-bg-illustration)"
+
+    coarse = css_block_body(css, "@media (hover: none), (pointer: coarse)")
+    assert css_rule_declarations(
+        coarse,
+        '[data-bs-theme="dark"] .archive-illustration',
+    ) == {"opacity": "0.10"}
+
+
 def mark_dark_theme_attribute(selector: str) -> str | None:
     marked_selector, replacements = DARK_THEME_ATTRIBUTE_PATTERN.subn("__dark_theme__", selector)
     return marked_selector.strip() if replacements == 1 else None
@@ -2096,6 +2357,72 @@ def test_shared_dark_theme_materials_and_controls_are_scoped():
     assert_shared_dark_theme_contract(css, toast)
 
 
+def test_dark_material_tints_and_illustrations_are_clearly_visible():
+    assert_dark_material_visibility_contract(read_text("static/css/custom.css"))
+
+
+@pytest.mark.parametrize(
+    ("selector", "old", "new"),
+    (
+        (
+            '[data-bs-theme="dark"] .surface-leather',
+            "hsl(30 43% 12% / 0.52)",
+            "hsl(30 43% 12% / 1)",
+        ),
+        (
+            '[data-bs-theme="dark"] .btn-secondary-wood',
+            "background-blend-mode: normal",
+            "background-blend-mode: multiply",
+        ),
+        (
+            '[data-bs-theme="dark"] .surface-leather',
+            'url("/static/img/textures/leather-texture.png")',
+            "none",
+        ),
+        (
+            '[data-bs-theme="dark"] .btn-secondary-wood',
+            'url("/static/img/textures/wood-texture.png")',
+            "none",
+        ),
+    ),
+    ids=("opaque-alpha", "multiply-blend", "leather-url", "wood-url"),
+)
+def test_dark_material_contract_rejects_alpha_blend_or_texture_mutation(
+    selector,
+    old,
+    new,
+):
+    css = mutate_css_rule(read_text("static/css/custom.css"), selector, old, new)
+    with pytest.raises(AssertionError):
+        assert_dark_material_visibility_contract(css)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "occurrence"),
+    (
+        ("opacity: 0.14", "opacity: 0.09", 0),
+        ("pointer-events: none", "pointer-events: auto", 0),
+        ("z-index: var(--z-bg-illustration)", "z-index: var(--z-content)", 0),
+        ("opacity: 0.10", "opacity: 0.06", 1),
+    ),
+    ids=("desktop-opacity", "pointer-guard", "z-index-guard", "coarse-opacity"),
+)
+def test_dark_illustration_contract_rejects_opacity_or_guard_mutation(
+    old,
+    new,
+    occurrence,
+):
+    css = mutate_css_rule(
+        read_text("static/css/custom.css"),
+        '[data-bs-theme="dark"] .archive-illustration',
+        old,
+        new,
+        occurrence=occurrence,
+    )
+    with pytest.raises(AssertionError):
+        assert_dark_material_visibility_contract(css)
+
+
 def test_shared_dark_theme_controls_use_spec_motion():
     css = read_text("static/css/custom.css")
     assert css_rule_group_declarations(css, SHARED_CONTROL_MOTION_SELECTORS) == {
@@ -2164,14 +2491,12 @@ def test_shared_contract_rejects_moved_material_declaration():
 
 
 def test_shared_contract_rejects_wrong_material_declaration():
-    css = read_text("static/css/custom.css")
-    dark_start = css.index("/* Candlelit Archive: dark theme foundation */")
-    dark_css = css[dark_start:].replace(
-        "background-blend-mode: multiply;",
-        "background-blend-mode: screen;",
-        1,
+    css = mutate_css_rule(
+        read_text("static/css/custom.css"),
+        '[data-bs-theme="dark"] .surface-leather',
+        "background-blend-mode: normal",
+        "background-blend-mode: screen",
     )
-    css = css[:dark_start] + dark_css
 
     with pytest.raises(AssertionError):
         assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
@@ -2354,19 +2679,13 @@ def test_third_review_boundary_accepts_aria_hidden_toast_icon():
     assert_shared_dark_theme_contract(read_text("static/css/custom.css"), toast)
 
 
-def test_navigation_uses_wordmark_trigger_and_home_entry():
+def test_navigation_splits_menu_trigger_from_home_wordmark():
     layout = read_text("templates/layout.html")
     main = read_text("static/js/main.js")
     theme = read_text("static/js/theme.js")
     auth = read_text("static/js/auth.js")
 
-    assert 'id="brandMenuButton"' in layout
-    assert 'aria-controls="navSidebarOverlay"' in layout
-    assert 'aria-expanded="false"' in layout
-    assert 'id="navMenuButton"' not in layout
-    assert '<a class="list-group-item list-group-item-action" href="/">Home</a>' in layout
-    assert 'id="navSidebarOverlay"' in layout
-    assert 'aria-hidden="true"' in layout
+    assert_navigation_markup_contract(layout)
 
     assert "getElementById('brandMenuButton')" in main
     assert "event.key === 'Escape'" in main
@@ -2375,6 +2694,8 @@ def test_navigation_uses_wordmark_trigger_and_home_entry():
     assert 'setAttribute("aria-hidden", "false")' in main
     assert 'setAttribute("aria-hidden", "true")' in main
     assert "brandMenuButton.focus()" in main
+    assert main.count("const closeSidebar =") == 1
+    assert "querySelectorAll('a[href]')" in main
 
     for script in (theme, auth):
         assert "? '<i class=\"bi bi-sun\" aria-hidden=\"true\"></i>'" in script
@@ -2383,21 +2704,9 @@ def test_navigation_uses_wordmark_trigger_and_home_entry():
 
 
 def test_navigation_markup_has_accessible_dialog_relationships():
-    soup = BeautifulSoup(read_text("templates/layout.html"), "html.parser")
-
-    wordmark = soup.select_one("button#brandMenuButton")
-    assert wordmark is not None
-    assert wordmark.get_text(strip=True) == "StudyLib"
-    assert wordmark.get("type") == "button"
-    assert wordmark.get("aria-label") == "StudyLib, open navigation menu"
-    assert wordmark.get("aria-controls") == "navSidebarOverlay"
-    assert wordmark.get("aria-expanded") == "false"
-    assert set(wordmark.get("class", ())) == {
-        "navbar-brand",
-        "archive-wordmark",
-        "mb-0",
-    }
-    assert soup.select_one("#navMenuButton") is None
+    layout = read_text("templates/layout.html")
+    assert_navigation_markup_contract(layout)
+    soup = BeautifulSoup(layout, "html.parser")
 
     overlay = soup.select_one("#navSidebarOverlay")
     assert overlay is not None
@@ -2442,8 +2751,28 @@ def test_navigation_markup_has_accessible_dialog_relationships():
     assert theme_button.select_one('i.bi-moon-stars-fill[aria-hidden="true"]') is not None
 
 
+def test_navigation_markup_contract_rejects_wrong_bar_count():
+    layout = read_text("templates/layout.html")
+    assert_navigation_markup_contract(layout)
+    bars = "<span></span><span></span><span></span>"
+    assert layout.count(bars) == 1
+
+    with pytest.raises(AssertionError):
+        assert_navigation_markup_contract(layout.replace(bars, "<span></span><span></span>", 1))
+
+
 def test_navigation_runtime_keeps_visibility_aria_body_and_focus_in_sync():
     assert_navigation_runtime_contract(read_text("static/js/main.js"))
+
+
+def test_navigation_runtime_contract_rejects_missing_link_close_listener():
+    main = read_text("static/js/main.js")
+    assert_navigation_runtime_contract(main)
+    listener = "navigationLink.addEventListener('click', closeSidebar);"
+    assert main.count(listener) == 1
+
+    with pytest.raises(AssertionError):
+        assert_navigation_runtime_contract(main.replace(listener, "", 1))
 
 
 @pytest.mark.parametrize(
@@ -2529,6 +2858,57 @@ def test_navigation_css_contract_rejects_semantic_and_visual_mutations(
 
     with pytest.raises(AssertionError):
         assert_navigation_css_contract(css.replace(original, mutation, 1))
+
+
+@pytest.mark.parametrize(
+    ("original", "mutation"),
+    (
+        (
+            'url("/static/img/illustrations/open-book.svg")',
+            'url("/static/img/illustrations/closed-book.svg")',
+        ),
+        (
+            '.archive-menu-button[aria-expanded="true"] .archive-menu-book',
+            '.archive-menu-button[data-open="true"] .archive-menu-book',
+        ),
+        (
+            f"    {LIGHT_REDUCED_MOTION_SELECTORS[0]},\n",
+            f"    {LIGHT_GUARD} body,\n",
+        ),
+        (
+            "    inline-size: 2.5rem;\n",
+            "    inline-size: 2.75rem;\n",
+        ),
+    ),
+    ids=(
+        "mask-url",
+        "expanded-selector",
+        "reduced-motion-descendants",
+        "unequal-button-axis",
+    ),
+)
+def test_navigation_morph_contract_rejects_asset_state_and_motion_mutations(
+    original: str,
+    mutation: str,
+):
+    css = read_text("static/css/custom.css")
+    assert_navigation_css_contract(css)
+    assert original in css
+
+    with pytest.raises(AssertionError):
+        assert_navigation_css_contract(css.replace(original, mutation, 1))
+
+
+def test_navigation_button_contract_rejects_shrinkable_flex_basis():
+    css = read_text("static/css/custom.css")
+    assert_navigation_css_contract(css)
+    basis = "    flex: 0 0 2.5rem;\n"
+    assert css.count(basis) == 1
+
+    with pytest.raises(AssertionError):
+        assert_navigation_css_contract(
+            css.replace(basis, "    flex: 1 1 auto;\n", 1)
+        )
 
 
 def test_navigation_css_contract_rejects_additive_unscoped_visual_rule():
@@ -3119,7 +3499,7 @@ const responses = [
 globalThis.fetch = async (url, options) => {
   fetchCalls.push({ url, options });
   if (url === "/static/whitelist.json") {
-    return { ok: true, async json() { return { domains: [] }; } };
+    return { ok: true, async json() { return { domains: ["en.wikipedia.org"] }; } };
   }
   const response = responses.shift();
   invariant(response, "unexpected extra search request");
@@ -3153,6 +3533,7 @@ invariant(body.num_results === 10, "search result count changed");
 
 process.stdout.write(JSON.stringify({
   html: root.innerHTML,
+  whitelistMarkup: controls.get("#whitelistCheckboxes").innerHTML,
   body,
   requestSizes: searchCalls.map((call) => JSON.parse(call.options.body).num_results),
   renderedTitles: globalThis.renderedItems.map((item) => item.title),
@@ -3166,6 +3547,7 @@ process.stdout.write(JSON.stringify({
 RESTORED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 const restoredState = {
+  version: 1,
   query: "restored archive",
   sources: ["wikipedia", "whitelist_en.wikipedia.org"],
   filters: {
@@ -3240,6 +3622,95 @@ process.stdout.write(JSON.stringify({
 """
 
 
+LEGACY_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+const gbooks = new FakeElement("gbooks");
+gbooks.value = "gbooks";
+gbooks.checked = true;
+const pubmed = new FakeElement("pubmed");
+pubmed.value = "pubmed";
+pubmed.checked = true;
+sourceCheckboxes.push(gbooks, pubmed);
+const legacyWhitelistDomains = [
+  "en.wikipedia.org",
+  "web.md",
+  "scholar.google.com",
+  "pubmed.ncbi.nlm.nih.gov",
+  "www.jstor.org",
+  "eric.ed.gov",
+  "www.sciencedirect.com",
+  "link.springer.com",
+  "www.researchgate.net",
+  "www.academia.edu",
+  "books.google.com",
+  "www.britannica.com",
+  "www.bbc.co.uk",
+  "www.nationalgeographic.com",
+];
+const legacyState = {
+  query: "legacy archive",
+  sources: [
+    "wikipedia",
+    "gbooks",
+    "pubmed",
+    ...legacyWhitelistDomains.map((domain) => `whitelist_${domain}`),
+  ],
+  filters: {
+    min_date: "1985",
+    max_date: "2015",
+    content_type: "article",
+    sorting: "title",
+  },
+  results: [
+    {
+      source_name: "Wikipedia",
+      source_id: "legacy-1",
+      source_url: "https://en.wikipedia.org/wiki/Archive",
+      title: "Legacy result",
+    },
+  ],
+  resultWindow: 20,
+  searchExhausted: false,
+};
+const storageWrites = [];
+globalThis.localStorage = {
+  getItem(key) {
+    invariant(key === "studyhelper_browse_state", "wrong legacy restore key");
+    return JSON.stringify(legacyState);
+  },
+  setItem(key, value) {
+    storageWrites.push({ key, value });
+  },
+};
+globalThis.fetch = async (url) => {
+  invariant(url === "/static/whitelist.json", "legacy upgrade made a search request");
+  return {
+    ok: true,
+    async json() { return { domains: legacyWhitelistDomains }; },
+  };
+};
+globalThis.toastCalls = [];
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await flushPromises();
+await flushPromises();
+
+const upgradedState = storageWrites.length > 0
+  ? JSON.parse(storageWrites[storageWrites.length - 1].value)
+  : null;
+process.stdout.write(JSON.stringify({
+  checkedSources: sourceCheckboxes
+    .filter((checkbox) => checkbox.checked)
+    .map((checkbox) => checkbox.value),
+  renderedTitles: globalThis.renderedItems.map((item) => item.title),
+  whitelistMarkup: controls.get("#whitelistCheckboxes").innerHTML,
+  storageWrites: storageWrites.length,
+  upgradedState,
+}));
+"""
+
+
 DEFERRED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 globalThis.localStorage = { getItem() { return null; }, setItem() {} };
@@ -3260,6 +3731,7 @@ function response(results) {
 
 const oldInitial = deferredResponse();
 const staleLoad = deferredResponse();
+const newestInitial = deferredResponse();
 const newestLoad = deferredResponse();
 const fresh = {
   source_name: "Wikipedia",
@@ -3290,7 +3762,7 @@ globalThis.fetch = async (url, options) => {
   if (body.query === "archive" && body.num_results === 10) return oldInitial.promise;
   if (body.query === "fresh" && body.num_results === 10) return response([fresh]);
   if (body.query === "fresh" && body.num_results === 20) return staleLoad.promise;
-  if (body.query === "newest" && body.num_results === 10) return response([newest]);
+  if (body.query === "newest" && body.num_results === 10) return newestInitial.promise;
   if (body.query === "newest" && body.num_results === 20) return newestLoad.promise;
   throw new Error("unexpected search request: " + JSON.stringify(body));
 };
@@ -3303,23 +3775,23 @@ await flushPromises();
 search.value = "fresh";
 await go.dispatch("click");
 await flushPromises();
+const detachedFreshLoadMore = controls.get("#loadMoreBtn");
+await detachedFreshLoadMore.dispatch("click");
+await flushPromises();
+search.value = "newest";
+await go.dispatch("click");
+await flushPromises();
+sorting.value = "recent";
+await sorting.dispatch("change");
+await detachedFreshLoadMore.dispatch("click");
+await flushPromises();
+
 oldInitial.resolve(response([{
   source_name: "Wikipedia",
   source_id: "old-initial",
   source_url: "https://example.test/old-initial",
   title: "Old initial",
 }]));
-await flushPromises();
-const afterInitialRace = globalThis.renderedItems.map((item) => item.title);
-
-await controls.get("#loadMoreBtn").dispatch("click");
-await flushPromises();
-search.value = "newest";
-await go.dispatch("click");
-await flushPromises();
-await controls.get("#loadMoreBtn").dispatch("click");
-await flushPromises();
-
 staleLoad.resolve(response([{
   source_name: "Wikipedia",
   source_id: "stale-load",
@@ -3327,6 +3799,25 @@ staleLoad.resolve(response([{
   title: "Stale load",
 }]));
 await flushPromises();
+const pendingSearchBodies = fetchCalls
+  .filter((call) => call.url === "/api/browse/search-all")
+  .map((call) => JSON.parse(call.options.body));
+const duringNewestInitial = {
+  titles: globalThis.renderedItems.map((item) => item.title),
+  sortingDisabled: sorting.disabled,
+  loadMorePresent: controls.has("#loadMoreBtn"),
+  sidebarReset: controls.get("#sidebarContainer").innerHTML.includes('archive-count-badge">0</span>'),
+  requestQueries: pendingSearchBodies.map((body) => body.query),
+  requestSizes: pendingSearchBodies.map((body) => body.num_results),
+};
+
+newestInitial.resolve(response([newest]));
+await flushPromises();
+const afterInitialRace = globalThis.renderedItems.map((item) => item.title);
+const initialSortingReleased = sorting.disabled;
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+
 const duringNewestLoad = {
   titles: globalThis.renderedItems.map((item) => item.title),
   disabled: controls.get("#loadMoreBtn").disabled,
@@ -3341,6 +3832,8 @@ const searchBodies = fetchCalls
   .map((call) => JSON.parse(call.options.body));
 process.stdout.write(JSON.stringify({
   afterInitialRace,
+  duringNewestInitial,
+  initialSortingReleased,
   duringNewestLoad,
   finalTitles: globalThis.renderedItems.map((item) => item.title),
   requestQueries: searchBodies.map((body) => body.query),
@@ -3374,6 +3867,24 @@ const identitylessMerge = mergeUniqueResults(
   [identitylessLegacy],
   [identitylessNewFormat],
 );
+const aliasChain = [
+  {
+    title: "First",
+    _dedupe_identity: '["source_id","archive","shared-id"]',
+    _canonical_source_url: "https://example.test/first",
+  },
+  {
+    title: "Repeated ID",
+    _dedupe_identity: '["source_id","archive","shared-id"]',
+    _canonical_source_url: "https://example.test/alias",
+  },
+  {
+    title: "Repeated alias URL",
+    _dedupe_identity: '["source_id","archive","other-id"]',
+    _canonical_source_url: "https://example.test/alias",
+  },
+];
+const lateAliasBridge = [aliasChain[0], aliasChain[2], aliasChain[1]];
 
 process.stdout.write(JSON.stringify({
   vectors: vectors.map((vector) => {
@@ -3397,7 +3908,137 @@ process.stdout.write(JSON.stringify({
     resultCount: identitylessMerge.results.length,
     addedCount: identitylessMerge.addedCount,
   },
+  aliasChainTitles: deduplicateResults(aliasChain).map((record) => record.title),
+  lateAliasBridgeTitles: deduplicateResults(lateAliasBridge).map((record) => record.title),
   malformedBackslashUrl: canonicalSourceUrl("https://example.com\\archive"),
+}));
+"""
+
+
+WORKSPACE_IMPORT_REPLACEMENTS = (
+    (
+        "import { showToast } from '../toast.js';",
+        "const showToast = (...args) => globalThis.toastCalls.push(args);",
+    ),
+    (
+        "import { studyHelperAI } from '../ai-prompt.js';",
+        "const studyHelperAI = {};",
+    ),
+    (
+        "let pageRoot = null;",
+        "let pageRoot = globalThis.__workspaceRoot;",
+    ),
+)
+WORKSPACE_PREVIEW_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""
+const preview = new FakeElement("preview");
+const createdIframes = [];
+const fetchCalls = [];
+const fetchResults = [];
+globalThis.__workspaceRoot = {
+  querySelector(selector) {
+    invariant(selector === "#selectedSourcePreview", "unexpected workspace selector: " + selector);
+    return preview;
+  },
+};
+globalThis.toastCalls = [];
+globalThis.escapeHtml = (value) => String(value);
+globalThis.window = { location: { origin: "https://study.test" } };
+globalThis.document = {
+  createElement(tag) {
+    if (tag === "div") {
+      const div = new FakeElement("escape div");
+      let escaped = "";
+      Object.defineProperty(div, "textContent", {
+        get() { return escaped; },
+        set(value) {
+          escaped = String(value)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+          div.innerHTML = escaped;
+        },
+      });
+      return div;
+    }
+    invariant(tag === "iframe", "unexpected preview element: " + tag);
+    const iframe = new FakeElement("iframe");
+    iframe.events = [];
+    const baseSetAttribute = iframe.setAttribute.bind(iframe);
+    iframe.setAttribute = (name, value) => {
+      iframe.events.push(`attr:${name}`);
+      baseSetAttribute(name, value);
+    };
+    let assignedSrc = "";
+    let assignedSrcdoc = "";
+    Object.defineProperty(iframe, "src", {
+      get() { return assignedSrc; },
+      set(value) { iframe.events.push("src"); assignedSrc = String(value); },
+    });
+    Object.defineProperty(iframe, "srcdoc", {
+      get() { return assignedSrcdoc; },
+      set(value) { iframe.events.push("srcdoc"); assignedSrcdoc = String(value); },
+    });
+    createdIframes.push(iframe);
+    return iframe;
+  },
+};
+globalThis.fetch = async (url) => {
+  fetchCalls.push(url);
+  const result = fetchResults.shift();
+  invariant(result, "unexpected workspace proxy request");
+  return { async json() { return result; } };
+};
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const { renderSelectedSourcePreview } = await import(process.argv[1]);
+
+fetchResults.push({ status: true, html: "<article>Remote HTML</article>" });
+renderSelectedSourcePreview({ source_url: "https://en.wikipedia.org/archive.html" });
+await flushPromises();
+const remoteHtmlFrame = createdIframes[0];
+
+preview.children = [];
+fetchResults.push({ status: true, html: "<article>Remote HTM</article>" });
+renderSelectedSourcePreview({ source_url: "https://en.wikipedia.org/archive.htm" });
+await flushPromises();
+const remoteHtmFrame = createdIframes[1];
+
+preview.children = [];
+renderSelectedSourcePreview({ source_url: "https://en.wikipedia.org/archive.pdf" });
+const directPdfFrame = createdIframes[2];
+
+preview.children = [];
+fetchResults.push({ status: false, fallback_url: "javascript:alert(1)" });
+renderSelectedSourcePreview({ source_url: "https://en.wikipedia.org/no-preview" });
+await flushPromises();
+const fallbackHtml = preview.innerHTML;
+
+preview.children = [];
+renderSelectedSourcePreview({ source_url: "javascript:alert(1).html" });
+
+process.stdout.write(JSON.stringify({
+  fetchCalls,
+  remoteHtml: {
+    src: remoteHtmlFrame?.src,
+    srcdoc: remoteHtmlFrame?.srcdoc,
+    sandbox: remoteHtmlFrame?.getAttribute("sandbox"),
+    events: remoteHtmlFrame?.events,
+  },
+  remoteHtm: {
+    src: remoteHtmFrame?.src,
+    srcdoc: remoteHtmFrame?.srcdoc,
+    sandbox: remoteHtmFrame?.getAttribute("sandbox"),
+    events: remoteHtmFrame?.events,
+  },
+  directPdf: {
+    src: directPdfFrame?.src,
+    sandbox: directPdfFrame?.getAttribute("sandbox"),
+    events: directPdfFrame?.events,
+  },
+  fallbackHtml,
+  invalidHtml: preview.innerHTML,
 }));
 """
 
@@ -3518,6 +4159,15 @@ def restored_browse_runtime(source: str | None = None) -> dict:
     )
 
 
+def legacy_browse_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        LEGACY_BROWSE_RUNTIME_HARNESS,
+        "legacy browse",
+    )
+
+
 def deferred_browse_runtime(source: str | None = None) -> dict:
     return run_task6_module_harness(
         source or read_text("static/js/pages/browse.js"),
@@ -3541,6 +4191,17 @@ def browse_identity_runtime(source: str | None = None) -> dict:
         BROWSE_IMPORT_REPLACEMENTS,
         harness,
         "browse identity",
+    )
+
+
+def workspace_preview_runtime(source: str | None = None) -> dict:
+    workspace_source = source or read_text("static/js/pages/workspace.js")
+    workspace_source += "\nexport { renderSelectedSourcePreview };\n"
+    return run_task6_module_harness(
+        workspace_source,
+        WORKSPACE_IMPORT_REPLACEMENTS,
+        WORKSPACE_PREVIEW_RUNTIME_HARNESS,
+        "workspace preview",
     )
 
 
@@ -3761,7 +4422,8 @@ def test_task6_card_templates_keep_shared_structure_and_equal_wood_cascade():
     server_markup = render_server_result_card(item)
     css = read_text("static/css/custom.css")
     wood = (
-        "linear-gradient(var(--surface-700), var(--surface-700)), "
+        "linear-gradient(hsl(31 51% 12% / 0.38), "
+        "hsl(31 51% 12% / 0.38)), "
         'url("/static/img/textures/wood-texture.png")'
     )
 
@@ -3808,6 +4470,21 @@ def test_task6_browse_runtime_keeps_go_search_listener_and_payload():
     }
 
 
+def test_browse_defaults_only_dedicated_sources_and_leaves_dynamic_whitelist_opt_in():
+    browse = read_text("static/js/pages/browse.js")
+    app_source = read_text("app.py")
+    rendered = browse_runtime()
+
+    assert "const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed'];" in browse
+    assert "data.get('sources', ['wikipedia', 'gbooks', 'pubmed'])" in app_source
+    assert 'value="wikipedia" checked' in browse
+    assert 'value="gbooks" checked' in browse
+    assert 'value="pubmed" checked' in browse
+    assert 'value="scholar" checked' not in browse
+    assert 'value="whitelist_en.wikipedia.org"' in rendered["whitelistMarkup"]
+    assert " checked" not in rendered["whitelistMarkup"]
+
+
 def test_task2_browse_pagination_merges_cumulative_windows_until_exhausted():
     rendered = browse_runtime()
 
@@ -3832,7 +4509,16 @@ def test_task2_browse_pagination_merges_cumulative_windows_until_exhausted():
 def test_task2_browse_runtime_ignores_stale_initial_and_load_more_responses():
     rendered = deferred_browse_runtime()
 
-    assert rendered["afterInitialRace"] == ["Fresh"]
+    assert rendered["afterInitialRace"] == ["Newest"]
+    assert rendered["duringNewestInitial"] == {
+        "titles": [],
+        "sortingDisabled": True,
+        "loadMorePresent": False,
+        "sidebarReset": True,
+        "requestQueries": ["archive", "fresh", "fresh", "newest"],
+        "requestSizes": [10, 10, 20, 10],
+    }
+    assert rendered["initialSortingReleased"] is False
     assert rendered["duringNewestLoad"] == {
         "titles": ["Newest"],
         "disabled": True,
@@ -3883,6 +4569,8 @@ def test_task2_browse_runtime_uses_server_identity_metadata_across_batches():
         "resultCount": 1,
         "addedCount": 0,
     }
+    assert rendered["aliasChainTitles"] == ["First"]
+    assert rendered["lateAliasBridgeTitles"] == ["First"]
     assert rendered["malformedBackslashUrl"] == ""
 
 
@@ -3919,6 +4607,38 @@ def test_task2_restored_browse_deduplicates_legacy_and_server_metadata_state():
             "sorting": "recent",
         },
     }
+
+
+def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
+    browse = read_text("static/js/pages/browse.js")
+    rendered = legacy_browse_runtime()
+
+    assert "const BROWSE_STATE_VERSION = 1;" in browse
+    assert rendered["checkedSources"] == ["wikipedia", "gbooks", "pubmed"]
+    assert rendered["renderedTitles"] == ["Legacy result"]
+    assert rendered["storageWrites"] == 1
+    assert rendered["upgradedState"] == {
+        "version": 1,
+        "query": "legacy archive",
+        "sources": ["wikipedia", "gbooks", "pubmed"],
+        "filters": {
+            "min_date": "1985",
+            "max_date": "2015",
+            "content_type": "article",
+            "sorting": "title",
+        },
+        "results": [
+            {
+                "source_name": "Wikipedia",
+                "source_id": "legacy-1",
+                "source_url": "https://en.wikipedia.org/wiki/Archive",
+                "title": "Legacy result",
+            }
+        ],
+        "resultWindow": 20,
+        "searchExhausted": False,
+    }
+    assert 'value="whitelist_en.wikipedia.org"' in rendered["whitelistMarkup"]
 
 
 def test_task6_runtime_guards_catch_go_listener_and_unsaved_label_mutations():
@@ -4692,10 +5412,40 @@ if (scenario === "google_success_race_resize") {
   invariant(fetchCalls[0] === `/api/proxy/source?url=${encodeURIComponent(sourceUrl)}`,
     "Wikipedia proxy URL changed");
   invariant(iframe?.srcdoc === "<article>Wiki</article>", "Wikipedia iframe srcdoc changed");
+  const sandbox = iframe?.getAttribute("sandbox") || "";
+  invariant(sandbox.includes("allow-popups"), "Wikipedia direct links cannot open");
+  invariant(!sandbox.includes("allow-scripts"), "Wikipedia iframe permits scripts");
+  invariant(!sandbox.includes("allow-same-origin"), "Wikipedia iframe retains source origin");
   invariant(collectedText(viewerHeader).includes(attack), "provider metadata not assigned as text");
   invariant(!innerHTMLWrites.some((value) => value.includes(attack)),
     "provider metadata reached innerHTML");
-  process.stdout.write(JSON.stringify({ fetchCalls, srcdoc: iframe.srcdoc }));
+  process.stdout.write(JSON.stringify({ fetchCalls, srcdoc: iframe.srcdoc, sandbox }));
+} else if (scenario === "reader_iframe") {
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(url);
+    return { json: async () => ({ status: true, mode: "reader", html: "<article>Reader</article>" }) };
+  };
+  await openViewer({
+    id: 5,
+    title: "Reader source",
+    description: "Reader description",
+    source_name: "NHS",
+    source_id: "reader-5",
+    source_url: "https://www.nhs.uk/conditions/test",
+  });
+  await flush();
+  const iframe = viewerBody.querySelector("iframe");
+  const sandbox = iframe?.getAttribute("sandbox") || "";
+  invariant(iframe?.srcdoc === "<article>Reader</article>", "reader HTML did not use srcdoc");
+  invariant(viewerBody.classList.contains("viewer-mode-reader"), "reader mode class missing");
+  invariant(
+    viewerBody.querySelectorAll(".viewer-reader").every((node) => node.tagName === "IFRAME"),
+    "reader HTML reached a non-iframe container",
+  );
+  invariant(sandbox.includes("allow-popups"), "reader direct links cannot open");
+  invariant(!sandbox.includes("allow-scripts"), "reader iframe permits scripts");
+  invariant(!sandbox.includes("allow-same-origin"), "reader iframe retains source origin");
+  process.stdout.write(JSON.stringify({ srcdoc: iframe.srcdoc, sandbox }));
 } else if (scenario === "proxy_error_safety") {
   const attack = '<img src=x onerror=globalThis.pwned=true>';
   const fallbackUrl = "https://en.wikipedia.org/wiki/Safe_fallback";
@@ -4772,6 +5522,88 @@ def test_viewer_keeps_wikipedia_proxy_iframe_behavior():
 
     assert rendered["srcdoc"] == "<article>Wiki</article>"
     assert rendered["fetchCalls"][0].startswith("/api/proxy/source?url=")
+    assert "allow-popups" in rendered["sandbox"]
+    assert "allow-scripts" not in rendered["sandbox"]
+    assert "allow-same-origin" not in rendered["sandbox"]
+    assert "allow-forms" not in rendered["sandbox"]
+    assert "allow-top-navigation" not in rendered["sandbox"]
+
+
+def test_viewer_renders_reader_proxy_html_in_the_same_restricted_iframe_boundary():
+    rendered = viewer_runtime("reader_iframe")
+
+    assert rendered["srcdoc"] == "<article>Reader</article>"
+    assert "allow-popups" in rendered["sandbox"]
+    assert "allow-scripts" not in rendered["sandbox"]
+    assert "allow-same-origin" not in rendered["sandbox"]
+    assert "allow-forms" not in rendered["sandbox"]
+    assert "allow-top-navigation" not in rendered["sandbox"]
+
+
+def test_workspace_proxy_srcdoc_iframe_omits_script_and_same_origin_privileges():
+    workspace = read_text("static/js/pages/workspace.js")
+    iframe_factory = workspace[
+        workspace.index("function createPreviewIframe()") : workspace.index(
+            "function renderPreviewNotice("
+        )
+    ]
+    proxy_branch = workspace[
+        workspace.index("fetch(`/api/proxy/source?") : workspace.index(
+            "function loadWorkspaceNotes()"
+        )
+    ]
+    sandbox = "iframe.setAttribute('sandbox', WORKSPACE_IFRAME_SANDBOX);"
+
+    assert (
+        "const WORKSPACE_IFRAME_SANDBOX = "
+        "'allow-popups allow-popups-to-escape-sandbox';"
+    ) in workspace
+    assert sandbox in iframe_factory
+    assert proxy_branch.index("const iframe = createPreviewIframe()") < proxy_branch.index(
+        "iframe.srcdoc = result.html"
+    )
+    assert "allow-scripts" not in iframe_factory
+    assert "allow-same-origin" not in iframe_factory
+
+
+def test_workspace_runtime_proxies_remote_html_and_sandboxes_every_iframe_before_src():
+    workspace = read_text("static/js/pages/workspace.js")
+    rendered = workspace_preview_runtime()
+
+    assert rendered["fetchCalls"] == [
+        "/api/proxy/source?url=https%3A%2F%2Fen.wikipedia.org%2Farchive.html",
+        "/api/proxy/source?url=https%3A%2F%2Fen.wikipedia.org%2Farchive.htm",
+        "/api/proxy/source?url=https%3A%2F%2Fen.wikipedia.org%2Fno-preview",
+    ]
+    assert rendered["remoteHtml"]["src"] == ""
+    assert rendered["remoteHtml"]["srcdoc"] == "<article>Remote HTML</article>"
+    assert rendered["remoteHtml"]["events"].index("attr:sandbox") < rendered[
+        "remoteHtml"
+    ]["events"].index("srcdoc")
+    assert rendered["remoteHtm"]["src"] == ""
+    assert rendered["remoteHtm"]["srcdoc"] == "<article>Remote HTM</article>"
+    assert rendered["remoteHtm"]["events"].index("attr:sandbox") < rendered[
+        "remoteHtm"
+    ]["events"].index("srcdoc")
+    assert rendered["directPdf"]["src"] == "https://en.wikipedia.org/archive.pdf"
+    assert rendered["directPdf"]["events"].index("attr:sandbox") < rendered[
+        "directPdf"
+    ]["events"].index("src")
+    for preview in (
+        rendered["remoteHtml"],
+        rendered["remoteHtm"],
+        rendered["directPdf"],
+    ):
+        assert "allow-scripts" not in preview["sandbox"]
+        assert "allow-same-origin" not in preview["sandbox"]
+        assert "allow-forms" not in preview["sandbox"]
+        assert "allow-top-navigation" not in preview["sandbox"]
+    assert "javascript:" not in rendered["fallbackHtml"]
+    assert 'href="https://en.wikipedia.org/no-preview"' in rendered["fallbackHtml"]
+    assert "javascript:" not in rendered["invalidHtml"]
+    assert "href=" not in rendered["invalidHtml"]
+    assert 'href="${escapeHtml(item.source_url)}"' not in workspace
+    assert 'href="${escapeHtml(sourceUrl)}"' in workspace
 
 
 def test_viewer_assigns_provider_and_proxy_values_without_html_interpolation():

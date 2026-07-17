@@ -84,6 +84,56 @@ def test_deduplicate_results_rejects_different_provider_ids_for_same_url():
     assert search.deduplicate_results([first, duplicate_url]) == [first]
 
 
+def test_deduplicate_results_records_alias_keys_from_rejected_records():
+    first = {
+        "source_name": "Archive",
+        "source_id": "shared-id",
+        "source_url": "https://example.test/first",
+        "title": "First",
+    }
+    repeated_id_new_url = {
+        "source_name": "Archive",
+        "source_id": "shared-id",
+        "source_url": "https://example.test/alias",
+        "title": "Repeated ID",
+    }
+    new_id_repeated_alias_url = {
+        "source_name": "Archive",
+        "source_id": "other-id",
+        "source_url": "https://example.test/alias",
+        "title": "Repeated alias URL",
+    }
+
+    assert search.deduplicate_results(
+        [first, repeated_id_new_url, new_id_repeated_alias_url]
+    ) == [first]
+
+
+def test_deduplicate_results_collapses_late_alias_bridge_to_first_component_item():
+    first = {
+        "source_name": "Archive",
+        "source_id": "shared-id",
+        "source_url": "https://example.test/first",
+        "title": "First",
+    }
+    future_alias = {
+        "source_name": "Archive",
+        "source_id": "other-id",
+        "source_url": "https://example.test/alias",
+        "title": "Future alias",
+    }
+    late_bridge = {
+        "source_name": "Archive",
+        "source_id": "shared-id",
+        "source_url": "https://example.test/alias",
+        "title": "Late bridge",
+    }
+
+    assert search.deduplicate_results(
+        [first, future_alias, late_bridge]
+    ) == [first]
+
+
 def test_result_identity_falls_back_to_normalized_display_tuple():
     first = {"source_name": "  Open   Archive ", "title": "Shared\nTitle"}
     duplicate = {"source_name": "open archive", "title": " shared title "}
@@ -463,3 +513,366 @@ def test_gbooks_merges_filtered_access_info_after_persistence(monkeypatch):
     assert decorated["_canonical_source_url"] == (
         "https://books.google.com/books?id=existing-volume"
     )
+
+
+def _install_search_result_persistence(monkeypatch):
+    monkeypatch.setattr(search.whitelist, "is_allowed", lambda _url: True)
+    monkeypatch.setattr(
+        search.whitelist,
+        "get_domain",
+        lambda url: url.split("/", 3)[2],
+    )
+    monkeypatch.setattr(
+        search.whitelist,
+        "get_display_name_for_domain",
+        lambda domain: domain,
+    )
+    monkeypatch.setattr(search.db, "get_item_by_source", lambda *_args: None)
+    monkeypatch.setattr(
+        search.db,
+        "create_item",
+        lambda item_data, _user_id, _add_to_recent_search: item_data,
+    )
+
+
+def _custom_search_items(domain, start, count):
+    return [
+        {
+            "link": f"https://{domain}/result-{index}",
+            "title": f"Result {index}",
+            "snippet": f"Snippet {index}",
+        }
+        for index in range(start, start + count)
+    ]
+
+
+def test_google_scholar_paginates_custom_search_to_requested_count(monkeypatch):
+    requests_seen = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, items):
+            self._items = items
+
+        def json(self):
+            return {"items": self._items}
+
+    def fake_get(url, *, params, headers, timeout):
+        requests_seen.append((url, dict(params), dict(headers), timeout))
+        return FakeResponse(
+            _custom_search_items("scholar.google.com", params["start"], params["num"])
+        )
+
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    _install_search_result_persistence(monkeypatch)
+
+    results = search.google_scholar("archive", 25, user_id=4)
+
+    assert len(results) == 25
+    assert [request[1]["start"] for request in requests_seen] == [1, 11, 21]
+    assert [request[1]["num"] for request in requests_seen] == [10, 10, 5]
+    assert all(request[0] == "https://www.googleapis.com/customsearch/v1" for request in requests_seen)
+    assert all(request[2] == {"User-Agent": search.USER_AGENT} for request in requests_seen)
+    assert all(request[3] == 10 for request in requests_seen)
+
+
+def test_google_scholar_stops_after_short_custom_search_page(monkeypatch):
+    starts = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, items):
+            self._items = items
+
+        def json(self):
+            return {"items": self._items}
+
+    def fake_get(_url, *, params, headers, timeout):
+        assert headers == {"User-Agent": search.USER_AGENT}
+        assert timeout == 10
+        starts.append(params["start"])
+        count = 10 if params["start"] == 1 else 3
+        return FakeResponse(
+            _custom_search_items("scholar.google.com", params["start"], count)
+        )
+
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    _install_search_result_persistence(monkeypatch)
+
+    results = search.google_scholar("archive", 30, user_id=4)
+
+    assert len(results) == 13
+    assert starts == [1, 11]
+
+
+def test_google_scholar_discards_entire_malformed_later_page(monkeypatch):
+    starts = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, items):
+            self._items = items
+
+        def json(self):
+            return {"items": self._items}
+
+    def fake_get(_url, *, params, headers, timeout):
+        assert headers == {"User-Agent": search.USER_AGENT}
+        assert timeout == 10
+        starts.append(params["start"])
+        if params["start"] == 1:
+            items = _custom_search_items("scholar.google.com", 1, 10)
+        else:
+            items = _custom_search_items("scholar.google.com", 11, 9) + [None]
+        return FakeResponse(items)
+
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    _install_search_result_persistence(monkeypatch)
+
+    results = search.google_scholar("archive", 20, user_id=4)
+
+    assert len(results) == 10
+    assert [item["source_id"] for item in results] == [
+        f"https://scholar.google.com/result-{index}" for index in range(1, 11)
+    ]
+    assert starts == [1, 11]
+
+
+def test_explicit_whitelist_custom_search_paginates_instead_of_repeating_first_page(
+    monkeypatch,
+):
+    requests_seen = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, items):
+            self._items = items
+
+        def json(self):
+            return {"items": self._items}
+
+    def fake_get(_url, *, params, headers, timeout):
+        requests_seen.append(dict(params))
+        assert headers == {"User-Agent": search.USER_AGENT}
+        assert timeout == 10
+        return FakeResponse(
+            _custom_search_items("en.wikipedia.org", params["start"], params["num"])
+        )
+
+    monkeypatch.setattr(search, "SERP_API_KEY", "")
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    _install_search_result_persistence(monkeypatch)
+
+    results = search.whitelist_search(
+        "archive",
+        23,
+        domains=["en.wikipedia.org"],
+        user_id=8,
+    )
+
+    assert len(results) == 23
+    assert [params["start"] for params in requests_seen] == [1, 11, 21]
+    assert [params["num"] for params in requests_seen] == [10, 10, 3]
+    assert all("site:en.wikipedia.org" in params["q"] for params in requests_seen)
+
+
+def test_explicit_whitelist_discards_entire_malformed_later_page(monkeypatch):
+    starts = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, items):
+            self._items = items
+
+        def json(self):
+            return {"items": self._items}
+
+    def fake_get(_url, *, params, headers, timeout):
+        assert headers == {"User-Agent": search.USER_AGENT}
+        assert timeout == 10
+        starts.append(params["start"])
+        if params["start"] == 1:
+            items = _custom_search_items("en.wikipedia.org", 1, 10)
+        else:
+            items = _custom_search_items("en.wikipedia.org", 11, 9) + [False]
+        return FakeResponse(items)
+
+    monkeypatch.setattr(search, "SERP_API_KEY", "")
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    _install_search_result_persistence(monkeypatch)
+
+    results = search.whitelist_search(
+        "archive",
+        20,
+        domains=["en.wikipedia.org"],
+        user_id=8,
+    )
+
+    assert len(results) == 10
+    assert [item["source_id"] for item in results] == [
+        f"https://en.wikipedia.org/result-{index}" for index in range(1, 11)
+    ]
+    assert starts == [1, 11]
+
+
+def test_serpapi_whitelist_search_paginates_and_stops_on_empty_page(monkeypatch):
+    starts = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, items):
+            self._items = items
+
+        def json(self):
+            return {"organic_results": self._items}
+
+    def fake_get(_url, *, params, headers, timeout):
+        assert headers == {"User-Agent": search.USER_AGENT}
+        assert timeout == 10
+        starts.append(params["start"])
+        count = 10 if params["start"] == 0 else 0
+        return FakeResponse(
+            _custom_search_items("en.wikipedia.org", params["start"], count)
+        )
+
+    monkeypatch.setattr(search, "SERP_API_KEY", "test-key")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    _install_search_result_persistence(monkeypatch)
+
+    results = search.whitelist_search(
+        "archive",
+        20,
+        domains=["en.wikipedia.org"],
+        user_id=8,
+    )
+
+    assert len(results) == 10
+    assert starts == [0, 10]
+
+
+def test_serpapi_malformed_later_page_preserves_accumulated_results(monkeypatch):
+    starts = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, start):
+            self._start = start
+
+        def json(self):
+            if self._start == 10:
+                raise ValueError("malformed JSON")
+            return {
+                "organic_results": _custom_search_items(
+                    "en.wikipedia.org", self._start, 10
+                )
+            }
+
+    def fake_get(_url, *, params, headers, timeout):
+        assert headers == {"User-Agent": search.USER_AGENT}
+        assert timeout == 10
+        starts.append(params["start"])
+        return FakeResponse(params["start"])
+
+    monkeypatch.setattr(search, "SERP_API_KEY", "test-key")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    _install_search_result_persistence(monkeypatch)
+
+    results = search.whitelist_search(
+        "archive",
+        20,
+        domains=["en.wikipedia.org"],
+        user_id=8,
+    )
+
+    assert len(results) == 10
+    assert starts == [0, 10]
+
+
+def test_serpapi_malformed_later_result_list_preserves_accumulated_results(
+    monkeypatch,
+):
+    starts = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, start):
+            self._start = start
+
+        def json(self):
+            if self._start == 10:
+                return {"organic_results": [None]}
+            return {
+                "organic_results": _custom_search_items(
+                    "en.wikipedia.org", self._start, 10
+                )
+            }
+
+    def fake_get(_url, *, params, headers, timeout):
+        assert headers == {"User-Agent": search.USER_AGENT}
+        assert timeout == 10
+        starts.append(params["start"])
+        return FakeResponse(params["start"])
+
+    monkeypatch.setattr(search, "SERP_API_KEY", "test-key")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    _install_search_result_persistence(monkeypatch)
+
+    results = search.whitelist_search(
+        "archive",
+        20,
+        domains=["en.wikipedia.org"],
+        user_id=8,
+    )
+
+    assert len(results) == 10
+    assert starts == [0, 10]
+
+
+def test_google_custom_search_stays_within_final_100_result_boundary(monkeypatch):
+    requests_seen = []
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, items):
+            self._items = items
+
+        def json(self):
+            return {"items": self._items}
+
+    def fake_get(_url, *, params, headers, timeout):
+        requests_seen.append(dict(params))
+        assert headers == {"User-Agent": search.USER_AGENT}
+        assert timeout == 10
+        return FakeResponse(
+            _custom_search_items("scholar.google.com", params["start"], params["num"])
+        )
+
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
+    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+
+    results = search._google_custom_search_items("archive", 101)
+
+    assert len(results) == 99
+    assert requests_seen[-1]["start"] == 91
+    assert requests_seen[-1]["num"] == 9
+    assert all(params["start"] + params["num"] <= 100 for params in requests_seen)

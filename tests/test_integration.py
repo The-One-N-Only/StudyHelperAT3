@@ -6,6 +6,9 @@ import json
 def client():
     app.config['TESTING'] = True
     with app.test_client() as client:
+        with client.session_transaction() as auth_session:
+            auth_session['user_id'] = 1
+            auth_session['username'] = 'test-user'
         yield client
 
 def test_full_workflow(client):
