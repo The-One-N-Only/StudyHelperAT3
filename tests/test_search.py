@@ -319,3 +319,147 @@ def test_whitelist_search_uses_serpapi_when_key_set(monkeypatch):
 
     assert len(results) == 1
     assert results[0]["source_url"] == "https://en.wikipedia.org/wiki/Test"
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    ((-5, 0), (0, 0), (40, 40), (41, 40), (500, 40)),
+)
+def test_gbooks_clamps_max_results_to_api_bounds(monkeypatch, requested, expected):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"items": []}
+
+    def fake_get(url, *, params, headers, timeout):
+        captured.update(
+            url=url,
+            params=dict(params),
+            headers=dict(headers),
+            timeout=timeout,
+        )
+        return FakeResponse()
+
+    monkeypatch.setattr(search.requests, "get", fake_get)
+
+    assert search.gbooks("archive", requested, {}, user_id=7) == []
+    assert captured["url"] == "https://www.googleapis.com/books/v1/volumes"
+    assert captured["params"] == {"q": "archive", "maxResults": expected}
+    assert captured["headers"] == {"User-Agent": search.USER_AGENT}
+    assert captured["timeout"] == 10
+
+
+def test_gbooks_merges_filtered_access_info_after_persistence(monkeypatch):
+    existing_record = {
+        "id": 21,
+        "title": "Stored title",
+        "description": "Stored description",
+        "thumb_url": "https://books.google.com/cover-existing.jpg",
+        "source_url": "https://books.google.com/books?id=existing-volume",
+        "source_name": "gbooks",
+        "source_id": "existing-volume",
+    }
+    created_payloads = []
+    captured_params = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "items": [
+                    {
+                        "id": "existing-volume",
+                        "volumeInfo": {
+                            "title": "Fresh existing title",
+                            "description": "Fresh existing description",
+                            "infoLink": "https://books.google.com/books?id=existing-volume",
+                        },
+                        "accessInfo": {
+                            "embeddable": True,
+                            "webReaderLink": "https://books.google.com/books/reader?id=existing-volume",
+                            "viewability": "PARTIAL",
+                            "accessViewStatus": "SAMPLE",
+                            "country": "AU",
+                            "downloadAccess": {"deviceAllowed": True},
+                        },
+                    },
+                    {
+                        "id": "new-volume",
+                        "volumeInfo": {
+                            "title": "New title",
+                            "description": "New description",
+                            "infoLink": "https://books.google.com/books?id=new-volume",
+                        },
+                        "accessInfo": {"embeddable": 1},
+                    },
+                ]
+            }
+
+    def fake_get(_url, *, params, headers, timeout):
+        captured_params.update(params)
+        assert headers == {"User-Agent": search.USER_AGENT}
+        assert timeout == 10
+        return FakeResponse()
+
+    def fake_get_item(source_name, source_id, user_id, add_to_recent_search):
+        assert (source_name, user_id, add_to_recent_search) == ("gbooks", 9, True)
+        return existing_record if source_id == "existing-volume" else None
+
+    def fake_create_item(item_data, user_id, add_to_recent_search):
+        assert (user_id, add_to_recent_search) == (9, True)
+        created_payloads.append(dict(item_data))
+        return {"id": 22, **item_data}
+
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    monkeypatch.setattr(search.whitelist, "is_allowed", lambda _url: True)
+    monkeypatch.setattr(search.db, "get_item_by_source", fake_get_item)
+    monkeypatch.setattr(search.db, "create_item", fake_create_item)
+
+    results = search.gbooks(
+        "viewer",
+        100,
+        {"download": "epub", "available": "partial", "print": "books"},
+        user_id=9,
+    )
+
+    assert captured_params == {
+        "q": "viewer",
+        "maxResults": 40,
+        "download": "epub",
+        "filter": "partial",
+        "printType": "books",
+    }
+    assert [result["source_id"] for result in results] == [
+        "existing-volume",
+        "new-volume",
+    ]
+    assert results[0]["accessInfo"] == {
+        "embeddable": True,
+        "webReaderLink": "https://books.google.com/books/reader?id=existing-volume",
+        "viewability": "PARTIAL",
+        "accessViewStatus": "SAMPLE",
+    }
+    assert results[1]["accessInfo"] == {
+        "embeddable": False,
+        "webReaderLink": "",
+        "viewability": "UNKNOWN",
+        "accessViewStatus": "NONE",
+    }
+    assert results[0] is not existing_record
+    assert "accessInfo" not in existing_record
+    assert len(created_payloads) == 1
+    assert created_payloads[0]["source_id"] == "new-volume"
+    assert "accessInfo" not in created_payloads[0]
+
+    decorated = search.with_response_dedupe_metadata(results[0])
+    assert decorated["accessInfo"] == results[0]["accessInfo"]
+    assert decorated["_dedupe_identity"] == '["source_id","gbooks","existing-volume"]'
+    assert decorated["_canonical_source_url"] == (
+        "https://books.google.com/books?id=existing-volume"
+    )

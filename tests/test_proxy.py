@@ -27,16 +27,16 @@ def test_proxy_reader_mode_for_nhs(mock_get):
     assert "Patient info" in result["html"]
 
 @patch('src.proxy.requests.get')
-def test_proxy_google_books_mode(mock_get):
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_response.content = b"<html><body>Google Books</body></html>"
-    mock_get.return_value = mock_response
+def test_proxy_google_books_uses_native_viewer_without_remote_fetch(mock_get):
+    source_url = "https://books.google.com/books?id=test"
 
-    result = proxy.fetch_source("https://books.google.com/books?id=test")
-    assert result["status"] == True
-    assert result["mode"] == "google_books"
-    assert "Google Books preview" in result["html"]
+    result = proxy.fetch_source(source_url)
+
+    mock_get.assert_not_called()
+    assert result["status"] is False
+    assert "html" not in result
+    assert result["fallback_url"] == source_url
+    assert "native viewer" in result["error"].lower()
 
 @patch('src.proxy.requests.get')
 def test_proxy_not_allowed(mock_get):

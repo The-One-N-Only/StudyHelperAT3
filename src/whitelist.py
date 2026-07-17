@@ -10,7 +10,7 @@ def is_allowed(url: str) -> bool:
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
-        if not hostname:
+        if parsed.scheme.lower() not in {"http", "https"} or not hostname:
             return False
         # Check exact domains
         if hostname in WHITELIST['domains']:

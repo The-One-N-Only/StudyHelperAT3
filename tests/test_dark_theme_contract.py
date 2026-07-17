@@ -4270,3 +4270,528 @@ def test_candle_cursor_contract_is_dark_scoped_and_guarded():
         "1", "0.94", "1", "0.9", "0.98", "0.93", "1", "0.95"
     ]
     assert all(set(declarations) == {"opacity"} for _, declarations in frames)
+
+
+VIEWER_IMPORT_REPLACEMENTS = (
+    (
+        "import { showToast } from './toast.js';",
+        "const { showToast } = globalThis.__viewerMocks;",
+    ),
+    (
+        "import { createWorkspaceSelectElement, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';",
+        (
+            "const { createWorkspaceSelectElement, getSelectedWorkspaceId, "
+            "clearWorkspaceCache } = globalThis.__viewerMocks;"
+        ),
+    ),
+)
+
+
+VIEWER_RUNTIME_HARNESS = r"""
+function invariant(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+const scenario = "__SCENARIO__";
+const innerHTMLWrites = [];
+const scripts = [];
+const resizeObservers = [];
+const fetchCalls = [];
+
+class FakeClassList {
+  constructor(owner) {
+    this.owner = owner;
+  }
+  values() {
+    return new Set((this.owner.className || "").split(/\s+/).filter(Boolean));
+  }
+  add(...names) {
+    const values = this.values();
+    names.forEach((name) => values.add(name));
+    this.owner.className = [...values].join(" ");
+  }
+  remove(...names) {
+    const values = this.values();
+    names.forEach((name) => values.delete(name));
+    this.owner.className = [...values].join(" ");
+  }
+  contains(name) {
+    return this.values().has(name);
+  }
+}
+
+class FakeElement {
+  constructor(tagName, id = "") {
+    this.tagName = tagName.toUpperCase();
+    this.id = id;
+    this.children = [];
+    this.parentNode = null;
+    this.attributes = new Map();
+    this.className = "";
+    this.classList = new FakeClassList(this);
+    this.dataset = {};
+    this.style = {};
+    this.onclick = null;
+    this.disabled = false;
+    this.value = "";
+    this.href = "";
+    this.src = "";
+    this.srcdoc = "";
+    this.target = "";
+    this.rel = "";
+    this.alt = "";
+    this._innerHTML = "";
+    this._textContent = "";
+    this.onload = null;
+    this.onerror = null;
+  }
+  set innerHTML(value) {
+    this._innerHTML = String(value);
+    this.children = [];
+    innerHTMLWrites.push(this._innerHTML);
+  }
+  get innerHTML() {
+    return this._innerHTML;
+  }
+  set textContent(value) {
+    this._textContent = String(value ?? "");
+    this.children = [];
+  }
+  get textContent() {
+    return this._textContent;
+  }
+  appendChild(child) {
+    child.parentNode = this;
+    this.children.push(child);
+    if (this.tagName === "HEAD" && child.tagName === "SCRIPT") scripts.push(child);
+    return child;
+  }
+  replaceChildren(...children) {
+    this.children = [];
+    this._innerHTML = "";
+    this._textContent = "";
+    children.forEach((child) => this.appendChild(child));
+  }
+  setAttribute(name, value) {
+    const normalized = String(value);
+    this.attributes.set(name, normalized);
+    if (name === "id") this.id = normalized;
+    if (name === "href") this.href = normalized;
+    if (name === "src") this.src = normalized;
+    if (name === "target") this.target = normalized;
+    if (name === "rel") this.rel = normalized;
+  }
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
+  querySelectorAll(selector) {
+    const matches = [];
+    const targetTag = selector.toUpperCase();
+    const targetClass = selector.startsWith(".") ? selector.slice(1) : null;
+    const targetId = selector.startsWith("#") ? selector.slice(1) : null;
+    const visit = (node) => {
+      for (const child of node.children) {
+        if (
+          (targetClass && child.classList.contains(targetClass)) ||
+          (targetId && child.id === targetId) ||
+          (!targetClass && !targetId && child.tagName === targetTag)
+        ) {
+          matches.push(child);
+        }
+        visit(child);
+      }
+    };
+    visit(this);
+    return matches;
+  }
+  querySelector(selector) {
+    const match = this.querySelectorAll(selector)[0];
+    if (match) return match;
+    if (
+      selector.startsWith("#") &&
+      this._innerHTML.includes(`id="${selector.slice(1)}"`)
+    ) {
+      const parsed = new FakeElement("select", selector.slice(1));
+      this.appendChild(parsed);
+      return parsed;
+    }
+    return null;
+  }
+}
+
+function contains(root, target) {
+  if (root === target) return true;
+  return root.children.some((child) => contains(child, target));
+}
+
+function collectedText(root) {
+  return [root.textContent, ...root.children.map(collectedText)].join(" ");
+}
+
+const viewerHeader = new FakeElement("div", "viewerHeader");
+const viewerBody = new FakeElement("div", "viewerBody");
+const addButton = new FakeElement("button", "addToWorkspaceBtn");
+const offcanvas = new FakeElement("div", "viewerOffcanvas");
+const byId = new Map([
+  ["viewerHeader", viewerHeader],
+  ["viewerBody", viewerBody],
+  ["addToWorkspaceBtn", addButton],
+  ["viewerOffcanvas", offcanvas],
+]);
+
+globalThis.document = {
+  head: new FakeElement("head"),
+  createElement(tagName) {
+    return new FakeElement(tagName);
+  },
+  getElementById(id) {
+    return byId.get(id) || null;
+  },
+};
+globalThis.window = globalThis;
+globalThis.bootstrap = {
+  Offcanvas: class {
+    constructor(element) {
+      this.element = element;
+      this.showCalls = 0;
+      this.hideCalls = 0;
+    }
+    show() { this.showCalls += 1; }
+    hide() { this.hideCalls += 1; }
+  },
+};
+globalThis.ResizeObserver = class {
+  constructor(callback) {
+    this.callback = callback;
+    this.disconnected = false;
+    this.observed = null;
+    resizeObservers.push(this);
+  }
+  observe(element) { this.observed = element; }
+  disconnect() { this.disconnected = true; }
+};
+globalThis.__viewerMocks = {
+  showToast() {},
+  createWorkspaceSelectElement() {
+    const select = document.createElement("select");
+    select.value = "5";
+    return select;
+  },
+  getSelectedWorkspaceId(select) { return Number(select?.value) || null; },
+  clearWorkspaceCache() {},
+};
+
+async function flush() {
+  for (let index = 0; index < 6; index += 1) await Promise.resolve();
+}
+
+function googleBook(id, overrides = {}) {
+  return {
+    id: 1,
+    title: `Title ${id}`,
+    description: `Description ${id}`,
+    thumb_url: `https://books.google.com/cover-${id}.jpg`,
+    source_name: "gbooks",
+    source_id: id,
+    source_url: `https://books.google.com/books?id=${id}`,
+    accessInfo: {
+      embeddable: true,
+      webReaderLink: `https://books.google.com/books/reader?id=${id}`,
+      viewability: "PARTIAL",
+      accessViewStatus: "SAMPLE",
+    },
+    ...overrides,
+  };
+}
+
+function installGoogleBooks() {
+  const viewers = [];
+  const loads = [];
+  let apiCallback = null;
+  let apiLoadCalls = 0;
+  class DefaultViewer {
+    constructor(container) {
+      this.container = container;
+      this.resizeCalls = 0;
+      viewers.push(this);
+    }
+    load(identifier, notFound, success) {
+      loads.push({ viewer: this, identifier, notFound, success });
+    }
+    resize() { this.resizeCalls += 1; }
+  }
+  globalThis.google = {
+    books: {
+      load() { apiLoadCalls += 1; },
+      setOnLoadCallback(callback) { apiCallback = callback; },
+      DefaultViewer,
+    },
+  };
+  return {
+    viewers,
+    loads,
+    get apiCallback() { return apiCallback; },
+    get apiLoadCalls() { return apiLoadCalls; },
+  };
+}
+
+const { openViewer } = await import(process.argv[1]);
+
+if (scenario === "google_success_race_resize") {
+  globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
+  const staleBeforeLoad = openViewer(googleBook("stale-before-load"));
+  const firstOpen = openViewer(googleBook("volume-one"));
+  invariant(scripts.length === 1, "first opening did not append one loader script");
+  invariant(scripts[0].src === "https://www.google.com/books/jsapi.js", "wrong loader URL");
+
+  const api = installGoogleBooks();
+  scripts[0].onload();
+  invariant(api.apiLoadCalls === 1, "google.books.load was not called once");
+  invariant(typeof api.apiCallback === "function", "Google load callback missing");
+  api.apiCallback();
+  await flush();
+  invariant(api.loads.length === 1, "first DefaultViewer.load missing");
+  invariant(api.loads[0].identifier === "volume-one", "volume ID did not reach viewer.load");
+  api.loads[0].success();
+  await firstOpen;
+  await staleBeforeLoad;
+  invariant(resizeObservers.length === 1, "success did not attach one ResizeObserver");
+  resizeObservers[0].callback();
+  invariant(api.viewers[0].resizeCalls === 1, "ResizeObserver did not call viewer.resize");
+
+  const slowOpen = openViewer(googleBook("slow-volume"));
+  await flush();
+  const slowLoad = api.loads.at(-1);
+  invariant(slowLoad.identifier === "slow-volume", "slow viewer did not start");
+  invariant(resizeObservers[0].disconnected, "prior ResizeObserver was not disconnected");
+
+  const newestOpen = openViewer(googleBook("newest-volume"));
+  await flush();
+  const newestLoad = api.loads.at(-1);
+  invariant(newestLoad.identifier === "newest-volume", "newest viewer did not start");
+  newestLoad.success();
+  await newestOpen;
+  const newestCanvas = newestLoad.viewer.container;
+  invariant(contains(viewerBody, newestCanvas), "newest canvas not rendered");
+
+  slowLoad.notFound();
+  await slowOpen;
+  invariant(contains(viewerBody, newestCanvas), "slow opening replaced newer viewer");
+  invariant(scripts.length === 1, "two openings appended more than one script");
+  invariant(resizeObservers.filter((observer) => !observer.disconnected).length === 1,
+    "more than one ResizeObserver remained active");
+  process.stdout.write(JSON.stringify({
+    identifiers: api.loads.map((load) => load.identifier),
+    scriptCount: scripts.length,
+    activeObservers: resizeObservers.filter((observer) => !observer.disconnected).length,
+  }));
+} else if (scenario === "fallback_metadata_and_unsafe_links") {
+  globalThis.fetch = async () => { throw new Error("fallback must not use proxy fetch"); };
+  const unavailable = googleBook("blocked-volume", {
+    accessInfo: {
+      embeddable: false,
+      webReaderLink: "https://books.google.com/books/reader?id=blocked-volume",
+      viewability: "NO_PAGES",
+      accessViewStatus: "NONE",
+    },
+  });
+  await openViewer(unavailable);
+  const unavailableText = collectedText(viewerBody);
+  const unavailableLinks = viewerBody.querySelectorAll("a");
+  invariant(unavailableText.includes(unavailable.title), "fallback title missing");
+  invariant(unavailableText.includes(unavailable.description), "fallback description missing");
+  invariant(unavailableText.includes("NO_PAGES"), "fallback preview status missing");
+  invariant(unavailableText.includes("embedded preview"), "non-embeddable reason missing");
+  invariant(unavailableLinks.length === 1, "safe fallback link missing");
+  invariant(unavailableLinks[0].href === unavailable.accessInfo.webReaderLink,
+    "webReaderLink was not preferred");
+
+  const sourceFallback = googleBook("source-fallback", {
+    accessInfo: {
+      embeddable: false,
+      webReaderLink: "javascript:alert(1)",
+      viewability: "PARTIAL",
+      accessViewStatus: "SAMPLE",
+    },
+  });
+  await openViewer(sourceFallback);
+  const sourceFallbackLinks = viewerBody.querySelectorAll("a");
+  invariant(sourceFallbackLinks.length === 1, "safe source fallback link missing");
+  invariant(sourceFallbackLinks[0].href === sourceFallback.source_url,
+    "safe source URL did not replace unsafe webReaderLink");
+
+  const noIdAttack = '<img src=x onerror=globalThis.pwned=true>';
+  await openViewer(googleBook("unused", {
+    title: noIdAttack,
+    description: noIdAttack,
+    thumb_url: "javascript:alert(1)",
+    source_id: "",
+    source_url: "javascript://books.google.com/alert(1)",
+    accessInfo: {
+      embeddable: true,
+      webReaderLink: "data:text/html,unsafe",
+      viewability: "PARTIAL",
+      accessViewStatus: "SAMPLE",
+    },
+  }));
+  const noIdText = collectedText(viewerBody);
+  invariant(noIdText.includes(noIdAttack), "hostile metadata was not assigned as text");
+  invariant(noIdText.includes("volume ID"), "missing-ID reason absent");
+  invariant(viewerBody.querySelectorAll("a").length === 0, "unsafe fallback link survived");
+  invariant(viewerBody.querySelectorAll("img").length === 0, "unsafe cover survived");
+  invariant(!innerHTMLWrites.some((value) => value.includes(noIdAttack)),
+    "provider metadata reached innerHTML");
+  invariant(scripts.length === 0, "fallback-only openings loaded Google script");
+  process.stdout.write(JSON.stringify({ unavailableText, noIdText, scriptCount: scripts.length }));
+} else if (scenario === "script_error") {
+  globalThis.fetch = async () => { throw new Error("Google Books must not proxy"); };
+  const item = googleBook("script-error");
+  const opening = openViewer(item);
+  invariant(scripts.length === 1, "script-error path did not append loader");
+  scripts[0].onerror({ secret: "raw-script-exception" });
+  await opening;
+  const text = collectedText(viewerBody);
+  invariant(text.includes(item.title), "script-error fallback lost title");
+  invariant(text.includes("preview service"), "script-error reason not user safe");
+  invariant(!text.includes("raw-script-exception"), "raw script exception exposed");
+  process.stdout.write(JSON.stringify({ text, scriptCount: scripts.length }));
+} else if (scenario === "viewer_load_error") {
+  globalThis.fetch = async () => { throw new Error("Google Books must not proxy"); };
+  const item = googleBook("load-error");
+  const opening = openViewer(item);
+  const api = installGoogleBooks();
+  scripts[0].onload();
+  api.apiCallback();
+  await flush();
+  invariant(api.loads.length === 1, "load-error viewer did not call load");
+  api.loads[0].notFound({ secret: "raw-load-exception" });
+  await opening;
+  const text = collectedText(viewerBody);
+  invariant(text.includes(item.title), "load-error fallback lost title");
+  invariant(text.includes("embedded preview"), "load-error reason not user safe");
+  invariant(!text.includes("raw-load-exception"), "raw load exception exposed");
+  process.stdout.write(JSON.stringify({ text, identifier: api.loads[0].identifier }));
+} else if (scenario === "wikipedia_iframe") {
+  const attack = '<img src=x onerror=globalThis.pwned=true>';
+  const sourceUrl = `https://en.wikipedia.org/wiki/Test?probe=${attack}`;
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(url);
+    return { json: async () => ({ status: true, mode: "iframe", html: "<article>Wiki</article>" }) };
+  };
+  await openViewer({
+    id: 3,
+    title: attack,
+    description: "Wikipedia description",
+    source_name: `Wikipedia ${attack}`,
+    source_id: "wiki-3",
+    source_url: sourceUrl,
+  });
+  await flush();
+  const iframe = viewerBody.querySelector("iframe");
+  invariant(fetchCalls.length === 1, "Wikipedia did not make one proxy request");
+  invariant(fetchCalls[0] === `/api/proxy/source?url=${encodeURIComponent(sourceUrl)}`,
+    "Wikipedia proxy URL changed");
+  invariant(iframe?.srcdoc === "<article>Wiki</article>", "Wikipedia iframe srcdoc changed");
+  invariant(collectedText(viewerHeader).includes(attack), "provider metadata not assigned as text");
+  invariant(!innerHTMLWrites.some((value) => value.includes(attack)),
+    "provider metadata reached innerHTML");
+  process.stdout.write(JSON.stringify({ fetchCalls, srcdoc: iframe.srcdoc }));
+} else if (scenario === "proxy_error_safety") {
+  const attack = '<img src=x onerror=globalThis.pwned=true>';
+  const fallbackUrl = "https://en.wikipedia.org/wiki/Safe_fallback";
+  globalThis.fetch = async (url) => {
+    fetchCalls.push(url);
+    return {
+      json: async () => ({ status: false, error: attack, fallback_url: fallbackUrl }),
+    };
+  };
+  await openViewer({
+    id: 4,
+    title: attack,
+    description: "Proxy description",
+    source_name: attack,
+    source_id: "proxy-4",
+    source_url: "https://en.wikipedia.org/wiki/Source",
+  });
+  await flush();
+  const bodyText = collectedText(viewerBody);
+  const links = viewerBody.querySelectorAll("a");
+  invariant(bodyText.includes(attack), "proxy error was not assigned as text");
+  invariant(links.length === 1 && links[0].href === fallbackUrl,
+    "safe proxy fallback was not assigned through href");
+  invariant(links[0].target === "_blank" && links[0].rel === "noopener noreferrer",
+    "external fallback protections missing");
+  invariant(!innerHTMLWrites.some((value) => value.includes(attack)),
+    "proxy error reached innerHTML");
+  process.stdout.write(JSON.stringify({ bodyText, fallback: links[0].href }));
+} else {
+  throw new Error(`unknown viewer scenario: ${scenario}`);
+}
+"""
+
+
+def viewer_runtime(scenario: str, source: str | None = None) -> dict:
+    harness = VIEWER_RUNTIME_HARNESS.replace("__SCENARIO__", scenario)
+    return run_task6_module_harness(
+        source or read_text("static/js/viewer.js"),
+        VIEWER_IMPORT_REPLACEMENTS,
+        harness,
+        f"viewer {scenario}",
+    )
+
+
+def test_google_books_viewer_loads_volume_once_and_rejects_stale_openings():
+    rendered = viewer_runtime("google_success_race_resize")
+
+    assert rendered == {
+        "identifiers": ["volume-one", "slow-volume", "newest-volume"],
+        "scriptCount": 1,
+        "activeObservers": 1,
+    }
+
+
+def test_google_books_fallback_renders_metadata_without_unsafe_links():
+    rendered = viewer_runtime("fallback_metadata_and_unsafe_links")
+
+    assert "Title blocked-volume" in rendered["unavailableText"]
+    assert "NO_PAGES" in rendered["unavailableText"]
+    assert "volume ID" in rendered["noIdText"]
+    assert rendered["scriptCount"] == 0
+
+
+@pytest.mark.parametrize("scenario", ("script_error", "viewer_load_error"))
+def test_google_books_failures_render_safe_metadata_fallback(scenario):
+    rendered = viewer_runtime(scenario)
+
+    assert "Title" in rendered["text"]
+    assert "raw-" not in rendered["text"]
+
+
+def test_viewer_keeps_wikipedia_proxy_iframe_behavior():
+    rendered = viewer_runtime("wikipedia_iframe")
+
+    assert rendered["srcdoc"] == "<article>Wiki</article>"
+    assert rendered["fetchCalls"][0].startswith("/api/proxy/source?url=")
+
+
+def test_viewer_assigns_provider_and_proxy_values_without_html_interpolation():
+    rendered = viewer_runtime("proxy_error_safety")
+
+    assert "<img src=x" in rendered["bodyText"]
+    assert rendered["fallback"] == "https://en.wikipedia.org/wiki/Safe_fallback"
+
+
+def test_google_books_viewer_css_replaces_obsolete_proxy_panel():
+    css = read_text("static/css/custom.css")
+
+    assert ".proxy-google-books" not in css
+    viewer = css_rule_group_declarations(css, (".google-books-viewer",))
+    canvas = css_rule_group_declarations(css, (".google-books-viewer-canvas",))
+    fallback = css_rule_group_declarations(css, (".google-books-fallback",))
+    assert viewer["height"] == "100%"
+    assert viewer["display"] in {"flex", "grid"}
+    assert canvas["width"] == "100%"
+    assert canvas["background"] == "var(--bs-body-bg)"
+    assert canvas["border"].endswith("var(--bs-border-color)")
+    assert fallback["background"] == "var(--bs-tertiary-bg)"
+    assert fallback["color"] == "var(--bs-body-color)"

@@ -10,7 +10,6 @@ DEFAULT_HEADERS = {
     "Upgrade-Insecure-Requests": "1"
 }
 READER_DOMAINS = {"web.md", "pubmed.ncbi.nlm.nih.gov"}
-GOOGLE_BOOKS_DOMAINS = {"books.google.com"}
 READER_DOMAIN_SUFFIXES = (
     ".gov.uk",
     ".nhs.uk",
@@ -23,10 +22,6 @@ def is_reader_domain(domain: str) -> bool:
     if domain in READER_DOMAINS:
         return True
     return any(domain.endswith(suffix) for suffix in READER_DOMAIN_SUFFIXES)
-
-
-def is_google_books_domain(domain: str) -> bool:
-    return domain in GOOGLE_BOOKS_DOMAINS
 
 
 def build_reader_html(soup, url: str) -> str:
@@ -42,6 +37,14 @@ def build_reader_html(soup, url: str) -> str:
 def fetch_source(url):
     if not whitelist.is_allowed(url):
         raise ValueError("URL not allowed")
+
+    domain = whitelist.get_domain(url)
+    if domain == "books.google.com":
+        return {
+            "status": False,
+            "error": "Google Books previews use the native viewer.",
+            "fallback_url": url,
+        }
     
     try:
         resp = requests.get(url, headers=DEFAULT_HEADERS, timeout=10)
@@ -57,12 +60,8 @@ def fetch_source(url):
 
         title = soup.title.string if soup.title else ""
         text = soup.get_text(separator=' ', strip=True)
-        domain = whitelist.get_domain(url)
-
         mode = 'iframe'
-        if is_google_books_domain(domain):
-            mode = 'google_books'
-        elif is_reader_domain(domain):
+        if is_reader_domain(domain):
             mode = 'reader'
 
         reader_html = ''
@@ -74,15 +73,6 @@ def fetch_source(url):
                 soup.head.insert(0, base_tag)
 
         html = reader_html if mode == 'reader' else str(soup)
-
-        if mode == 'google_books':
-            html = (
-                '<div class="proxy-google-books p-4">'
-                '<h5>Google Books preview</h5>'
-                '<p>Book preview pages are not rendered directly inside StudyHelper.</p>'
-                '<a href="{url}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">Open Google Books</a>'
-                '</div>'.format(url=url)
-            )
 
         # Check for paywall using stricter phrases only, but skip Wikipedia pages.
         if domain and domain.endswith('wikipedia.org'):

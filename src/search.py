@@ -216,7 +216,7 @@ def wikipedia(query, num_results, *, user_id):
 def gbooks(query, num_results, filters, *, user_id):
     params = {
         "q": query,
-        "maxResults": num_results
+        "maxResults": min(max(int(num_results), 0), 40)
     }
     if GOOGLE_BOOKS_API_KEY:
         params["key"] = GOOGLE_BOOKS_API_KEY
@@ -236,6 +236,9 @@ def gbooks(query, num_results, filters, *, user_id):
             results = []
             for item in data.get("items", []):
                 vol = item.get("volumeInfo", {})
+                access = item.get("accessInfo", {})
+                if not isinstance(access, Mapping):
+                    access = {}
                 item_data = {
                     "title": vol.get("title", ""),
                     "description": vol.get("description", ""),
@@ -247,7 +250,20 @@ def gbooks(query, num_results, filters, *, user_id):
                     "source_id": item.get("id", "")
                 }
                 if item_data["source_url"] and whitelist.is_allowed(item_data["source_url"]):
-                    results.append(db.get_item_by_source("gbooks", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+                    persisted_item = (
+                        db.get_item_by_source(
+                            "gbooks", item_data["source_id"], user_id, True
+                        )
+                        or db.create_item(item_data, user_id, True)
+                    )
+                    response_item = dict(persisted_item)
+                    response_item["accessInfo"] = {
+                        "embeddable": access.get("embeddable") is True,
+                        "webReaderLink": access.get("webReaderLink", ""),
+                        "viewability": access.get("viewability", "UNKNOWN"),
+                        "accessViewStatus": access.get("accessViewStatus", "NONE"),
+                    }
+                    results.append(response_item)
             return results
         return []
     except:

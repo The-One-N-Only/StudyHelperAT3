@@ -26,3 +26,16 @@ def test_get_whitelisted_domains():
 
 def test_allowed_gov_wildcard_domain():
     assert whitelist.is_allowed("https://www.usa.gov/page") == True
+
+
+@pytest.mark.parametrize(
+    "url",
+    (
+        "javascript://en.wikipedia.org/alert(1)",
+        "ftp://en.wikipedia.org/archive",
+        "file://en.wikipedia.org/etc/passwd",
+        "ws://en.wikipedia.org/socket",
+    ),
+)
+def test_allowed_domain_rejects_non_http_schemes(url):
+    assert whitelist.is_allowed(url) is False

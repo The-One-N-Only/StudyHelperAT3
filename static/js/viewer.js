@@ -1,9 +1,15 @@
 "use strict";
 
 import { showToast } from './toast.js';
-import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
+import { createWorkspaceSelectElement, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
+
+const GOOGLE_BOOKS_API_URL = 'https://www.google.com/books/jsapi.js';
 
 let viewerOffcanvas;
+let googleBooksApiPromise;
+let activeGoogleBooksViewer;
+let googleBooksResizeObserver;
+let viewerRequestGeneration = 0;
 
 function ensureViewerOffcanvas() {
     if (!viewerOffcanvas) {
@@ -16,104 +22,424 @@ function ensureViewerOffcanvas() {
     return viewerOffcanvas;
 }
 
-export function openViewer(item) {
+function textValue(value) {
+    return value === null || value === undefined ? '' : String(value);
+}
+
+function appendTextElement(parent, tagName, value, className = '') {
+    const element = document.createElement(tagName);
+    element.className = className;
+    element.textContent = textValue(value);
+    parent.appendChild(element);
+    return element;
+}
+
+function createExternalLink(url, label, className = '') {
+    const safeUrl = safeHttpUrl(url);
+    if (!safeUrl) return null;
+
+    const link = document.createElement('a');
+    link.className = className;
+    link.href = safeUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    if (label) link.textContent = label;
+    return link;
+}
+
+function resetGoogleBooksViewerState() {
+    if (googleBooksResizeObserver) {
+        googleBooksResizeObserver.disconnect();
+        googleBooksResizeObserver = undefined;
+    }
+    activeGoogleBooksViewer = undefined;
+}
+
+function renderViewerHeader(header, item) {
+    header.replaceChildren();
+
+    const summary = document.createElement('div');
+    summary.className = 'd-flex align-items-center gap-2';
+
+    const details = document.createElement('div');
+    details.className = 'flex-grow-1';
+    appendTextElement(
+        details,
+        'h6',
+        item?.title,
+        'fw-semibold text-truncate mb-1',
+    );
+
+    const metadata = document.createElement('div');
+    metadata.className = 'd-flex flex-wrap gap-2 align-items-center';
+    appendTextElement(
+        metadata,
+        'span',
+        item?.source_name,
+        'badge bg-secondary rounded-pill',
+    );
+    appendTextElement(
+        metadata,
+        'small',
+        item?.source_url,
+        'text-muted text-truncate',
+    );
+    details.appendChild(metadata);
+    summary.appendChild(details);
+
+    const sourceLink = createExternalLink(
+        item?.source_url,
+        '',
+        'btn btn-link btn-sm p-0 ms-auto',
+    );
+    if (sourceLink) {
+        sourceLink.setAttribute('aria-label', 'Open source in new tab');
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-box-arrow-up-right';
+        icon.setAttribute('aria-hidden', 'true');
+        sourceLink.appendChild(icon);
+        summary.appendChild(sourceLink);
+    }
+    header.appendChild(summary);
+
+    const actionRow = document.createElement('div');
+    actionRow.className = 'mb-2 d-flex align-items-center gap-2';
+    const workspaceSelect = createWorkspaceSelectElement();
+    workspaceSelect.id = 'viewerWorkspaceSelect';
+    workspaceSelect.className = 'form-select form-select-sm';
+    workspaceSelect.setAttribute('aria-label', 'Choose workspace');
+    actionRow.appendChild(workspaceSelect);
+    header.appendChild(actionRow);
+    return workspaceSelect;
+}
+
+function renderLoading(body) {
+    body.replaceChildren();
+    const loading = document.createElement('div');
+    loading.className = 'text-center py-5';
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner-border';
+    spinner.setAttribute('role', 'status');
+    loading.appendChild(spinner);
+    appendTextElement(loading, 'p', 'Loading source...');
+    body.appendChild(loading);
+}
+
+function renderViewerNotice(body, message, variant, linkUrl = '', linkLabel = '') {
+    body.replaceChildren();
+    const panel = document.createElement('div');
+    panel.className = `alert alert-${variant} m-3`;
+    appendTextElement(panel, 'p', message, 'mb-0');
+
+    const link = createExternalLink(
+        linkUrl,
+        linkLabel,
+        'btn btn-primary btn-sm mt-3',
+    );
+    if (link) panel.appendChild(link);
+    body.appendChild(panel);
+}
+
+function isGoogleBooksResult(item) {
+    const sourceName = textValue(item?.source_name).trim().toLowerCase();
+    if (sourceName === 'gbooks' || sourceName === 'google books') return true;
+
+    const sourceUrl = safeHttpUrl(item?.source_url);
+    if (!sourceUrl) return false;
+    return new URL(sourceUrl).hostname.toLowerCase() === 'books.google.com';
+}
+
+function safeHttpUrl(value) {
+    if (typeof value !== 'string' || !value.trim()) return '';
+    try {
+        const parsed = new URL(value.trim());
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+        return parsed.href;
+    } catch {
+        return '';
+    }
+}
+
+function loadGoogleBooksApi() {
+    if (googleBooksApiPromise) return googleBooksApiPromise;
+
+    googleBooksApiPromise = new Promise((resolve, reject) => {
+        if (window.google?.books?.DefaultViewer) {
+            resolve(window.google.books);
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = GOOGLE_BOOKS_API_URL;
+        script.async = true;
+        script.onload = () => {
+            const booksApi = window.google?.books;
+            if (!booksApi?.load || !booksApi?.setOnLoadCallback) {
+                reject(new Error('Google Books API loader unavailable'));
+                return;
+            }
+
+            try {
+                booksApi.load();
+                booksApi.setOnLoadCallback(() => {
+                    const loadedApi = window.google?.books;
+                    if (!loadedApi?.DefaultViewer) {
+                        reject(new Error('Google Books viewer unavailable'));
+                        return;
+                    }
+                    resolve(loadedApi);
+                });
+            } catch {
+                reject(new Error('Google Books API initialization failed'));
+            }
+        };
+        script.onerror = () => reject(new Error('Google Books API script failed'));
+        document.head.appendChild(script);
+    });
+
+    return googleBooksApiPromise;
+}
+
+function renderGoogleBooksFallback(body, item, reason) {
+    body.replaceChildren();
+    const fallback = document.createElement('div');
+    fallback.className = 'google-books-fallback';
+
+    const coverUrl = safeHttpUrl(item?.thumb_url);
+    if (coverUrl) {
+        const cover = document.createElement('img');
+        cover.src = coverUrl;
+        cover.alt = textValue(item?.title)
+            ? `Cover of ${textValue(item.title)}`
+            : 'Book cover';
+        fallback.appendChild(cover);
+    }
+
+    const metadata = document.createElement('div');
+    metadata.className = 'google-books-fallback-metadata';
+    appendTextElement(metadata, 'h5', item?.title || 'Google Books preview');
+    if (item?.description) {
+        appendTextElement(metadata, 'p', item.description, 'google-books-description');
+    }
+    appendTextElement(metadata, 'p', reason, 'google-books-fallback-reason');
+
+    const accessInfo = item?.accessInfo && typeof item.accessInfo === 'object'
+        ? item.accessInfo
+        : {};
+    const previewStatus = [accessInfo.viewability, accessInfo.accessViewStatus]
+        .map(textValue)
+        .filter(Boolean)
+        .join(' / ');
+    appendTextElement(
+        metadata,
+        'p',
+        `Preview status: ${previewStatus || 'UNKNOWN'}`,
+        'google-books-preview-status',
+    );
+
+    const linkUrl = safeHttpUrl(accessInfo.webReaderLink)
+        || safeHttpUrl(item?.source_url);
+    const link = createExternalLink(
+        linkUrl,
+        'Open Google Books',
+        'btn btn-primary btn-sm',
+    );
+    if (link) metadata.appendChild(link);
+    fallback.appendChild(metadata);
+    body.appendChild(fallback);
+}
+
+async function renderGoogleBooksViewer(body, item, generation) {
+    const accessInfo = item?.accessInfo && typeof item.accessInfo === 'object'
+        ? item.accessInfo
+        : {};
+    if (accessInfo.embeddable !== true) {
+        renderGoogleBooksFallback(
+            body,
+            item,
+            'An embedded preview is not available for this book.',
+        );
+        return;
+    }
+
+    const volumeId = textValue(item?.source_id).trim();
+    if (!volumeId) {
+        renderGoogleBooksFallback(
+            body,
+            item,
+            'This result does not include a Google Books volume ID.',
+        );
+        return;
+    }
+
+    let booksApi;
+    try {
+        booksApi = await loadGoogleBooksApi();
+    } catch {
+        if (generation === viewerRequestGeneration) {
+            renderGoogleBooksFallback(
+                body,
+                item,
+                'The Google Books preview service could not be loaded.',
+            );
+        }
+        return;
+    }
+    if (generation !== viewerRequestGeneration) return;
+
+    const viewerShell = document.createElement('div');
+    viewerShell.className = 'google-books-viewer';
+    const canvas = document.createElement('div');
+    canvas.className = 'google-books-viewer-canvas';
+    viewerShell.appendChild(canvas);
+    body.replaceChildren(viewerShell);
+
+    let viewer;
+    try {
+        viewer = new booksApi.DefaultViewer(canvas);
+    } catch {
+        renderGoogleBooksFallback(
+            body,
+            item,
+            'The embedded preview could not be started.',
+        );
+        return;
+    }
+
+    await new Promise((resolve) => {
+        try {
+            viewer.load(
+                volumeId,
+                () => {
+                    if (generation === viewerRequestGeneration) {
+                        renderGoogleBooksFallback(
+                            body,
+                            item,
+                            'No embedded preview is available for this volume.',
+                        );
+                    }
+                    resolve();
+                },
+                () => {
+                    if (generation !== viewerRequestGeneration) {
+                        resolve();
+                        return;
+                    }
+
+                    activeGoogleBooksViewer = viewer;
+                    if (typeof ResizeObserver === 'function') {
+                        googleBooksResizeObserver = new ResizeObserver(() => {
+                            if (
+                                generation !== viewerRequestGeneration
+                                || activeGoogleBooksViewer !== viewer
+                            ) {
+                                return;
+                            }
+                            viewer.resize();
+                        });
+                        googleBooksResizeObserver.observe(canvas);
+                    }
+                    resolve();
+                },
+            );
+        } catch {
+            if (generation === viewerRequestGeneration) {
+                renderGoogleBooksFallback(
+                    body,
+                    item,
+                    'The embedded preview could not be loaded.',
+                );
+            }
+            resolve();
+        }
+    });
+}
+
+function renderProxyContent(body, result) {
+    body.replaceChildren();
+    const mode = result.mode || 'iframe';
+    if (mode === 'reader') {
+        body.classList.add('viewer-mode-reader');
+        const reader = document.createElement('div');
+        reader.className = 'viewer-reader';
+        // Server proxy sanitizes reader HTML before returning it.
+        reader.innerHTML = textValue(result.html);
+        body.appendChild(reader);
+        return;
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.className = 'viewer-iframe';
+    iframe.srcdoc = textValue(result.html);
+    body.appendChild(iframe);
+}
+
+export async function openViewer(item) {
+    const generation = ++viewerRequestGeneration;
+    resetGoogleBooksViewerState();
+
     const header = document.getElementById('viewerHeader');
     const body = document.getElementById('viewerBody');
     const addBtn = document.getElementById('addToWorkspaceBtn');
-
     if (!header || !body || !addBtn) {
         showToast('Viewer markup not available', 'danger');
         return;
     }
 
-    header.innerHTML = `
-        <div class="d-flex align-items-center gap-2">
-            <div class="flex-grow-1">
-                <h6 class="fw-semibold text-truncate mb-1">${item.title}</h6>
-                <div class="d-flex flex-wrap gap-2 align-items-center">
-                    <span class="badge bg-secondary rounded-pill">${item.source_name}</span>
-                    <small class="text-muted text-truncate">${item.source_url}</small>
-                </div>
-            </div>
-            <a href="${item.source_url}" target="_blank" class="btn btn-link btn-sm p-0 ms-auto">
-                <i class="bi bi-box-arrow-up-right"></i>
-            </a>
-        </div>
-    `;
-
-    const actionRow = document.createElement('div');
-    actionRow.className = 'mb-2 d-flex align-items-center gap-2';
-    actionRow.innerHTML = `
-        <select id="viewerWorkspaceSelect" class="form-select form-select-sm"></select>
-    `;
-    header.appendChild(actionRow);
-
-    const workspaceSelect = actionRow.querySelector('#viewerWorkspaceSelect');
-    hydrateWorkspaceSelect(workspaceSelect);
-
+    body.classList.remove('viewer-mode-reader');
+    const workspaceSelect = renderViewerHeader(header, item);
     addBtn.onclick = () => addToWorkspaceFromViewer(item, workspaceSelect);
+    renderLoading(body);
 
-    body.innerHTML = '<div class="text-center py-5"><div class="spinner-border" role="status"></div><p>Loading source...</p></div>';
     try {
         ensureViewerOffcanvas().show();
-    } catch (error) {
+    } catch {
         showToast('Failed to open viewer', 'danger');
-        console.error(error);
         return;
     }
 
-    const isPubMed = item.source_name?.toLowerCase() === 'pubmed' || item.source_url?.includes('pubmed.ncbi.nlm.nih.gov');
+    if (isGoogleBooksResult(item)) {
+        await renderGoogleBooksViewer(body, item, generation);
+        return;
+    }
+
+    const isPubMed = textValue(item?.source_name).toLowerCase() === 'pubmed'
+        || textValue(item?.source_url).includes('pubmed.ncbi.nlm.nih.gov');
     if (isPubMed) {
-        body.innerHTML = `
-            <div class="alert alert-warning m-3">
-                <i class="bi bi-exclamation-triangle"></i>
-                PubMed pages are not displayed inside StudyHelper because NCBI blocks proxy access.
-                <div class="mt-3">
-                    <a href="${item.source_url}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">Open PubMed in new tab</a>
-                </div>
-            </div>
-        `;
+        renderViewerNotice(
+            body,
+            'PubMed pages are not displayed inside StudyHelper because NCBI blocks proxy access.',
+            'warning',
+            item?.source_url,
+            'Open PubMed in new tab',
+        );
         return;
     }
 
-    fetch(`/api/proxy/source?url=${encodeURIComponent(item.source_url)}`)
-        .then(r => r.json())
-        .then(result => {
-            if (result.status) {
-                body.innerHTML = '';
-                const mode = result.mode || 'iframe';
+    try {
+        const response = await fetch(
+            `/api/proxy/source?url=${encodeURIComponent(textValue(item?.source_url))}`,
+        );
+        const result = await response.json();
+        if (generation !== viewerRequestGeneration) return;
 
-                if (mode === 'iframe') {
-                    const iframe = document.createElement('iframe');
-                    iframe.className = 'viewer-iframe';
-                    iframe.srcdoc = result.html;
-                    body.appendChild(iframe);
-                } else if (mode === 'reader') {
-                    body.classList.add('viewer-mode-reader');
-                    body.innerHTML = `<div class="viewer-reader">${result.html}</div>`;
-                } else {
-                    body.classList.remove('viewer-mode-reader');
-                    body.innerHTML = result.html;
-                }
-            } else {
-                const fallback = result.fallback_url || item.source_url;
-                body.innerHTML = `
-                    <div class="alert alert-warning m-3">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        ${result.error}
-                        <div class="mt-3">
-                            <a href="${fallback}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">Open directly in new tab</a>
-                        </div>
-                    </div>
-                `;
-            }
-        })
-        .catch(() => {
-            body.innerHTML = '<div class="alert alert-danger m-3">Failed to load source</div>';
-            showToast('Failed to load source', 'danger');
-        });
+        if (result.status) {
+            renderProxyContent(body, result);
+            return;
+        }
 
-    addBtn.onclick = () => addToWorkspaceFromViewer(item, workspaceSelect);
+        renderViewerNotice(
+            body,
+            result.error || 'Failed to load source',
+            'warning',
+            safeHttpUrl(result.fallback_url) || safeHttpUrl(item?.source_url),
+            'Open directly in new tab',
+        );
+    } catch {
+        if (generation !== viewerRequestGeneration) return;
+        renderViewerNotice(body, 'Failed to load source', 'danger');
+        showToast('Failed to load source', 'danger');
+    }
 }
 
 function addToWorkspaceFromViewer(item, workspaceSelect) {
@@ -131,9 +457,9 @@ function addToWorkspaceFromViewer(item, workspaceSelect) {
             bullets: [],
             relevance: '',
             citation_apa: 'APA citation',
-            citation_harvard: 'Harvard citation'
-            , workspace_id: workspace_id
-        })
+            citation_harvard: 'Harvard citation',
+            workspace_id: workspace_id,
+        }),
     }).then(r => r.json()).then(addResult => {
         if (addResult.status) {
             showToast('Added to workspace', 'success');
