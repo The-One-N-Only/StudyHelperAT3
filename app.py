@@ -13,6 +13,7 @@ import src.files as files
 import src.export as export
 import src.answer as answer
 import src.local_ai as local_ai
+import src.whitelist as whitelist
 import json
 import uuid
 import mimetypes
@@ -290,49 +291,70 @@ def browse_search_all():
     if not query or not sources:
         return jsonify({'status': False, 'error': 'Query and sources required'}), 400
 
-    # Define search tasks
+    # Define per-source search tasks
     search_tasks = {
         'wikipedia': (search.wikipedia, (query, num_results)),
         'gbooks': (search.gbooks, (query, num_results, filters)),
         'pubmed': (pubmed.search, (query, num_results, filters.get('mesh_terms', []), filters.get('min_date'), filters.get('max_date'))),
-        'scholar': (search.google_scholar, (query, num_results,)),
-        'whitelist': (search.whitelist_search, (query, num_results,))
+        'scholar': (search.google_scholar, (query, num_results,))
     }
 
+    # De-duplicate requested sources while preserving order.
+    requested_sources = []
+    seen_sources = set()
+    for source in sources:
+        if source in seen_sources:
+            continue
+        seen_sources.add(source)
+        requested_sources.append(source)
+
+    # If explicit whitelist domains are selected, ignore generic whitelist to prevent duplication.
+    if any(src.startswith('whitelist_') for src in requested_sources):
+        requested_sources = [src for src in requested_sources if src != 'whitelist']
+
     # Execute searches in parallel
-    all_results = []
+    grouped_results = {}
     source_counts = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = {}
 
-        # Submit each selected source as a separate task
-        for source in sources:
+        for source in requested_sources:
             if source in search_tasks:
                 func, args = search_tasks[source]
                 futures[source] = executor.submit(func, *args, user_id=user_id)
+            elif source == 'whitelist':
+                for domain in whitelist.get_whitelisted_domains():
+                    key = f'whitelist_{domain}'
+                    if key not in futures:
+                        futures[key] = executor.submit(search.whitelist_search, query, num_results, domains=[domain], user_id=user_id)
             elif source.startswith('whitelist_'):
                 domain = source.split('_', 1)[1]
                 futures[source] = executor.submit(search.whitelist_search, query, num_results, domains=[domain], user_id=user_id)
 
-        # Collect results as they complete (or timeout)
         for source in futures:
             try:
-                source_results = futures[source].result(timeout=15)
-                all_results.extend(source_results or [])
-                source_counts[source] = len(source_results) if source_results else 0
+                source_results = futures[source].result(timeout=15) or []
+                grouped_results[source] = source_results
+                source_counts[source] = len(source_results)
             except concurrent.futures.TimeoutError:
                 logging.warning(f"Search timeout for source: {source}")
+                grouped_results[source] = []
                 source_counts[source] = 0
             except Exception as e:
                 logging.error(f"Search failed for {source}: {str(e)}")
+                grouped_results[source] = []
                 source_counts[source] = 0
 
-    logging.info(f"User {user_id} performed multi-source search for '{query}' across {len(sources)} sources")
+    # Use the first result from each source group as the initial result set.
+    all_results = [items[0] for items in grouped_results.values() if items]
+
+    logging.info(f"User {user_id} performed multi-source search for '{query}' across {len(futures)} sources")
 
     return jsonify({
         'status': True,
         'results': all_results,
+        'grouped_results': grouped_results,
         'source_counts': source_counts
     })
 

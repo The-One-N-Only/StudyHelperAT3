@@ -7,11 +7,14 @@ const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist'
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 let pageRoot = null;
 let currentSearchResults = [];
+let currentGroupedResults = {};
 let currentSourceCounts = {};
+let currentPageIndex = 1;
 let whitelistDomains = [];
 let lastSearchQuery = null;
 let lastSearchSources = null;
 let lastSearchFilters = null;
+let currentSummary = null;
 let isLoadingMore = false;
 
 // Load whitelisted domains
@@ -104,51 +107,18 @@ export function initBrowse(root) {
                         <p class="text-muted">Use the search bar above to find academic resources from trusted sources</p>
                     </div>
                 </div>
-                <div id="googleCseContainer" class="mt-4"></div>
             </div>
         </div>
     `;
-
+ 
     loadWhitelistDomains().then(() => {
         renderWhitelistCheckboxes();
     });
-
+ 
     registerEvents();
     renderSidebar();
-    ensureGoogleCustomSearch();
     restoreBrowseState();
 }
-
-function ensureGoogleCustomSearch() {
-    const existingScript = document.getElementById('google-cse-script');
-    if (existingScript) {
-        if (window.google?.search?.cse?.element) {
-            window.google.search.cse.element.render({
-                div: 'googleCseContainer',
-                tag: 'search'
-            });
-        }
-        return;
-    }
-
-    window.__gcse = {
-        callback: function() {
-            if (window.google?.search?.cse?.element) {
-                window.google.search.cse.element.render({
-                    div: 'googleCseContainer',
-                    tag: 'search'
-                });
-            }
-        }
-    };
-
-    const script = document.createElement('script');
-    script.id = 'google-cse-script';
-    script.async = true;
-    script.src = 'https://cse.google.com/cse.js?cx=7675fc4c77c124dee';
-    document.body.appendChild(script);
-}
-
 function registerEvents() {
     const searchInput = pageRoot.querySelector('#searchInput');
     const goBtn = pageRoot.querySelector('#goBtn');
@@ -231,7 +201,7 @@ function renderSidebar(sourceCounts = {}, results = []) {
         sidebar.innerHTML = `
             <div class="card mb-3">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">AI Overview</h5>
+                    <h5 class="card-title mb-0">Alexander says:</h5>
                 </div>
                 <div class="card-body">
                     <p class="text-muted small mb-0">AI search insights will appear here after you run a search. For now, results are gathered from trusted academic sources across the full whitelist.</p>
@@ -242,12 +212,31 @@ function renderSidebar(sourceCounts = {}, results = []) {
     }
 
     let html = '<div class="card mb-3">';
+    html += '<div class="card-header"><h5 class="card-title mb-0">Alexander says:</h5></div>';
+    html += '<div class="card-body">';
+    if (currentSummary) {
+        html += `<p class="small text-muted mb-0">${escapeHtml(currentSummary)}</p>`;
+    } else {
+        html += '<p class="small text-muted mb-0">Summarising search results...</p>';
+    }
+    html += '</div></div>';
+
+    html += '<div class="card mb-3">';
     html += '<div class="card-header"><h5 class="card-title mb-0">Search sources</h5></div>';
     html += '<div class="list-group list-group-flush">';
 
     selectedSources.forEach((source) => {
         const displayName = getDisplayNameForSource(source);
-        const count = sourceCounts[source] != null ? sourceCounts[source] : results.filter((item) => itemMatchesSource(item, source)).length;
+        let count = 0;
+        if (sourceCounts[source] != null) {
+            count = sourceCounts[source];
+        } else if (source === 'whitelist') {
+            count = Object.keys(currentSourceCounts)
+                .filter((key) => key.startsWith('whitelist_'))
+                .reduce((sum, key) => sum + (currentSourceCounts[key] || 0), 0);
+        } else {
+            count = results.filter((item) => itemMatchesSource(item, source)).length;
+        }
 
         const topItem = results.find((item) => itemMatchesSource(item, source));
 
@@ -269,6 +258,111 @@ function renderSidebar(sourceCounts = {}, results = []) {
 
     html += '</div></div>';
     sidebar.innerHTML = html;
+}
+
+function getSourcesToDisplay() {
+    if (!lastSearchSources || lastSearchSources.length === 0) return [];
+
+    const sources = [];
+    lastSearchSources.forEach((source) => {
+        if (source === 'whitelist') {
+            Object.keys(currentGroupedResults).forEach((key) => {
+                if (key.startsWith('whitelist_') && !sources.includes(key)) {
+                    sources.push(key);
+                }
+            });
+        } else if (!sources.includes(source)) {
+            sources.push(source);
+        }
+    });
+
+    return sources;
+}
+
+function getVisibleResults() {
+    const sources = getSourcesToDisplay();
+    const visible = [];
+
+    sources.forEach((source) => {
+        const items = currentGroupedResults[source] || [];
+        visible.push(...items.slice(0, currentPageIndex));
+    });
+
+    return visible;
+}
+
+function hasMoreResults() {
+    return Object.values(currentGroupedResults).some((items) => items.length > currentPageIndex);
+}
+
+function getAllResults() {
+    return Object.values(currentGroupedResults).flat();
+}
+
+function groupResultsBySource(results) {
+    const grouped = {};
+    results.forEach((item) => {
+        const sourceName = (item.source_name || '').toLowerCase();
+        let sourceKey = 'unknown';
+
+        if (sourceName === 'wikipedia') {
+            sourceKey = 'wikipedia';
+        } else if (sourceName === 'gbooks' || sourceName === 'google books') {
+            sourceKey = 'gbooks';
+        } else if (sourceName === 'pubmed') {
+            sourceKey = 'pubmed';
+        } else if (sourceName === 'scholar' || sourceName === 'google scholar') {
+            sourceKey = 'scholar';
+        } else if (item.source_url) {
+            const match = item.source_url.match(/^https?:\/\/([^\/]+)\/?.*$/);
+            if (match) {
+                sourceKey = `whitelist_${match[1]}`;
+            }
+        } else {
+            sourceKey = sourceName || 'unknown';
+        }
+
+        if (!grouped[sourceKey]) {
+            grouped[sourceKey] = [];
+        }
+        grouped[sourceKey].push(item);
+    });
+    return grouped;
+}
+
+function computeSourceCounts(groupedResults) {
+    const counts = {};
+    Object.keys(groupedResults).forEach((source) => {
+        counts[source] = groupedResults[source].length;
+    });
+    return counts;
+}
+
+function loadSearchSummary(query) {
+    const sidebar = pageRoot.querySelector('#sidebarContainer');
+    if (!sidebar) return;
+    currentSummary = null;
+    renderSidebar(currentSourceCounts, getVisibleResults());
+
+    const summaryResults = getAllResults();
+    fetch('/api/browse/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, results: summaryResults })
+    })
+        .then((res) => res.json())
+        .then((data) => {
+            if (data.status && data.summary) {
+                currentSummary = data.summary;
+            } else {
+                currentSummary = 'Unable to generate summary.';
+            }
+            renderSidebar(currentSourceCounts, getVisibleResults());
+        })
+        .catch(() => {
+            currentSummary = 'Unable to generate summary.';
+            renderSidebar(currentSourceCounts, getVisibleResults());
+        });
 }
 
 function getDisplayNameForDomain(domain) {
@@ -366,7 +460,9 @@ function getBrowseState() {
             content_type: pageRoot.querySelector('#filterContentType').value,
             sorting: pageRoot.querySelector('#filterSorting').value
         },
-        results: currentSearchResults
+        grouped_results: currentGroupedResults,
+        page_index: currentPageIndex,
+        summary: currentSummary
     };
 }
 
@@ -402,17 +498,21 @@ function restoreBrowseState() {
         if (sourceCheckboxes.length && Array.isArray(state.sources)) {
             sourceCheckboxes.forEach((checkbox) => {
                 if (checkbox.value.startsWith('whitelist_')) {
-                    checkbox.checked = state.sources.includes('whitelist');
+                    checkbox.checked = state.sources.includes(checkbox.value) || state.sources.includes('whitelist');
                 } else {
                     checkbox.checked = state.sources.includes(checkbox.value);
                 }
             });
         }
 
-        if (Array.isArray(state.results) && state.results.length > 0) {
-            currentSearchResults = state.results;
+        if (state.grouped_results && typeof state.grouped_results === 'object') {
+            currentGroupedResults = state.grouped_results;
+            currentPageIndex = state.page_index || 1;
             lastSearchSources = Array.isArray(state.sources) ? state.sources : [];
+            currentSummary = state.summary || null;
+            currentSearchResults = getVisibleResults();
             renderResults(sortResults(currentSearchResults, state.filters?.sorting || ''));
+            currentSourceCounts = computeSourceCounts(currentGroupedResults);
             renderSidebar(currentSourceCounts, currentSearchResults);
         }
     } catch (err) {
@@ -452,6 +552,16 @@ function sortResults(results, sortingCriteria) {
     return sorted;
 }
 
+function escapeHtml(text) {
+    if (text == null) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function performSearch() {
     const query = pageRoot.querySelector('#searchInput').value.trim();
     if (!query) return;
@@ -466,10 +576,11 @@ function performSearch() {
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
     resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Searching...</p></div>';
 
-    // Save search parameters for "load more" functionality
     lastSearchQuery = query;
     lastSearchSources = sources;
     lastSearchFilters = filters;
+    currentPageIndex = 1;
+    currentSummary = null;
     isLoadingMore = false;
 
     fetch('/api/browse/search-all', {
@@ -480,11 +591,13 @@ function performSearch() {
         .then((r) => r.json())
         .then((result) => {
             if (result.status) {
-                currentSearchResults = result.results || [];
-                currentSourceCounts = result.source_counts || {};
+                currentGroupedResults = result.grouped_results || groupResultsBySource(result.results || []);
+                currentSearchResults = getVisibleResults();
+                currentSourceCounts = result.source_counts || computeSourceCounts(currentGroupedResults);
                 saveBrowseState();
                 renderResults(currentSearchResults);
                 renderSidebar(currentSourceCounts, currentSearchResults);
+                loadSearchSummary(query);
             } else {
                 showNoResults();
             }
@@ -514,14 +627,12 @@ function renderResults(results) {
     });
     resultsContainer.appendChild(row);
 
-    // Add "Load More" button if there are results
     if (results.length > 0) {
         const buttonContainer = document.createElement('div');
         buttonContainer.className = 'text-center mt-4 mb-3';
         buttonContainer.innerHTML = `
-            <button class="btn btn-outline-primary" id="loadMoreBtn">
+            <button class="btn btn-outline-primary" id="loadMoreBtn" ${hasMoreResults() ? '' : 'disabled'}>
                 <span id="loadMoreText">Load More Results</span>
-                <span id="loadMoreSpinner" class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true" style="display: none;"></span>
             </button>
         `;
         resultsContainer.appendChild(buttonContainer);
@@ -538,61 +649,18 @@ function loadMoreResults() {
         return;
     }
 
+    if (!hasMoreResults()) {
+        showToast('No more results available', 'info');
+        return;
+    }
+
     isLoadingMore = true;
-    const loadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
-    const loadMoreText = pageRoot.querySelector('#loadMoreText');
-    const loadMoreSpinner = pageRoot.querySelector('#loadMoreSpinner');
-
-    if (loadMoreBtn) {
-        loadMoreBtn.disabled = true;
-    }
-    if (loadMoreText) {
-        loadMoreText.textContent = 'Loading...';
-    }
-    if (loadMoreSpinner) {
-        loadMoreSpinner.style.display = 'inline-block';
-    }
-
-    fetch('/api/browse/search-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            query: lastSearchQuery,
-            sources: lastSearchSources,
-            num_results: 20,
-            filters: lastSearchFilters || {}
-        })
-    })
-        .then((r) => r.json())
-        .then((result) => {
-            if (result.status && result.results) {
-                const newResults = result.results || [];
-                currentSearchResults = currentSearchResults.concat(newResults);
-                if (result.source_counts) {
-                    currentSourceCounts = result.source_counts;
-                }
-                saveBrowseState();
-                renderResults(currentSearchResults);
-                renderSidebar(currentSourceCounts, currentSearchResults);
-            } else {
-                showToast('No more results available', 'info');
-            }
-        })
-        .catch(() => {
-            showToast('Failed to load more results', 'danger');
-        })
-        .finally(() => {
-            isLoadingMore = false;
-            if (loadMoreBtn) {
-                loadMoreBtn.disabled = false;
-            }
-            if (loadMoreText) {
-                loadMoreText.textContent = 'Load More Results';
-            }
-            if (loadMoreSpinner) {
-                loadMoreSpinner.style.display = 'none';
-            }
-        });
+    currentPageIndex += 1;
+    currentSearchResults = getVisibleResults();
+    renderResults(currentSearchResults);
+    renderSidebar(currentSourceCounts, currentSearchResults);
+    saveBrowseState();
+    isLoadingMore = false;
 }
 
 function showNoResults() {

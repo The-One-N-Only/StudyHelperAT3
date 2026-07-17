@@ -219,9 +219,10 @@ def _search_whitelist_site(query, num_results, domain, *, user_id):
     if not domain:
         return []
 
+    num_results = min(num_results, 10)
     scope = f"site:{domain}"
     if SERP_API_KEY:
-        return _search_serpapi(query, min(num_results, 10), scope, user_id=user_id)
+        return _search_serpapi(query, num_results, scope, user_id=user_id)
 
     display_name = whitelist.get_display_name_for_domain(domain)
     if GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
@@ -232,7 +233,7 @@ def _search_whitelist_site(query, num_results, domain, *, user_id):
                 "key": GOOGLE_SEARCH_API_KEY,
                 "cx": GOOGLE_SEARCH_ENGINE_ID,
                 "q": q,
-                "num": min(num_results, 10)
+                "num": num_results
             }
             headers = {"User-Agent": USER_AGENT}
             resp = requests.get(url, params=params, headers=headers, timeout=10)
@@ -263,13 +264,13 @@ def _search_whitelist_site(query, num_results, domain, *, user_id):
 
     # Fallback search implementations for popular whitelisted domains.
     if domain == 'en.wikipedia.org':
-        return wikipedia(query, min(num_results, 1), user_id=user_id)
+        return wikipedia(query, num_results, user_id=user_id)
     if domain == 'pubmed.ncbi.nlm.nih.gov':
-        return pubmed.search(query, min(num_results, 1), mesh_terms=None, min_date=None, max_date=None, user_id=user_id)
+        return pubmed.search(query, num_results, mesh_terms=None, min_date=None, max_date=None, user_id=user_id)
     if domain == 'books.google.com':
-        return gbooks(query, min(num_results, 1), {}, user_id=user_id)
+        return gbooks(query, num_results, {}, user_id=user_id)
     if domain == 'scholar.google.com':
-        return google_scholar(query, min(num_results, 1), user_id=user_id)
+        return google_scholar(query, num_results, user_id=user_id)
 
     return []
 
@@ -283,15 +284,13 @@ def whitelist_search(query, num_results, domains=None, *, user_id):
     if not explicit_domains:
         return []
 
-    if SERP_API_KEY and domains is None:
-        scope = whitelist.get_whitelist_search_scope()
-        return _search_serpapi(query, min(num_results, 10), scope, user_id=user_id)
+    num_results = min(num_results, 10)
 
-    # Ensure each domain contributes at most one result to avoid overwhelming the UI.
+    # Search each whitelisted domain separately so we can cache up to 10 results per source.
     results = []
     for domain in explicit_domains:
-        site_results = _search_whitelist_site(query, min(num_results, 1), domain, user_id=user_id)
+        site_results = _search_whitelist_site(query, num_results, domain, user_id=user_id)
         if site_results:
-            results.extend(site_results[:1])
+            results.extend(site_results)
 
     return results
