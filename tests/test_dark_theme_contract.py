@@ -24,6 +24,7 @@ SVG_NAMES = (
 )
 DARK_ROOT_SELECTOR = '[data-bs-theme="dark"]'
 DARK_BODY_SELECTOR = '[data-bs-theme="dark"] body'
+LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
 DARK_THEME_ATTRIBUTE_PATTERN = re.compile(
     r'''\[\s*data-bs-theme\s*=\s*(?:"dark"|'dark'|dark)\s*\]'''
 )
@@ -151,6 +152,64 @@ TASK3_DARK_ONLY_CLASSES = (
     "illustration-open-book",
     "illustration-flourish",
 )
+TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
+    {
+        (".surface-leather",),
+        (".btn-secondary-wood",),
+        (
+            f"{LIGHT_GUARD} .btn-secondary-wood:hover",
+            f"{LIGHT_GUARD} .btn-secondary-wood:active",
+        ),
+        (
+            f"{LIGHT_GUARD} button",
+            f"{LIGHT_GUARD} .btn",
+            f"{LIGHT_GUARD} input",
+            f"{LIGHT_GUARD} select",
+            f"{LIGHT_GUARD} textarea",
+            f"{LIGHT_GUARD} .btn-secondary-wood",
+            f"{LIGHT_GUARD} .btn-brass",
+            f"{LIGHT_GUARD} .btn-ghost",
+            f"{LIGHT_GUARD} .icon-button",
+            f"{LIGHT_GUARD} .archive-dropdown",
+            f"{LIGHT_GUARD} .form-control",
+            f"{LIGHT_GUARD} .form-select",
+            f"{LIGHT_GUARD} .navbar-brand",
+        ),
+        (
+            f"{LIGHT_GUARD} .btn-brass",
+            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+        ),
+        (f"{LIGHT_GUARD} .btn-ghost",),
+        (f"{LIGHT_GUARD} .btn-ghost:hover",),
+        (f"{LIGHT_GUARD} .icon-button",),
+        (f"{LIGHT_GUARD} .icon-button:hover",),
+        (f"{LIGHT_GUARD} .icon-button-danger:hover",),
+        (f'{LIGHT_GUARD} .icon-button[aria-pressed="true"]',),
+        (f"{LIGHT_GUARD} .icon-button:focus-visible",),
+        (
+            f"{LIGHT_GUARD} .icon-button .bi",
+            f"{LIGHT_GUARD} .icon-button .text-muted",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-dropdown",
+            f"{LIGHT_GUARD} .form-select",
+        ),
+        (
+            f"{LIGHT_GUARD} .btn:focus-visible",
+            f"{LIGHT_GUARD} .icon-button:focus-visible",
+            f"{LIGHT_GUARD} .archive-dropdown:focus-visible",
+            f"{LIGHT_GUARD} .navbar-brand:focus-visible",
+        ),
+        (f"{LIGHT_GUARD} .archive-count-badge",),
+        (f"{LIGHT_GUARD} .archive-category-badge",),
+        (f"{LIGHT_GUARD} .archive-illustration",),
+        (f"{LIGHT_GUARD} .illustration-compass",),
+        (f"{LIGHT_GUARD} .illustration-sextant",),
+        (f"{LIGHT_GUARD} .illustration-books",),
+        (f"{LIGHT_GUARD} .illustration-open-book",),
+        (f"{LIGHT_GUARD} .illustration-flourish",),
+    }
+)
 TASK4_NAVIGATION_CLASSES = (
     "archive-navbar",
     "archive-wordmark",
@@ -166,6 +225,18 @@ TASK4_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
         (".nav-sidebar-overlay.d-none",),
         (".nav-sidebar",),
         (".nav-sidebar .list-group-item",),
+        (f"{LIGHT_GUARD} .archive-navbar",),
+        (f"{LIGHT_GUARD} .archive-wordmark",),
+        (f"{LIGHT_GUARD} .archive-wordmark:hover",),
+        (f"{LIGHT_GUARD} .archive-wordmark:focus-visible",),
+        (f"{LIGHT_GUARD} .archive-navbar .navbar-text",),
+        (f"{LIGHT_GUARD} .nav-sidebar-overlay",),
+        (f"{LIGHT_GUARD} .nav-sidebar",),
+        (f"{LIGHT_GUARD} .nav-sidebar .list-group-item",),
+        (
+            f"{LIGHT_GUARD} .nav-sidebar .list-group-item:hover",
+            f"{LIGHT_GUARD} .nav-sidebar .list-group-item:focus-visible",
+        ),
     }
 )
 TASK5_DASHBOARD_CLASSES = (
@@ -1241,6 +1312,24 @@ def css_block_body(css: str, header: str) -> str:
     return matches[0]
 
 
+def css_block_body_containing_selector(css: str, header: str, selector: str) -> str:
+    expected_header = " ".join(header.split())
+    matches = []
+    for actual_header, body in css_rule_blocks(css):
+        if " ".join(actual_header.split()) != expected_header:
+            continue
+        if any(
+            selector in selector_group(nested_header)
+            for nested_header, _ in css_rule_blocks(body)
+            if not nested_header.startswith("@")
+        ):
+            matches.append(body)
+    assert len(matches) == 1, (
+        f"expected one {header!r} block containing {selector!r}, found {len(matches)}"
+    )
+    return matches[0]
+
+
 def expand_nested_selector(selector: str, parent_selector: str | None) -> str:
     result = []
     index = 0
@@ -1379,28 +1468,13 @@ def strip_trailing_static_dom_states(selector: str) -> str:
 
 
 def assert_task3_selectors_are_dark_scoped(css: str) -> None:
-    for selector in qualified_css_selectors(css):
-        if not any(name in css_unescape(selector) for name in TASK3_DARK_ONLY_CLASSES):
-            continue
-        semantic_source = strip_trailing_static_dom_states(selector)
-        try:
-            semantic_selectors = soupsieve.compile(semantic_source).selectors.selectors
-        except soupsieve.SelectorSyntaxError as error:
-            raise AssertionError(
-                f"unsupported relevant Task 3 selector: {selector!r}"
-            ) from error
-
-        for semantic_selector in semantic_selectors:
-            if isinstance(semantic_selector, SelectorNull):
-                raise AssertionError(
-                    f"unsupported relevant Task 3 selector: {selector!r}"
-                )
-            if not semantic_selector_targets_task3_class(semantic_selector):
-                continue
-            assert semantic_selector_has_dark_ancestry(semantic_selector), (
-                f"Task 3 selector {selector!r} is outside dark scope: "
-                "lacks positive dark ancestry/root"
-            )
+    assert_task_selectors_are_dark_scoped(
+        css,
+        TASK3_DARK_ONLY_CLASSES,
+        TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS,
+        "Task 3",
+        "an exact Old Book light-theme rule",
+    )
 
 
 def assert_task_selectors_are_dark_scoped(
@@ -1410,6 +1484,7 @@ def assert_task_selectors_are_dark_scoped(
     task_label: str,
     neutral_rule_description: str,
 ) -> None:
+    seen_allowed_groups: dict[tuple[str, ...], int] = {}
     for selectors in qualified_css_selector_groups(css):
         relevant_selectors = tuple(
             selector
@@ -1421,6 +1496,13 @@ def assert_task_selectors_are_dark_scoped(
 
         normalized_group = tuple(" ".join(selector.split()) for selector in selectors)
         if normalized_group in allowed_theme_neutral_groups:
+            seen_allowed_groups[normalized_group] = (
+                seen_allowed_groups.get(normalized_group, 0) + 1
+            )
+            assert seen_allowed_groups[normalized_group] == 1, (
+                f"duplicate approved {task_label} selector group outside dark scope: "
+                f"{normalized_group!r}"
+            )
             continue
 
         for selector in relevant_selectors:
@@ -1719,7 +1801,11 @@ def assert_shared_dark_theme_contract(css: str, toast: str) -> None:
     for selectors, expected_declarations in EXPECTED_SHARED_RULES:
         assert css_rule_group_declarations(css, selectors) == expected_declarations
 
-    reduced_motion = css_block_body(css, "@media (prefers-reduced-motion: reduce)")
+    reduced_motion = css_block_body_containing_selector(
+        css,
+        "@media (prefers-reduced-motion: reduce)",
+        REDUCED_MOTION_SELECTORS[0],
+    )
     assert (
         css_rule_group_declarations(reduced_motion, REDUCED_MOTION_SELECTORS)
         == EXPECTED_REDUCED_MOTION_DECLARATIONS
@@ -1937,7 +2023,11 @@ def test_shared_dark_theme_dropdowns_animate_open_and_close():
 
 def test_reduced_motion_collapses_shared_transition_delay_and_duration():
     css = read_text("static/css/custom.css")
-    media = css_block_body(css, "@media (prefers-reduced-motion: reduce)")
+    media = css_block_body_containing_selector(
+        css,
+        "@media (prefers-reduced-motion: reduce)",
+        REDUCED_MOTION_SELECTORS[0],
+    )
     assert (
         css_rule_group_declarations(media, REDUCED_MOTION_SELECTORS)
         == EXPECTED_REDUCED_MOTION_DECLARATIONS
@@ -1968,11 +2058,14 @@ def test_shared_contract_rejects_moved_material_declaration():
 
 
 def test_shared_contract_rejects_wrong_material_declaration():
-    css = read_text("static/css/custom.css").replace(
+    css = read_text("static/css/custom.css")
+    dark_start = css.index("/* Candlelit Archive: dark theme foundation */")
+    dark_css = css[dark_start:].replace(
         "background-blend-mode: multiply;",
         "background-blend-mode: screen;",
         1,
     )
+    css = css[:dark_start] + dark_css
 
     with pytest.raises(AssertionError):
         assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
@@ -3363,9 +3456,17 @@ def test_candle_cursor_contract_is_dark_scoped_and_guarded():
         "z-index": "var(--z-candle-glow)",
     }
     assert_task_selectors_are_dark_scoped(
-        css, ("candle-glow",), frozenset(), "Task 9", "an approved neutral rule"
+        css,
+        ("candle-glow",),
+        frozenset({(f"{LIGHT_GUARD} .candle-glow",)}),
+        "Task 9",
+        "the exact Old Book non-dark display guard",
     )
-    reduced = css_block_body(css, "@media (prefers-reduced-motion: reduce)")
+    reduced = css_block_body_containing_selector(
+        css,
+        "@media (prefers-reduced-motion: reduce)",
+        '[data-bs-theme="dark"] .candle-glow',
+    )
     coarse = css_block_body(css, "@media (hover: none), (pointer: coarse)")
     assert css_rule_declarations(reduced, '[data-bs-theme="dark"] .candle-glow') == {
         "animation": "none"
@@ -3373,7 +3474,7 @@ def test_candle_cursor_contract_is_dark_scoped_and_guarded():
     assert css_rule_declarations(coarse, '[data-bs-theme="dark"] .candle-glow') == {
         "display": "none"
     }
-    assert css.count("@media (prefers-reduced-motion: reduce)") == 1
+    assert css.count("@media (prefers-reduced-motion: reduce)") == 2
     assert css.count("@media (hover: none), (pointer: coarse)") == 1
     keyframes = css_block_body(css, "@keyframes candle-flicker")
     frames = list(css_rules(keyframes))

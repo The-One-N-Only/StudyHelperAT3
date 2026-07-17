@@ -1,5 +1,6 @@
 from hashlib import sha256
 from pathlib import Path
+import re
 import struct
 import zlib
 
@@ -17,10 +18,269 @@ DARK_TEXTURE_NAMES = (
     "wood-texture.png",
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+DARK_CSS_MARKER = "/* Candlelit Archive: dark theme foundation */"
+DARK_CSS_SHA256 = "647a291217cab86ac8dc42300a9b5c250b4c22bc5ad32b53e97f12ba90b7a372"
+LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
+CSS_TOKEN_PATTERN = re.compile(
+    r'/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
+    r"\\(?:[0-9a-fA-F]{1,6}[ \t\r\n\f]?|[^\r\n\f])|[{};,()\[\]]",
+    flags=re.DOTALL,
+)
+EXPECTED_LIGHT_ROOT_DECLARATIONS = {
+    "--paper-50": "#EEE6DD",
+    "--paper-100": "#E2D5C6",
+    "--paper-200": "#D4C2AB",
+    "--paper-300": "#C6AE90",
+    "--paper-400": "#B79871",
+    "--paper-500": "#A98456",
+    "--ink-900": "#36261B",
+    "--ink-700": "#654834",
+    "--ink-500": "#9C6E4F",
+    "--gilt-900": "#925D07",
+    "--gilt-700": "#BA7508",
+    "--gilt-500": "#E18E0A",
+    "--gilt-300": "#F5A423",
+    "--gilt-100": "#F8BB59",
+    "--rubric-700": "#782C21",
+    "--rubric-500": "#98372A",
+    "--rubric-50": "#F4DBD7",
+    "--folio-blue": "#4A7FA5",
+    "--font-display": '"Cinzel", "Times New Roman", serif',
+    "--font-body": '"Crimson Pro", "EB Garamond", Georgia, serif',
+    "--text-display-lg": "32px",
+    "--text-display-sm": "22px",
+    "--text-body-lg": "16px",
+    "--text-body": "14px",
+    "--text-caption": "12px",
+    "--radius-panel": "12px",
+    "--radius-button": "8px",
+    "--radius-pill": "999px",
+    "--radius-input": "8px",
+    "--shadow-parchment-raised": (
+        "0 2px 10px 0 hsl(28 35% 50% / 0.18), "
+        "0 0 0 1px hsl(33 30% 60% / 0.12)"
+    ),
+    "--shadow-gilt-glow": (
+        "0 0 0 2px var(--gilt-900), "
+        "0 0 12px 1px hsl(37 85% 55% / 0.18)"
+    ),
+    "--z-bg-base": "0",
+    "--z-bg-illustration": "1",
+    "--z-content": "10",
+    "--z-overlay": "50",
+    "--bs-body-bg": "var(--paper-50)",
+    "--bs-body-color": "var(--ink-900)",
+    "--bs-secondary-color": "var(--ink-700)",
+    "--bs-border-color": "hsl(33 30% 72% / 0.55)",
+    "--bs-tertiary-bg": "var(--paper-100)",
+    "--bs-card-bg": "var(--paper-200)",
+    "--bs-offcanvas-bg": "var(--paper-100)",
+    "--bs-primary": "var(--rubric-500)",
+    "--bs-primary-rgb": "152, 55, 42",
+    "--bs-secondary": "var(--paper-400)",
+    "--bs-secondary-rgb": "183, 152, 113",
+    "--bs-danger": "var(--rubric-700)",
+    "--bs-link-color": "var(--gilt-900)",
+    "--bs-link-hover-color": "var(--rubric-700)",
+    "--bs-body-font-family": "var(--font-body)",
+}
+EXPECTED_LIGHT_MATERIALS = {
+    (".surface-leather",): {
+        "background-color": "var(--paper-200)",
+        "background-image": (
+            "linear-gradient(var(--paper-200), var(--paper-200)), "
+            'url("/static/img/textures/leather-texture-light.png")'
+        ),
+        "background-blend-mode": "multiply",
+        "background-repeat": "repeat, repeat",
+        "background-size": "auto, 380px",
+        "border": "1px solid hsl(33 30% 65% / 0.45)",
+        "border-radius": "var(--radius-panel)",
+        "box-shadow": "var(--shadow-parchment-raised)",
+    },
+    (".btn-secondary-wood",): {
+        "background-color": "var(--paper-100)",
+        "background-image": (
+            "linear-gradient(var(--paper-100), var(--paper-100)), "
+            'url("/static/img/textures/wood-texture-light.png")'
+        ),
+        "background-blend-mode": "multiply",
+        "background-repeat": "repeat",
+        "background-size": "auto, 180px",
+        "border": "1px solid hsl(33 30% 60% / 0.50)",
+        "border-radius": "var(--radius-button)",
+        "color": "var(--ink-900)",
+    },
+}
+EXPECTED_LIGHT_ILLUSTRATIONS = {
+    ".illustration-compass": (
+        'url("/static/img/illustrations/compass-rose.svg")',
+        "0.10",
+    ),
+    ".illustration-sextant": (
+        'url("/static/img/illustrations/sextant.svg")',
+        "0.09",
+    ),
+    ".illustration-books": (
+        'url("/static/img/illustrations/stacked-books.svg")',
+        "0.13",
+    ),
+    ".illustration-open-book": (
+        'url("/static/img/illustrations/open-book.svg")',
+        "0.12",
+    ),
+    ".illustration-flourish": (
+        'url("/static/img/illustrations/scrollwork-flourish.svg")',
+        "0.10",
+    ),
+}
 
 
 def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def light_css() -> str:
+    css = read_text("static/css/custom.css")
+    assert css.count(DARK_CSS_MARKER) == 1
+    return css[: css.index(DARK_CSS_MARKER)]
+
+
+def strip_css_comments(css: str) -> str:
+    return CSS_TOKEN_PATTERN.sub(
+        lambda match: " " if match[0].startswith("/*") else match[0],
+        css,
+    )
+
+
+def css_structural_tokens(css: str):
+    for match in CSS_TOKEN_PATTERN.finditer(css):
+        token = match[0]
+        if len(token) == 1 and token in "{};,()[]":
+            yield match.start(), token
+
+
+def split_css_components(text: str, separator: str) -> tuple[str, ...]:
+    parts = []
+    start = 0
+    depths = {"(": 0, "[": 0, "{": 0}
+    closing_to_opening = {")": "(", "]": "[", "}": "{"}
+
+    for index, token in css_structural_tokens(text):
+        if token in depths:
+            depths[token] += 1
+        elif token in closing_to_opening:
+            opening = closing_to_opening[token]
+            depths[opening] = max(0, depths[opening] - 1)
+        elif token == separator and not any(depths.values()):
+            part = text[start:index].strip()
+            if part:
+                parts.append(part)
+            start = index + 1
+
+    part = text[start:].strip()
+    if part:
+        parts.append(part)
+    return tuple(parts)
+
+
+def css_rule_blocks(css: str):
+    tokens = tuple(css_structural_tokens(css))
+    token_index = 0
+    rule_start = 0
+    while token_index < len(tokens):
+        parenthesis_depth = 0
+        bracket_depth = 0
+        delimiter = None
+        while token_index < len(tokens):
+            position, token = tokens[token_index]
+            token_index += 1
+            if token == "(":
+                parenthesis_depth += 1
+            elif token == ")":
+                parenthesis_depth = max(0, parenthesis_depth - 1)
+            elif token == "[":
+                bracket_depth += 1
+            elif token == "]":
+                bracket_depth = max(0, bracket_depth - 1)
+            elif token in ("{", ";") and parenthesis_depth == bracket_depth == 0:
+                delimiter = (position, token)
+                break
+
+        if delimiter is None:
+            break
+        position, token = delimiter
+        if token == ";":
+            rule_start = position + 1
+            continue
+
+        block_depth = 1
+        body_start = position + 1
+        while token_index < len(tokens):
+            block_end, token = tokens[token_index]
+            token_index += 1
+            if token == "{":
+                block_depth += 1
+            elif token == "}":
+                block_depth -= 1
+                if block_depth == 0:
+                    header = strip_css_comments(css[rule_start:position]).strip()
+                    if header:
+                        yield header, css[body_start:block_end]
+                    rule_start = block_end + 1
+                    break
+        else:
+            raise AssertionError("unclosed CSS block")
+
+    assert not strip_css_comments(css[rule_start:]).strip(), "incomplete CSS rule"
+
+
+def selector_group(header: str) -> tuple[str, ...]:
+    return tuple(
+        " ".join(selector.split())
+        for selector in split_css_components(header, ",")
+    )
+
+
+def parse_css_declarations(rule_body: str, context: str) -> dict[str, str]:
+    declarations = {}
+    for raw_declaration in split_css_components(strip_css_comments(rule_body), ";"):
+        assert ":" in raw_declaration, f"invalid declaration in {context}: {raw_declaration!r}"
+        property_name, value = raw_declaration.split(":", 1)
+        property_name = property_name.strip()
+        assert property_name not in declarations, f"duplicate {property_name!r} in {context}"
+        declarations[property_name] = " ".join(value.split())
+    return declarations
+
+
+def css_rule_group_declarations(css: str, selectors: tuple[str, ...]) -> dict[str, str]:
+    expected = frozenset(selectors)
+    matches = []
+    for header, body in css_rule_blocks(css):
+        if header.startswith("@"):
+            continue
+        actual = selector_group(header)
+        if len(actual) == len(selectors) and frozenset(actual) == expected:
+            matches.append(parse_css_declarations(body, repr(actual)))
+    assert len(matches) == 1, f"expected one {selectors!r} rule group, found {len(matches)}"
+    return matches[0]
+
+
+def css_block_bodies(css: str, header: str) -> tuple[str, ...]:
+    expected = " ".join(header.split())
+    return tuple(
+        body
+        for actual, body in css_rule_blocks(css)
+        if " ".join(actual.split()) == expected
+    )
+
+
+def iter_flat_declarations(css: str):
+    for header, body in css_rule_blocks(css):
+        if header.startswith("@"):
+            yield from iter_flat_declarations(body)
+            continue
+        yield selector_group(header), parse_css_declarations(body, header)
 
 
 def read_png_dimensions(path: Path) -> tuple[int, int]:
@@ -107,3 +367,375 @@ def test_light_texture_asset_is_nonempty_readable_png_with_dimensions(name):
     width, height = read_png_dimensions(path)
     assert width > 0
     assert height > 0
+
+
+def test_light_foundation_has_exact_tokens_and_bootstrap_mappings():
+    assert (
+        css_rule_group_declarations(light_css(), (":root",))
+        == EXPECTED_LIGHT_ROOT_DECLARATIONS
+    )
+    assert css_rule_group_declarations(light_css(), (LIGHT_GUARD,)) == {
+        "--bs-danger-rgb": "120, 44, 33"
+    }
+
+
+def test_light_foundation_precedes_and_preserves_the_entire_dark_css_block():
+    css = read_text("static/css/custom.css")
+    dark_css = css[css.index(DARK_CSS_MARKER) :]
+
+    assert sha256(dark_css.encode("utf-8")).hexdigest() == DARK_CSS_SHA256
+    assert css.index(":root {") < css.index(DARK_CSS_MARKER)
+
+
+def test_light_body_is_flat_parchment_with_shared_typography():
+    css = light_css()
+    assert css_rule_group_declarations(css, ("body",)) == {
+        "background-color": "var(--paper-50)",
+        "color": "var(--ink-900)",
+        "font-family": "var(--font-body)",
+        "min-height": "100vh",
+    }
+    heading_rule = css_rule_group_declarations(
+        css,
+        ("h1", "h2", "h3", "h4", "h5", "h6", ".navbar-brand"),
+    )
+    assert heading_rule == {
+        "color": "var(--ink-900)",
+        "font-family": "var(--font-display)",
+        "font-weight": "600",
+        "letter-spacing": "0.02em",
+        "text-wrap": "balance",
+    }
+    assert not any(
+        "gradient(" in value.lower()
+        for property_name, value in css_rule_group_declarations(css, ("body",)).items()
+        if property_name.startswith("background")
+    )
+
+
+def test_light_materials_use_exact_assets_tints_and_tile_sizes():
+    css = light_css()
+    for selectors, expected in EXPECTED_LIGHT_MATERIALS.items():
+        assert css_rule_group_declarations(css, selectors) == expected
+
+
+def test_light_candle_guard_is_explicit_and_cannot_hide_dark_behavior():
+    css = light_css()
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .candle-glow",),
+    ) == {"display": "none"}
+    assert not any(
+        selectors == (".candle-glow",)
+        for selectors, _ in iter_flat_declarations(css)
+    )
+
+
+def test_light_illustrations_use_gilt_masks_and_visible_spec_opacities():
+    css = light_css()
+    base = css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .archive-illustration",),
+    )
+    assert base == {
+        "--illustration-image": "none",
+        "background-color": "var(--gilt-700)",
+        "color": "var(--gilt-700)",
+        "display": "block",
+        "mask-image": "var(--illustration-image)",
+        "mask-position": "center",
+        "mask-repeat": "no-repeat",
+        "mask-size": "contain",
+        "opacity": "0.10",
+        "pointer-events": "none",
+        "position": "absolute",
+        "z-index": "var(--z-bg-illustration)",
+    }
+    for selector, (image, opacity) in EXPECTED_LIGHT_ILLUSTRATIONS.items():
+        assert css_rule_group_declarations(
+            css,
+            (f"{LIGHT_GUARD} {selector}",),
+        ) == {"--illustration-image": image, "opacity": opacity}
+
+
+def test_light_navbar_and_sidebar_use_paper_and_ink_without_dark_leakage():
+    css = light_css()
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .archive-navbar",),
+    ) == {
+        "background": "var(--paper-100) !important",
+        "border-bottom-color": "hsl(33 30% 60% / 0.30) !important",
+        "box-shadow": "none !important",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .archive-wordmark",),
+    ) == {
+        "color": "var(--ink-900)",
+        "font-family": "var(--font-display)",
+        "font-size": "1.25rem",
+        "font-weight": "600",
+        "letter-spacing": "0.06em",
+        "padding": "0.35rem 0.5rem",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .nav-sidebar",),
+    ) == {
+        "background": "var(--paper-100)",
+        "border-radius": "0 var(--radius-panel) var(--radius-panel) 0",
+        "box-shadow": "var(--shadow-parchment-raised)",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .nav-sidebar .list-group-item",),
+    ) == {
+        "background": "transparent",
+        "border-color": "hsl(33 30% 60% / 0.30)",
+        "color": "var(--ink-900)",
+    }
+
+
+def test_light_button_hierarchy_uses_rubric_wood_and_ink():
+    css = light_css()
+    primary = css_rule_group_declarations(
+        css,
+        (
+            f"{LIGHT_GUARD} .btn-brass",
+            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+        ),
+    )
+    assert primary == {
+        "--bs-btn-active-bg": "var(--rubric-700)",
+        "--bs-btn-active-border-color": "transparent",
+        "--bs-btn-active-color": "var(--paper-50)",
+        "--bs-btn-bg": "var(--rubric-500)",
+        "--bs-btn-border-color": "transparent",
+        "--bs-btn-color": "var(--paper-50)",
+        "--bs-btn-hover-bg": "var(--rubric-700)",
+        "--bs-btn-hover-border-color": "transparent",
+        "--bs-btn-hover-color": "var(--paper-50)",
+        "background-image": "linear-gradient(hsl(0 0% 100% / 0.12), transparent 40%)",
+        "border-radius": "var(--radius-button)",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .btn-ghost",),
+    ) == {
+        "background": "transparent",
+        "border": "1px solid transparent",
+        "border-radius": "var(--radius-button)",
+        "color": "var(--ink-700)",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .icon-button",),
+    )["color"] == "var(--ink-700) !important"
+    assert css_rule_group_declarations(
+        css,
+        (f'{LIGHT_GUARD} .icon-button[aria-pressed="true"]',),
+    ) == {"color": "var(--gilt-900) !important"}
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .icon-button:focus-visible",),
+    ) == {"color": "var(--ink-900) !important"}
+
+
+def test_light_inputs_dropdowns_badges_offcanvas_and_focus_match_contract():
+    css = light_css()
+    assert css_rule_group_declarations(
+        css,
+        (
+            f"{LIGHT_GUARD} .archive-dropdown",
+            f"{LIGHT_GUARD} .form-select",
+        ),
+    ) == {
+        "background-color": "var(--paper-200)",
+        "border": "1px solid hsl(33 30% 60% / 0.50)",
+        "border-radius": "var(--radius-button)",
+        "color": "var(--ink-900)",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .form-select",),
+    ) == {
+        "background-image": (
+            'url("data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' '
+            "viewBox=\'0 0 16 16\'%3e%3cpath fill=\'none\' stroke=\'%23654834\' "
+            "stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' "
+            "d=\'m2 5 6 6 6-6\'/%3e%3c/svg%3e\")"
+        )
+    }
+    assert css_rule_group_declarations(
+        css,
+        (
+            f"{LIGHT_GUARD} .dropdown-menu",
+            f"{LIGHT_GUARD} .browse-dropdown-menu",
+        ),
+    ) == {
+        "background": "var(--paper-100)",
+        "border-color": "hsl(33 30% 60% / 0.50)",
+        "border-radius": "var(--radius-button)",
+        "box-shadow": "var(--shadow-parchment-raised)",
+        "color": "var(--ink-900)",
+        "display": "block",
+        "opacity": "0",
+        "pointer-events": "none",
+        "transition": "opacity 180ms ease-in, visibility 0s linear 180ms",
+        "visibility": "hidden",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (
+            f"{LIGHT_GUARD} .form-control",
+            f"{LIGHT_GUARD} .input-group-text",
+        ),
+    ) == {
+        "background": "var(--paper-100)",
+        "border": "1px solid hsl(33 30% 60% / 0.50)",
+        "border-radius": "var(--radius-input)",
+        "color": "var(--ink-900)",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .archive-count-badge",),
+    ) == {
+        "background": "var(--paper-500) !important",
+        "border-radius": "var(--radius-pill)",
+        "color": "var(--paper-50)",
+        "font-size": "var(--text-caption)",
+        "font-variant-numeric": "tabular-nums",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .archive-category-badge",),
+    ) == {
+        "background": "hsl(33 30% 72% / 0.50) !important",
+        "border-radius": "var(--radius-pill)",
+        "color": "var(--ink-900) !important",
+        "font-size": "var(--text-caption)",
+        "letter-spacing": "0.04em",
+        "text-transform": "uppercase",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .offcanvas",),
+    ) == {
+        "--bs-offcanvas-bg": "var(--paper-100)",
+        "--bs-offcanvas-color": "var(--ink-900)",
+    }
+    focus = css_rule_group_declarations(
+        css,
+        (
+            f"{LIGHT_GUARD} .btn:focus-visible",
+            f"{LIGHT_GUARD} .icon-button:focus-visible",
+            f"{LIGHT_GUARD} .archive-dropdown:focus-visible",
+            f"{LIGHT_GUARD} .navbar-brand:focus-visible",
+        ),
+    )
+    assert focus == {
+        "border-color": "var(--gilt-900)",
+        "box-shadow": "var(--shadow-gilt-glow)",
+        "outline": "0",
+    }
+
+
+def test_light_scrollbars_motion_and_reduced_motion_match_contract():
+    css = light_css()
+    assert css_rule_group_declarations(css, ("::-webkit-scrollbar",)) == {
+        "height": "10px",
+        "width": "10px",
+    }
+    assert css_rule_group_declarations(css, ("::-webkit-scrollbar-track",)) == {
+        "background": "transparent"
+    }
+    assert css_rule_group_declarations(css, ("::-webkit-scrollbar-thumb",)) == {
+        "background": "var(--paper-400)",
+        "border": "2px solid var(--paper-50)",
+        "border-radius": "999px",
+    }
+    assert css_rule_group_declarations(css, ("*",)) == {
+        "scrollbar-color": "var(--paper-400) transparent",
+        "scrollbar-width": "thin",
+    }
+
+    control_motion = css_rule_group_declarations(
+        css,
+        (
+            f"{LIGHT_GUARD} button",
+            f"{LIGHT_GUARD} .btn",
+            f"{LIGHT_GUARD} input",
+            f"{LIGHT_GUARD} select",
+            f"{LIGHT_GUARD} textarea",
+            f"{LIGHT_GUARD} .btn-secondary-wood",
+            f"{LIGHT_GUARD} .btn-brass",
+            f"{LIGHT_GUARD} .btn-ghost",
+            f"{LIGHT_GUARD} .icon-button",
+            f"{LIGHT_GUARD} .archive-dropdown",
+            f"{LIGHT_GUARD} .form-control",
+            f"{LIGHT_GUARD} .form-select",
+            f"{LIGHT_GUARD} .navbar-brand",
+        ),
+    )
+    assert control_motion == {
+        "transition": (
+            "background-color 150ms ease, border-color 150ms ease, color 150ms ease"
+        )
+    }
+
+    reduced_blocks = css_block_bodies(css, "@media (prefers-reduced-motion: reduce)")
+    assert len(reduced_blocks) == 1
+    assert css_rule_group_declarations(
+        reduced_blocks[0],
+        (
+            f"{LIGHT_GUARD} *",
+            f"{LIGHT_GUARD} *::before",
+            f"{LIGHT_GUARD} *::after",
+        ),
+    ) == {
+        "animation-duration": "0.01ms !important",
+        "animation-iteration-count": "1 !important",
+        "scroll-behavior": "auto !important",
+        "transition-delay": "0s !important",
+        "transition-duration": "0.01ms !important",
+    }
+
+
+def test_light_css_forbids_light_attribute_selectors_and_pure_hex_colors():
+    css = light_css()
+    pure_hex = re.compile(r"(?i)(?<![0-9a-f])#(?:fff(?:fff)?|000(?:000)?)(?![0-9a-f])")
+
+    for selectors, declarations in iter_flat_declarations(css):
+        assert not any('[data-bs-theme="light"]' in selector for selector in selectors)
+        for selector in selectors:
+            if "data-bs-theme" in selector:
+                assert selector == LIGHT_GUARD or selector.startswith(f"{LIGHT_GUARD} ")
+        for property_name, value in declarations.items():
+            assert not pure_hex.search(value), (
+                f"{selectors!r} {property_name} uses forbidden pure color {value!r}"
+            )
+
+
+def test_light_small_controls_and_icons_use_ink_not_gilt():
+    css = light_css()
+    relevant_markers = (
+        ".btn",
+        ".icon-button",
+        ".archive-dropdown",
+        ".form-control",
+        ".form-select",
+        ".bi",
+    )
+    for selectors, declarations in iter_flat_declarations(css):
+        if not any(marker in selector for selector in selectors for marker in relevant_markers):
+            continue
+        for property_name in ("color", "--bs-btn-color", "--bs-btn-hover-color"):
+            value = declarations.get(property_name, "")
+            if "var(--gilt-" in value:
+                assert selectors == (
+                    f'{LIGHT_GUARD} .icon-button[aria-pressed="true"]',
+                ), (
+                    f"{selectors!r} uses gilt for small control/icon text: "
+                    f"{property_name}: {value}"
+                )
