@@ -88,10 +88,11 @@ EXPECTED_LIGHT_MATERIALS = {
     (".surface-leather",): {
         "background-color": "var(--paper-200)",
         "background-image": (
-            "linear-gradient(var(--paper-200), var(--paper-200)), "
+            "linear-gradient(rgb(226 213 198 / 0.72), "
+            "rgb(226 213 198 / 0.72)), "
             'url("/static/img/textures/leather-texture-light.png")'
         ),
-        "background-blend-mode": "multiply",
+        "background-blend-mode": "normal",
         "background-repeat": "repeat, repeat",
         "background-size": "auto, 380px",
         "border": "1px solid hsl(33 30% 65% / 0.45)",
@@ -1004,6 +1005,10 @@ def test_light_dashboard_and_page_header_use_old_book_hierarchy():
 
 def test_light_browse_search_overview_and_results_match_component_contract():
     css = light_css()
+    browse = read_text("static/js/pages/browse.js")
+    assert 'class="card surface-leather source-summary-panel mb-3"' in browse
+    assert 'class="list-group-item"' in browse
+    assert f"{LIGHT_GUARD} .source-summary-panel .card-body" not in css
     expected_rules = (
         (
             (f"{LIGHT_GUARD} .archive-page.archive-page-browse",),
@@ -1058,11 +1063,16 @@ def test_light_browse_search_overview_and_results_match_component_contract():
             },
         ),
         (
-            (
-                f"{LIGHT_GUARD} .ai-overview-panel .card-body",
-                f"{LIGHT_GUARD} .source-summary-panel .card-body",
-            ),
+            (f"{LIGHT_GUARD} .ai-overview-panel .card-body",),
             {"color": "var(--ink-700)"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .source-summary-panel .list-group-item",),
+            {
+                "background": "transparent",
+                "border-color": "hsl(33 30% 60% / 0.30)",
+                "color": "var(--ink-900)",
+            },
         ),
         (
             (f"{LIGHT_GUARD} .result-card",),
@@ -1120,6 +1130,31 @@ def test_light_browse_search_overview_and_results_match_component_contract():
     )
     for selectors, expected in expected_rules:
         assert css_rule_group_declarations(css, selectors) == expected
+
+
+def test_light_google_cse_shell_uses_parchment_instead_of_vendor_white():
+    css = light_css()
+    browse = read_text("static/js/pages/browse.js")
+    assert 'id="googleCseContainer"' in browse
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} #googleCseContainer .gsc-control-cse",),
+    ) == {"background": "transparent", "border": "0", "padding": "0"}
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} #googleCseContainer .gsc-input-box",),
+    ) == {
+        "background": "var(--paper-100)",
+        "border": "1px solid hsl(33 30% 60% / 0.50)",
+        "border-radius": "var(--radius-input)",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} #googleCseContainer input.gsc-input",),
+    ) == {
+        "background-color": "transparent !important",
+        "color": "var(--ink-900)",
+    }
 
 
 def test_light_source_tags_use_accessible_ink_at_caption_size():
@@ -1548,7 +1583,7 @@ def test_light_component_layouts_stack_cleanly_at_existing_breakpoints():
     assert css_rule_group_declarations(
         narrow[0],
         (f"{LIGHT_GUARD} .browse-search-input",),
-    ) == {"min-width": "0"}
+    ) == {"min-width": "0", "width": "100%"}
     assert css_rule_group_declarations(
         mobile[0],
         (f"{LIGHT_GUARD} .archive-page .archive-page-title",),

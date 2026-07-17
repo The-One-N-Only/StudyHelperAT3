@@ -3019,10 +3019,8 @@ TASK6_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
             f"{LIGHT_GUARD} .ai-overview-panel .card-title",
             f"{LIGHT_GUARD} .source-summary-panel .card-title",
         ),
-        (
-            f"{LIGHT_GUARD} .ai-overview-panel .card-body",
-            f"{LIGHT_GUARD} .source-summary-panel .card-body",
-        ),
+        (f"{LIGHT_GUARD} .ai-overview-panel .card-body",),
+        (f"{LIGHT_GUARD} .source-summary-panel .list-group-item",),
         (f"{LIGHT_GUARD} .result-card",),
         (
             f"{LIGHT_GUARD} .result-card:hover",

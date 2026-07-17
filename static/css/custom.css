@@ -265,13 +265,13 @@ body.nav-sidebar-open {
     display: none;
 }
 
-/* Daylight leather and wood stay visible beneath opaque parchment tints. */
+/* A translucent parchment wash keeps leather grain visible without darkening ink. */
 .surface-leather {
     background-color: var(--paper-200);
     background-image:
-        linear-gradient(var(--paper-200), var(--paper-200)),
+        linear-gradient(rgb(226 213 198 / 0.72), rgb(226 213 198 / 0.72)),
         url("/static/img/textures/leather-texture-light.png");
-    background-blend-mode: multiply;
+    background-blend-mode: normal;
     background-repeat: repeat, repeat;
     background-size: auto, 380px;
     border: 1px solid hsl(33 30% 65% / 0.45);
@@ -688,6 +688,24 @@ p {
     box-shadow: var(--shadow-gilt-glow);
 }
 
+/* Google CSE injects white defaults after page load; keep its light shell on parchment. */
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-control-cse {
+    background: transparent;
+    border: 0;
+    padding: 0;
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer .gsc-input-box {
+    background: var(--paper-100);
+    border: 1px solid hsl(33 30% 60% / 0.50);
+    border-radius: var(--radius-input);
+}
+
+:root:not([data-bs-theme="dark"]) #googleCseContainer input.gsc-input {
+    background-color: transparent !important;
+    color: var(--ink-900);
+}
+
 :root:not([data-bs-theme="dark"]) .ai-overview-panel,
 :root:not([data-bs-theme="dark"]) .source-summary-panel {
     margin-bottom: 1rem;
@@ -702,9 +720,14 @@ p {
     letter-spacing: 0.02em;
 }
 
-:root:not([data-bs-theme="dark"]) .ai-overview-panel .card-body,
-:root:not([data-bs-theme="dark"]) .source-summary-panel .card-body {
+:root:not([data-bs-theme="dark"]) .ai-overview-panel .card-body {
     color: var(--ink-700);
+}
+
+:root:not([data-bs-theme="dark"]) .source-summary-panel .list-group-item {
+    background: transparent;
+    border-color: hsl(33 30% 60% / 0.30);
+    color: var(--ink-900);
 }
 
 :root:not([data-bs-theme="dark"]) .result-card {
@@ -1185,6 +1208,7 @@ p {
 
     :root:not([data-bs-theme="dark"]) .browse-search-input {
         min-width: 0;
+        width: 100%;
     }
 
 }
