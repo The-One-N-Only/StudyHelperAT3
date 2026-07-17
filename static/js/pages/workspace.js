@@ -12,6 +12,8 @@ let alexanderMessages = [
     { role: 'agent', text: 'Hi, I’m Alexander. Ask a question and I’ll answer using your workspace and available AI sources.' }
 ];
 
+let alexanderRequestPending = false;
+
 export function initWorkspace(root) {
     pageRoot = root;
     currentWorkspaceId = window.WORKSPACE_ID;
@@ -106,7 +108,7 @@ function renderWorkspaceDetail() {
                                             <input id="alexanderChatInput" type="text" class="form-control chat-input" placeholder="Ask Alexander a question...">
                                             <button class="btn btn-primary btn-brass" id="alexanderSendBtn" type="button">Send</button>
                                         </div>
-                                        <small class="text-muted mt-2">Alexander is a local placeholder until your AI key is configured.</small>
+                                        <small class="text-muted mt-2">Alexander is a hosted research assistant that uses your workspace and available sources.</small>
                                     </div>
                                 </div>
                             </div>
@@ -448,11 +450,20 @@ function renameWorkspaceDialog() {
 }
 
 async function sendAlexanderMessage() {
+    if (alexanderRequestPending) {
+        return;
+    }
+
     const input = pageRoot.querySelector('#alexanderChatInput');
+    const sendButton = pageRoot.querySelector('#alexanderSendBtn');
     const value = input?.value.trim();
     if (!value) {
         return;
     }
+
+    alexanderRequestPending = true;
+    input.disabled = true;
+    if (sendButton) sendButton.disabled = true;
 
     alexanderMessages.push({ role: 'user', text: value });
     renderAlexanderMessages();
@@ -462,15 +473,28 @@ async function sendAlexanderMessage() {
     alexanderMessages.push(loadingMessage);
     renderAlexanderMessages();
 
-    const result = await studyHelperAI.chat(value);
-    alexanderMessages = alexanderMessages.filter((m) => m !== loadingMessage);
-
-    if (result.status) {
-        alexanderMessages.push({ role: 'agent', text: result.response });
-    } else {
-        alexanderMessages.push({ role: 'agent', text: `Alexander could not answer right now: ${result.error}` });
+    try {
+        const result = await studyHelperAI.chat(value);
+        if (result.status) {
+            alexanderMessages.push({ role: 'agent', text: result.response });
+        } else {
+            alexanderMessages.push({
+                role: 'agent',
+                text: result.error || 'Alexander could not answer right now. Try again shortly.'
+            });
+        }
+    } catch (_) {
+        alexanderMessages.push({
+            role: 'agent',
+            text: 'Alexander could not answer right now. Try again shortly.'
+        });
+    } finally {
+        alexanderMessages = alexanderMessages.filter((message) => message !== loadingMessage);
+        alexanderRequestPending = false;
+        input.disabled = false;
+        if (sendButton) sendButton.disabled = false;
+        renderAlexanderMessages();
     }
-    renderAlexanderMessages();
 }
 
 function renderAlexanderMessages() {

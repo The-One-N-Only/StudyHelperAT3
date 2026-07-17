@@ -3,20 +3,21 @@ import logging
 from typing import Optional
 from urllib.parse import quote
 
+import anthropic
+
 import src.db as db
-import src.local_ai as local_ai
 import src.proxy as proxy
 import src.search as search
 import src.whitelist as whitelist
 import src.pubmed as pubmed
 
+AI_NOT_CONFIGURED_ERROR = (
+    "Alexander is not configured. Add ANTHROPIC_API_KEY and restart StudyLib."
+)
+AI_PROVIDER_ERROR = "Alexander could not reach the AI service. Try again shortly."
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8")
-USE_LOCAL_AI = os.getenv("USE_LOCAL_AI", "1") != "0"
-
-if not USE_LOCAL_AI and ANTHROPIC_API_KEY:
-    import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 def search_files_for_context(user_id: int, query: str, num_results: int = 5) -> dict:
     """
@@ -172,6 +173,13 @@ def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optio
     Returns:
         Dict with answer, sources used, and status
     """
+    if client is None:
+        return {
+            "status": False,
+            "error": AI_NOT_CONFIGURED_ERROR,
+            "answer": None
+        }
+
     try:
         # Collect context from files
         file_context = search_files_for_context(user_id, prompt, num_results=3)
@@ -185,29 +193,26 @@ def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optio
                 context_text += web_context["context"]
                 all_sources.extend(web_context["sources"])
         
-        if USE_LOCAL_AI or not ANTHROPIC_API_KEY:
-            answer_text = local_ai.answer_with_context(prompt, context_text, atn=atn)
-        else:
-            system_prompt = """You are an academic research assistant for secondary school students. 
-You provide accurate, well-reasoned answers based on the information provided. 
+        system_prompt = """You are an academic research assistant for secondary school students.
+You provide accurate, well-reasoned answers based on the information provided.
 You never fabricate information or cite sources not provided in the context.
 If the provided information is insufficient to answer the question, clearly state that.
 Format your answer clearly with key points where appropriate."""
-            
-            if atn:
-                system_prompt += f"\n\nAssessment Task Context: {atn}"
-            
-            user_message = f"{context_text}\n---\n\nQuestion: {prompt}\n\nPlease answer this question based on the above information."
-            
-            message = client.messages.create(
-                model=ANTHROPIC_MODEL,
-                max_tokens=2048,
-                system=system_prompt,
-                messages=[
-                    {"role": "user", "content": user_message}
-                ]
-            )
-            answer_text = message.content[0].text
+
+        if atn:
+            system_prompt += f"\n\nAssessment Task Context: {atn}"
+
+        user_message = f"{context_text}\n---\n\nQuestion: {prompt}\n\nPlease answer this question based on the above information."
+
+        message = client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=2048,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_message}
+            ]
+        )
+        answer_text = message.content[0].text
         
         logging.info(f"User {user_id} received AI answer for prompt: {prompt[:50]}")
         
@@ -218,11 +223,11 @@ Format your answer clearly with key points where appropriate."""
             "context_used": context_text
         }
     
-    except Exception as e:
-        logging.error(f"Error answering prompt for user {user_id}: {str(e)}")
+    except Exception:
+        logging.exception("Anthropic request failed while answering prompt for user %s", user_id)
         return {
             "status": False,
-            "error": f"Failed to generate answer: {str(e)}",
+            "error": AI_PROVIDER_ERROR,
             "answer": None
         }
 
@@ -239,6 +244,12 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None) -
     Returns:
         Dict with response and sources used
     """
+    if client is None:
+        return {
+            "status": False,
+            "error": AI_NOT_CONFIGURED_ERROR
+        }
+
     try:
         # Get initial context from the last user message
         last_user_message = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
@@ -252,27 +263,24 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None) -
             context_text += web_context["context"]
             all_sources.extend(web_context["sources"])
         
-        if USE_LOCAL_AI or not ANTHROPIC_API_KEY:
-            response_text = local_ai.chat_with_context(messages, context_text, atn=atn)
-        else:
-            system_prompt = """You are Alexander, an academic research assistant for secondary school students.
+        system_prompt = """You are Alexander, an academic research assistant for secondary school students.
 You provide accurate, well-reasoned answers based on the information provided.
 You never fabricate information or cite sources not provided in the context.
 Engage naturally in conversation while maintaining academic rigor."""
-            
-            if atn:
-                system_prompt += f"\n\nAssessment Task Context: {atn}"
-            
-            if context_text:
-                system_prompt += f"\n\nContext from your files:\n{context_text}"
-            
-            response = client.messages.create(
-                model=ANTHROPIC_MODEL,
-                max_tokens=2048,
-                system=system_prompt,
-                messages=messages
-            )
-            response_text = response.content[0].text
+
+        if atn:
+            system_prompt += f"\n\nAssessment Task Context: {atn}"
+
+        if context_text:
+            system_prompt += f"\n\nContext from your files:\n{context_text}"
+
+        response = client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=2048,
+            system=system_prompt,
+            messages=messages
+        )
+        response_text = response.content[0].text
         
         logging.info(f"User {user_id} had multi-turn conversation")
         
@@ -282,9 +290,9 @@ Engage naturally in conversation while maintaining academic rigor."""
             "sources": all_sources
         }
     
-    except Exception as e:
-        logging.error(f"Error in chat for user {user_id}: {str(e)}")
+    except Exception:
+        logging.exception("Anthropic chat request failed for user %s", user_id)
         return {
             "status": False,
-            "error": f"Failed to generate response: {str(e)}"
+            "error": AI_PROVIDER_ERROR
         }

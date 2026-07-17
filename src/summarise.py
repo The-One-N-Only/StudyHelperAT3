@@ -4,15 +4,13 @@ import json
 import logging
 import src.whitelist as whitelist
 import src.proxy as proxy
-import src.local_ai as local_ai
 
+AI_NOT_CONFIGURED_ERROR = (
+    "Alexander is not configured. Add ANTHROPIC_API_KEY and restart StudyLib."
+)
+AI_PROVIDER_ERROR = "Alexander could not reach the AI service. Try again shortly."
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_SUMMARISE_MODEL = os.getenv("ANTHROPIC_SUMMARISE_MODEL", "claude-haiku-4-5-20251001")
-USE_LOCAL_AI = os.getenv("USE_LOCAL_AI", "1") != "0"
-
-
-def _use_local():
-    return USE_LOCAL_AI or not ANTHROPIC_API_KEY
 
 
 def _anthropic_request(prompt: str):
@@ -54,7 +52,10 @@ def _parse_ai_json_response(content: str) -> dict:
     return {}
 
 
-def summarise_url(url, title, atn=None, user_id=None):
+def summarise_url(url, title=None, atn=None) -> dict:
+    if not ANTHROPIC_API_KEY:
+        return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
+
     if not whitelist.is_allowed(url):
         raise ValueError("URL not allowed")
 
@@ -64,10 +65,7 @@ def summarise_url(url, title, atn=None, user_id=None):
 
     text = fetched.get("text", "")
     if len(text) < 100:
-        return {"status": False, "error": "This source does not contain sufficient information to generate a summary."}
-
-    if _use_local():
-        return local_ai.summarize_source(text, title or fetched.get("title", ""), atn)
+        return {"status": False, "error": "This source contains insufficient information to generate a summary."}
 
     user_prompt = f"Title: {title}\n\nContent:\n{text[:4000]}\n\n"
     if atn:
@@ -80,15 +78,16 @@ def summarise_url(url, title, atn=None, user_id=None):
         if not result:
             raise ValueError('Unable to parse model response')
         result["status"] = True
-        logging.info(f"User {user_id} requested AI summary for {url}")
         return result
-    except requests.Timeout:
-        return {"status": False, "error": "Summarisation timed out"}
     except Exception:
-        return {"status": False, "error": "Summarisation error"}
+        logging.exception("Anthropic request failed while summarising URL")
+        return {"status": False, "error": AI_PROVIDER_ERROR}
 
 
-def summarise_file(file_id, user_id, atn=None):
+def summarise_file(file_id, user_id, atn=None) -> dict:
+    if not ANTHROPIC_API_KEY:
+        return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
+
     import src.db as db
     files = db.get_uploaded_files(user_id)
     file_data = next((f for f in files if f["id"] == file_id), None)
@@ -97,10 +96,7 @@ def summarise_file(file_id, user_id, atn=None):
 
     text = file_data["extracted_text"]
     if len(text) < 100:
-        return {"status": False, "error": "This file does not contain sufficient information to generate a summary."}
-
-    if _use_local():
-        return local_ai.summarize_source(text, file_data.get("filename", ""), atn)
+        return {"status": False, "error": "This file contains insufficient information to generate a summary."}
 
     user_prompt = f"File: {file_data['filename']}\n\nContent:\n{text[:6000]}\n\n"
     if atn:
@@ -115,15 +111,14 @@ def summarise_file(file_id, user_id, atn=None):
         result["status"] = True
         logging.info(f"User {user_id} requested AI summary for file {file_id}")
         return result
-    except requests.Timeout:
-        return {"status": False, "error": "Summarisation timed out"}
     except Exception:
-        return {"status": False, "error": "Summarisation error"}
+        logging.exception("Anthropic request failed while summarising file")
+        return {"status": False, "error": AI_PROVIDER_ERROR}
 
 
-def summarise_search_results(query: str, results: list[dict], atn: str | None = None) -> str:
-    if _use_local():
-        return local_ai.summarize_search_results(query, results, atn)
+def summarise_search_results(query: str, results: list[dict], atn: str | None = None) -> dict:
+    if not ANTHROPIC_API_KEY:
+        return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
     prompt = "Briefly summarise these search results in 2-3 sentences. Be concise and factual.\n\n"
     if atn:
@@ -137,8 +132,7 @@ def summarise_search_results(query: str, results: list[dict], atn: str | None = 
 
     try:
         content = _anthropic_request(prompt)
-        return content.strip()
-    except requests.Timeout:
-        return "Failed to summarise search results: request timed out."
+        return {"status": True, "summary": content.strip()}
     except Exception:
-        return "Failed to summarise search results."
+        logging.exception("Anthropic request failed while summarising search results")
+        return {"status": False, "error": AI_PROVIDER_ERROR}

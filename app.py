@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template, session, redirect, u
 from flask_session import Session
 import os
 from dotenv import load_dotenv
+load_dotenv()
 import io
 import src.db as db
 import src.search as search
@@ -12,7 +13,6 @@ import src.citations as citations
 import src.files as files
 import src.export as export
 import src.answer as answer
-import src.local_ai as local_ai
 import json
 import uuid
 import mimetypes
@@ -24,8 +24,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 import logging
 from flask import g
-
-load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -350,7 +348,7 @@ def browse_summary():
     try:
         summary = summarise.summarise_search_results(query, results, atn)
         logging.info(f"User {user_id} requested search summary for '{query}'")
-        return jsonify({'status': True, 'summary': summary})
+        return jsonify(summary)
     except Exception as e:
         logging.error(f"Search summary failed for user {user_id}: {str(e)}")
         return jsonify({'status': False, 'error': 'Search summarisation failed'}), 500
@@ -394,7 +392,7 @@ def api_summarise():
     
     if url:
         try:
-            result = summarise.summarise_url(url, data.get('title', ''), atn, user_id)
+            result = summarise.summarise_url(url, data.get('title', ''), atn)
         except ValueError:
             return jsonify({'status': False, 'error': 'URL not allowed'}), 403
     elif file_id:
