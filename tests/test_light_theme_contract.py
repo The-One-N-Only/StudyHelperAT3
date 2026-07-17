@@ -938,3 +938,634 @@ def test_light_small_controls_and_icons_use_ink_not_gilt():
                     f"{selectors!r} uses gilt for small control/icon text: "
                     f"{property_name}: {value}"
                 )
+
+
+def test_light_dashboard_and_page_header_use_old_book_hierarchy():
+    css = light_css()
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .archive-page-title",),
+    ) == {
+        "color": "var(--ink-900)",
+        "font-family": "var(--font-display)",
+        "font-size": "var(--text-display-lg)",
+        "font-weight": "600",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .home-search-group",),
+    ) == {"max-width": "560px", "width": "100%"}
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .workspace-card",),
+    ) == {
+        "min-height": "220px",
+        "transition": (
+            "border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease"
+        ),
+    }
+    assert css_rule_group_declarations(
+        css,
+        (
+            f"{LIGHT_GUARD} .workspace-card:not(.workspace-card-add):hover",
+            f"{LIGHT_GUARD} .workspace-card:not(.workspace-card-add):focus-within",
+        ),
+    ) == {
+        "border-color": "var(--gilt-900)",
+        "box-shadow": "var(--shadow-gilt-glow)",
+        "transform": "translateY(-2px)",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .workspace-card-add",),
+    ) == {
+        "background": "var(--paper-50)",
+        "border": "2px dashed hsl(33 30% 55% / 0.45)",
+        "border-radius": "var(--radius-panel)",
+        "color": "var(--ink-700) !important",
+        "cursor": "pointer",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .workspace-card-add h5",),
+    ) == {"color": "var(--ink-700)"}
+    assert css_rule_group_declarations(
+        css,
+        (
+            f"{LIGHT_GUARD} .workspace-card-add:hover",
+            f"{LIGHT_GUARD} .workspace-card-add:focus-within",
+        ),
+    ) == {
+        "background": "var(--paper-100)",
+        "border-color": "var(--gilt-900)",
+        "box-shadow": "var(--shadow-gilt-glow)",
+    }
+
+
+def test_light_browse_search_overview_and_results_match_component_contract():
+    css = light_css()
+    expected_rules = (
+        (
+            (f"{LIGHT_GUARD} .archive-page.archive-page-browse",),
+            {"padding": "0 0 2rem"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .browse-search-shell",),
+            {
+                "background": "var(--paper-100) !important",
+                "border-bottom": "1px solid hsl(33 30% 60% / 0.30) !important",
+                "position": "relative",
+                "z-index": "calc(var(--z-content) + 1)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .browse-search-group",),
+            {"margin-inline": "auto", "max-width": "960px"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .browse-search-input",),
+            {
+                "background": "var(--paper-100)",
+                "border-color": "hsl(33 30% 60% / 0.50)",
+                "color": "var(--ink-900)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .browse-search-input:focus",),
+            {
+                "background": "var(--paper-100)",
+                "border-color": "var(--gilt-900)",
+                "box-shadow": "var(--shadow-gilt-glow)",
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .ai-overview-panel",
+                f"{LIGHT_GUARD} .source-summary-panel",
+            ),
+            {"margin-bottom": "1rem", "padding": "1.25rem"},
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .ai-overview-panel .card-title",
+                f"{LIGHT_GUARD} .source-summary-panel .card-title",
+            ),
+            {
+                "color": "var(--ink-900)",
+                "font-family": "var(--font-display)",
+                "font-size": "var(--text-display-sm)",
+                "letter-spacing": "0.02em",
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .ai-overview-panel .card-body",
+                f"{LIGHT_GUARD} .source-summary-panel .card-body",
+            ),
+            {"color": "var(--ink-700)"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .result-card",),
+            {
+                "border-radius": "var(--radius-panel) !important",
+                "box-shadow": "var(--shadow-parchment-raised) !important",
+                "overflow": "hidden",
+                "transition": (
+                    "border-color 150ms ease, box-shadow 150ms ease, "
+                    "transform 150ms ease"
+                ),
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .result-card:hover",
+                f"{LIGHT_GUARD} .result-card:focus-within",
+            ),
+            {
+                "border-color": "var(--gilt-900)",
+                "box-shadow": "var(--shadow-gilt-glow) !important",
+                "transform": "translateY(-2px)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .result-card img",),
+            {"filter": "none"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .result-card .card-title",),
+            {"color": "var(--ink-900)"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .result-card .card-text",),
+            {
+                "-webkit-box-orient": "vertical",
+                "-webkit-line-clamp": "2",
+                "color": "var(--ink-700)",
+                "display": "-webkit-box",
+                "overflow": "hidden",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .result-card-actions",),
+            {"display": "flex", "gap": "0.5rem"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .result-card .save-btn",),
+            {"padding": "0.25rem !important"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .result-card .save-btn:hover",),
+            {"color": "var(--rubric-500) !important"},
+        ),
+    )
+    for selectors, expected in expected_rules:
+        assert css_rule_group_declarations(css, selectors) == expected
+
+
+def test_light_source_tags_use_accessible_ink_at_caption_size():
+    css = light_css()
+    for selector in (".result-source", ".workspace-source-name"):
+        assert css_rule_group_declarations(
+            css,
+            (f"{LIGHT_GUARD} {selector}",),
+        ) == {
+            "color": "var(--ink-700) !important",
+            "font-size": "var(--text-caption)",
+        }
+
+
+def test_light_upload_dropzone_and_file_list_match_component_contract():
+    css = light_css()
+    expected_rules = (
+        (
+            (f"{LIGHT_GUARD} .upload-content",),
+            {"margin-inline": "auto", "max-width": "700px"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .upload-panel",),
+            {"background": "transparent", "border": "0"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .upload-zone",),
+            {
+                "border": "2px dashed hsl(33 30% 55% / 0.50)",
+                "border-radius": "var(--radius-panel)",
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .upload-zone:hover",
+                f"{LIGHT_GUARD} .upload-zone.dragover",
+            ),
+            {
+                "background-color": "var(--paper-300)",
+                "border-color": "var(--gilt-900)",
+                "box-shadow": "var(--shadow-gilt-glow)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .archive-upload-icon",),
+            {"color": "var(--ink-700) !important", "font-size": "3rem"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .upload-actions",),
+            {"color": "var(--ink-900)"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .file-list-panel",),
+            {"overflow": "hidden"},
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .file-list-panel .card-header",
+                f"{LIGHT_GUARD} .file-list-panel .list-group-item",
+            ),
+            {
+                "background": "transparent",
+                "border-color": "hsl(33 30% 60% / 0.30)",
+                "color": "var(--ink-900)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .file-list-panel .flex-grow-1",),
+            {"min-width": "0"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .file-icon",),
+            {
+                "color": "var(--ink-700) !important",
+                "flex": "0 0 auto",
+                "font-size": "1.35rem",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .file-icon-docx",),
+            {"color": "var(--folio-blue) !important"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .file-icon-pdf",),
+            {"color": "var(--rubric-700) !important"},
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .file-icon-txt",
+                f"{LIGHT_GUARD} .file-icon-image",
+                f"{LIGHT_GUARD} .file-icon-xls",
+                f"{LIGHT_GUARD} .file-icon-xlsx",
+            ),
+            {"color": "var(--ink-700) !important"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .file-size",),
+            {"font-variant-numeric": "tabular-nums"},
+        ),
+        (
+            (f"{LIGHT_GUARD} #filesList:empty",),
+            {
+                "display": "block",
+                "min-height": "190px",
+                "padding": "1.25rem",
+                "text-align": "center",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} #filesList:empty::before",),
+            {
+                "background-color": "var(--gilt-700)",
+                "content": '""',
+                "display": "block",
+                "height": "112px",
+                "margin": "0 auto 0.5rem",
+                "mask-image": 'url("/static/img/illustrations/open-book.svg")',
+                "mask-position": "center",
+                "mask-repeat": "no-repeat",
+                "mask-size": "contain",
+                "opacity": "0.12",
+                "pointer-events": "none",
+                "width": "160px",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} #filesList:empty::after",),
+            {
+                "color": "var(--ink-700)",
+                "content": '"No files uploaded yet."',
+                "display": "block",
+            },
+        ),
+    )
+    for selectors, expected in expected_rules:
+        assert css_rule_group_declarations(css, selectors) == expected
+
+
+def test_light_workspace_panels_tabs_sources_notes_and_preview_match_contract():
+    css = light_css()
+    expected_rules = (
+        (
+            (
+                f"{LIGHT_GUARD} .workspace-main-panel",
+                f"{LIGHT_GUARD} .workspace-right-panel",
+            ),
+            {"min-height": "680px"},
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .workspace-main-panel .card-header",
+                f"{LIGHT_GUARD} .workspace-right-panel .card-header",
+            ),
+            {
+                "background": "transparent",
+                "border-color": "hsl(33 30% 60% / 0.30)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .quick-note-input",),
+            {
+                "background": "transparent",
+                "border-color": "transparent",
+                "color": "var(--ink-900)",
+                "resize": "vertical",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .quick-note-input:focus",),
+            {
+                "background": "transparent",
+                "border-color": "var(--gilt-900)",
+                "box-shadow": "var(--shadow-gilt-glow)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .source-preview-shell",),
+            {
+                "background": "var(--paper-100) !important",
+                "border-color": "hsl(33 30% 60% / 0.30) !important",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .source-preview-content",),
+            {
+                "background": "var(--paper-100) !important",
+                "border-color": "hsl(33 30% 60% / 0.30) !important",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link",),
+            {
+                "background": "transparent",
+                "color": "var(--ink-700)",
+                "transition": "background 150ms ease, color 150ms ease",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link:hover",),
+            {
+                "background": "hsl(33 30% 72% / 0.35)",
+                "color": "var(--ink-900)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link:focus-visible",),
+            {"box-shadow": "var(--shadow-gilt-glow)", "outline": "0"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link.active",),
+            {
+                "background": "var(--rubric-50)",
+                "color": "var(--rubric-700)",
+                "font-weight": "600",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .workspace-source-item",),
+            {
+                "background": "transparent",
+                "border-color": "hsl(33 30% 60% / 0.30)",
+                "color": "var(--ink-900)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .workspace-source-item h6",),
+            {"color": "var(--ink-900)"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .workspace-source-item:hover",),
+            {"background": "var(--paper-100)", "color": "var(--ink-900)"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .workspace-source-item:focus-visible",),
+            {"box-shadow": "var(--shadow-gilt-glow)", "outline": "0"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .workspace-source-item.active",),
+            {
+                "background": "hsl(33 30% 72% / 0.30)",
+                "border-left": "3px solid var(--gilt-900)",
+                "box-shadow": "var(--shadow-gilt-glow)",
+                "color": "var(--ink-900)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .note-item",),
+            {
+                "background-color": "var(--paper-100)",
+                "background-image": "none",
+                "color": "var(--ink-900)",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .note-icon-light",),
+            {"display": "none"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .note-icon-dark",),
+            {
+                "color": "var(--ink-700) !important",
+                "display": "inline-block !important",
+            },
+        ),
+    )
+    for selectors, expected in expected_rules:
+        assert css_rule_group_declarations(css, selectors) == expected
+
+
+def test_light_alexander_chat_uses_asymmetric_paper_and_rubric_bubbles():
+    css = light_css()
+    expected_rules = (
+        (
+            (f"{LIGHT_GUARD} .chat-messages",),
+            {
+                "background": "var(--paper-200)",
+                "border-color": "hsl(33 30% 60% / 0.30) !important",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .chat-message",),
+            {
+                "color": "var(--ink-900) !important",
+                "max-width": "min(82%, 34rem)",
+                "padding": "0.8rem 1rem !important",
+                "position": "relative",
+                "width": "fit-content",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .chat-row-agent",),
+            {"margin-left": "2.9rem", "margin-right": "auto"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .chat-row-user",),
+            {"margin-left": "auto"},
+        ),
+        (
+            (f"{LIGHT_GUARD} .chat-message-agent",),
+            {
+                "background": "var(--paper-100) !important",
+                "border-radius": "18px 22px 16px 6px !important",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .chat-message-user",),
+            {
+                "background": "var(--rubric-50) !important",
+                "border-radius": "22px 18px 6px 16px !important",
+                "color": "var(--rubric-700) !important",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .chat-avatar::before",),
+            {
+                "align-items": "center",
+                "background": "var(--paper-300)",
+                "border": "1px solid hsl(33 30% 60% / 0.40)",
+                "border-radius": "50%",
+                "bottom": "0",
+                "color": "var(--ink-700)",
+                "content": r'"\2699"',
+                "display": "flex",
+                "height": "2.25rem",
+                "justify-content": "center",
+                "left": "-2.9rem",
+                "line-height": "1",
+                "position": "absolute",
+                "width": "2.25rem",
+            },
+        ),
+        (
+            (
+                f"{LIGHT_GUARD} .chat-message-agent::after",
+                f"{LIGHT_GUARD} .chat-message-user::after",
+            ),
+            {
+                "border-style": "solid",
+                "bottom": "0.3rem",
+                "content": '""',
+                "position": "absolute",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .chat-message-agent::after",),
+            {
+                "border-color": "transparent var(--paper-100) transparent transparent",
+                "border-width": "0.45rem 0.55rem 0.45rem 0",
+                "left": "-0.5rem",
+            },
+        ),
+        (
+            (f"{LIGHT_GUARD} .chat-message-user::after",),
+            {
+                "border-color": "transparent transparent transparent var(--rubric-50)",
+                "border-width": "0.45rem 0 0.45rem 0.55rem",
+                "right": "-0.5rem",
+            },
+        ),
+    )
+    for selectors, expected in expected_rules:
+        assert css_rule_group_declarations(css, selectors) == expected
+
+
+def test_light_component_layouts_stack_cleanly_at_existing_breakpoints():
+    css = light_css()
+    tablet = css_block_bodies(css, "@media screen and (max-width: 991.98px)")
+    narrow = css_block_bodies(css, "@media screen and (max-width: 767.98px)")
+    mobile = css_block_bodies(css, "@media screen and (max-width: 575.98px)")
+    assert len(tablet) == len(narrow) == len(mobile) == 1
+
+    assert css_rule_group_declarations(
+        tablet[0],
+        (
+            f"{LIGHT_GUARD} .archive-page-workspace .workspace-main-panel",
+            f"{LIGHT_GUARD} .archive-page-workspace .workspace-right-panel",
+        ),
+    ) == {"min-height": "auto"}
+    assert css_rule_group_declarations(
+        tablet[0],
+        (f"{LIGHT_GUARD} .archive-page-workspace .resizable-panel",),
+    ) == {
+        "max-width": "none",
+        "min-width": "0",
+        "resize": "none",
+        "width": "100%",
+    }
+    assert css_rule_group_declarations(
+        narrow[0],
+        (f"{LIGHT_GUARD} .browse-results-layout",),
+    ) == {"flex-direction": "column", "height": "auto !important"}
+    assert css_rule_group_declarations(
+        narrow[0],
+        (f"{LIGHT_GUARD} #sidebarContainer.browse-sidebar",),
+    ) == {
+        "border-bottom": "1px solid hsl(33 30% 60% / 0.30)",
+        "border-right": "0 !important",
+        "max-width": "none",
+        "min-width": "0",
+        "overflow-y": "visible !important",
+        "width": "100% !important",
+    }
+    assert css_rule_group_declarations(
+        narrow[0],
+        (f"{LIGHT_GUARD} .browse-search-group",),
+    ) == {
+        "align-items": "stretch",
+        "display": "grid",
+        "grid-template-columns": "1fr auto auto",
+    }
+    assert css_rule_group_declarations(
+        narrow[0],
+        (f"{LIGHT_GUARD} .browse-results-pane",),
+    ) == {"overflow-y": "visible !important", "width": "100%"}
+    assert css_rule_group_declarations(
+        narrow[0],
+        (
+            f"{LIGHT_GUARD} .browse-results-row .col",
+            f"{LIGHT_GUARD} .browse-results-row .result-card",
+        ),
+    ) == {"min-width": "0", "width": "100%"}
+    assert css_rule_group_declarations(
+        narrow[0],
+        (f"{LIGHT_GUARD} .browse-search-group .input-group-text",),
+    ) == {"display": "none"}
+    assert css_rule_group_declarations(
+        narrow[0],
+        (f"{LIGHT_GUARD} .browse-search-input",),
+    ) == {"min-width": "0"}
+    assert css_rule_group_declarations(
+        mobile[0],
+        (f"{LIGHT_GUARD} .archive-page .archive-page-title",),
+    ) == {"font-size": "1.65rem"}
+    assert css_rule_group_declarations(
+        mobile[0],
+        (f"{LIGHT_GUARD} .upload-zone",),
+    ) == {"padding": "2.5rem 1.25rem !important"}
+    assert css_rule_group_declarations(
+        mobile[0],
+        (f"{LIGHT_GUARD} .archive-page-home .workspace-card",),
+    ) == {"min-height": "190px"}
+    assert css_rule_group_declarations(
+        mobile[0],
+        (f"{LIGHT_GUARD} .chat-message",),
+    ) == {"max-width": "88%"}
+    assert css_rule_group_declarations(
+        mobile[0],
+        (f"{LIGHT_GUARD} .chat-message-agent",),
+    ) == {"max-width": "calc(88% - 2.9rem)"}

@@ -269,6 +269,20 @@ TASK5_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
         (".workspace-card",),
         (".workspace-card:hover",),
         (".workspace-card-add",),
+        (f"{LIGHT_GUARD} .archive-page-title",),
+        (f"{LIGHT_GUARD} .home-search-group",),
+        (f"{LIGHT_GUARD} .workspace-card",),
+        (
+            f"{LIGHT_GUARD} .workspace-card:not(.workspace-card-add):hover",
+            f"{LIGHT_GUARD} .workspace-card:not(.workspace-card-add):focus-within",
+        ),
+        (f"{LIGHT_GUARD} .workspace-card-add",),
+        (f"{LIGHT_GUARD} .workspace-card-add h5",),
+        (
+            f"{LIGHT_GUARD} .workspace-card-add:hover",
+            f"{LIGHT_GUARD} .workspace-card-add:focus-within",
+        ),
+        (f"{LIGHT_GUARD} .archive-page.archive-page-browse",),
         (f"{LIGHT_GUARD} .archive-page",),
         (f"{LIGHT_GUARD} .archive-content",),
         (
@@ -281,6 +295,8 @@ TASK5_ALLOWED_THEME_NEUTRAL_SELECTOR_GROUPS = frozenset(
             f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
             f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
         ),
+        (f"{LIGHT_GUARD} .archive-page .archive-page-title",),
+        (f"{LIGHT_GUARD} .archive-page-home .workspace-card",),
     }
 )
 EXPECTED_DARK_ICON_COLORS = {
@@ -2993,6 +3009,32 @@ TASK6_DARK_ONLY_CLASSES = (
 )
 TASK6_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
     {
+        (f"{LIGHT_GUARD} .archive-page.archive-page-browse",),
+        (f"{LIGHT_GUARD} .browse-search-shell",),
+        (
+            f"{LIGHT_GUARD} .ai-overview-panel",
+            f"{LIGHT_GUARD} .source-summary-panel",
+        ),
+        (
+            f"{LIGHT_GUARD} .ai-overview-panel .card-title",
+            f"{LIGHT_GUARD} .source-summary-panel .card-title",
+        ),
+        (
+            f"{LIGHT_GUARD} .ai-overview-panel .card-body",
+            f"{LIGHT_GUARD} .source-summary-panel .card-body",
+        ),
+        (f"{LIGHT_GUARD} .result-card",),
+        (
+            f"{LIGHT_GUARD} .result-card:hover",
+            f"{LIGHT_GUARD} .result-card:focus-within",
+        ),
+        (f"{LIGHT_GUARD} .result-card img",),
+        (f"{LIGHT_GUARD} .result-card .card-title",),
+        (f"{LIGHT_GUARD} .result-source",),
+        (f"{LIGHT_GUARD} .result-card .card-text",),
+        (f"{LIGHT_GUARD} .result-card-actions",),
+        (f"{LIGHT_GUARD} .result-card .save-btn",),
+        (f"{LIGHT_GUARD} .result-card .save-btn:hover",),
         (
             f"{LIGHT_GUARD} .archive-page-home .illustration-books",
             f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
@@ -3004,6 +3046,13 @@ TASK6_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
             f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
         ),
         (f"{LIGHT_GUARD} .archive-page-browse",),
+        (f"{LIGHT_GUARD} .browse-results-layout",),
+        (f"{LIGHT_GUARD} #sidebarContainer.browse-sidebar",),
+        (f"{LIGHT_GUARD} .browse-results-pane",),
+        (
+            f"{LIGHT_GUARD} .browse-results-row .col",
+            f"{LIGHT_GUARD} .browse-results-row .result-card",
+        ),
     }
 )
 
@@ -3427,6 +3476,17 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
         ("archive-page-upload", "upload-content", "upload-panel", "upload-actions", "file-list-panel", "file-icon", "file-size"),
         frozenset(
             {
+                (f"{LIGHT_GUARD} .upload-content",),
+                (f"{LIGHT_GUARD} .upload-panel",),
+                (f"{LIGHT_GUARD} .upload-actions",),
+                (f"{LIGHT_GUARD} .file-list-panel",),
+                (
+                    f"{LIGHT_GUARD} .file-list-panel .card-header",
+                    f"{LIGHT_GUARD} .file-list-panel .list-group-item",
+                ),
+                (f"{LIGHT_GUARD} .file-list-panel .flex-grow-1",),
+                (f"{LIGHT_GUARD} .file-icon",),
+                (f"{LIGHT_GUARD} .file-size",),
                 (f"{LIGHT_GUARD} .archive-page-upload .illustration-compass",),
                 (f"{LIGHT_GUARD} .archive-page-upload .illustration-sextant",),
                 (f"{LIGHT_GUARD} .archive-page-upload > .illustration-flourish",),
@@ -3471,24 +3531,64 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     for selectors, expected in exact_rules:
         assert css_rule_group_declarations(css, selectors) == expected
 
-    assert_task_selectors_are_dark_scoped(css, (
-        "archive-page-workspace", "workspace-main-panel", "workspace-right-panel", "quick-note-input",
-        "source-preview-shell", "source-preview-content", "workspace-tabs", "workspace-source-item",
-        "workspace-source-name", "note-item", "note-icon-light", "note-icon-dark", "chat-messages",
-        "chat-row-agent", "chat-row-user",
-    ), frozenset({
-        (".workspace-tabs .nav-link",),
+    assert_task_selectors_are_dark_scoped(
+        css,
         (
-            f"{LIGHT_GUARD} .archive-page-home .illustration-books",
-            f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
-            f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+            "archive-page-workspace", "workspace-main-panel", "workspace-right-panel",
+            "quick-note-input", "source-preview-shell", "source-preview-content",
+            "workspace-tabs", "workspace-source-item", "workspace-source-name",
+            "note-item", "note-icon-light", "note-icon-dark", "chat-messages",
+            "chat-row-agent", "chat-row-user",
         ),
-        (
-            f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
-            f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
-            f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
-        ),
-    }), "Task 8", "the existing neutral tab-radius rule or an exact Old Book light placement")
+        frozenset({
+            (".workspace-tabs .nav-link",),
+            (
+                f"{LIGHT_GUARD} .workspace-main-panel",
+                f"{LIGHT_GUARD} .workspace-right-panel",
+            ),
+            (
+                f"{LIGHT_GUARD} .workspace-main-panel .card-header",
+                f"{LIGHT_GUARD} .workspace-right-panel .card-header",
+            ),
+            (f"{LIGHT_GUARD} .quick-note-input",),
+            (f"{LIGHT_GUARD} .quick-note-input:focus",),
+            (f"{LIGHT_GUARD} .source-preview-shell",),
+            (f"{LIGHT_GUARD} .source-preview-content",),
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link",),
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link:hover",),
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link:focus-visible",),
+            (f"{LIGHT_GUARD} .workspace-tabs .nav-link.active",),
+            (f"{LIGHT_GUARD} .workspace-source-item",),
+            (f"{LIGHT_GUARD} .workspace-source-item h6",),
+            (f"{LIGHT_GUARD} .workspace-source-item:hover",),
+            (f"{LIGHT_GUARD} .workspace-source-item:focus-visible",),
+            (f"{LIGHT_GUARD} .workspace-source-item.active",),
+            (f"{LIGHT_GUARD} .workspace-source-name",),
+            (f"{LIGHT_GUARD} .note-item",),
+            (f"{LIGHT_GUARD} .note-icon-light",),
+            (f"{LIGHT_GUARD} .note-icon-dark",),
+            (f"{LIGHT_GUARD} .chat-messages",),
+            (f"{LIGHT_GUARD} .chat-row-agent",),
+            (f"{LIGHT_GUARD} .chat-row-user",),
+            (
+                f"{LIGHT_GUARD} .archive-page-home .illustration-books",
+                f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
+                f"{LIGHT_GUARD} .archive-page-workspace .illustration-books",
+            ),
+            (
+                f"{LIGHT_GUARD} .archive-page-home .illustration-flourish",
+                f"{LIGHT_GUARD} .archive-page-browse .illustration-flourish",
+                f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
+            ),
+            (
+                f"{LIGHT_GUARD} .archive-page-workspace .workspace-main-panel",
+                f"{LIGHT_GUARD} .archive-page-workspace .workspace-right-panel",
+            ),
+            (f"{LIGHT_GUARD} .archive-page-workspace .resizable-panel",),
+        }),
+        "Task 8",
+        "the existing neutral tab-radius rule or an exact Old Book light placement",
+    )
 
     desktop_header, mobile_header = "@media (max-width: 991.98px)", "@media (max-width: 575.98px)"
     assert (css.count(desktop_header), css.count(mobile_header)) == (1, 1)
