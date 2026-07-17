@@ -4,6 +4,171 @@ import src.search as search
 import src.whitelist as whitelist
 
 
+def test_result_identity_normalizes_source_but_preserves_source_id_case():
+    first = {
+        "source_name": "  WikiPEDIA\n Archive ",
+        "source_id": "  Record-A  ",
+        "source_url": "https://example.test/first",
+        "title": "First",
+    }
+    normalized_duplicate = {
+        "source_name": "wikipedia archive",
+        "source_id": "Record-A",
+        "source_url": "https://example.test/second",
+        "title": "Second",
+    }
+    distinct_id = {**normalized_duplicate, "source_id": "record-a"}
+
+    assert search.result_identity(first) == search.result_identity(normalized_duplicate)
+    assert search.result_identity(first) != search.result_identity(distinct_id)
+
+
+def test_canonical_source_url_normalizes_host_and_removes_fragment():
+    assert search.canonical_source_url(
+        " HTTPS://Example.COM/Archive/Entry?view=Full#section-two "
+    ) == "https://example.com/Archive/Entry?view=Full"
+    assert search.canonical_source_url("javascript://example.com/archive") == ""
+    assert search.canonical_source_url("/archive/entry") == ""
+
+
+def test_deduplicate_results_rejects_different_provider_ids_for_same_url():
+    first = {
+        "source_name": "Wikipedia",
+        "source_id": "wiki-7",
+        "source_url": "https://EXAMPLE.test/shared#first",
+        "title": "Shared entry",
+    }
+    duplicate_url = {
+        "source_name": "JSTOR",
+        "source_id": "jstor-99",
+        "source_url": "https://example.test/shared#second",
+        "title": "Provider copy",
+    }
+
+    assert search.deduplicate_results([first, duplicate_url]) == [first]
+
+
+def test_result_identity_falls_back_to_normalized_display_tuple():
+    first = {"source_name": "  Open   Archive ", "title": "Shared\nTitle"}
+    duplicate = {"source_name": "open archive", "title": " shared title "}
+
+    assert search.result_identity(first) == search.result_identity(duplicate)
+    assert search.deduplicate_results([first, duplicate]) == [first]
+
+
+def test_deduplicate_results_preserves_first_seen_order_across_identity_types():
+    first = {
+        "source_name": "Wikipedia",
+        "source_id": "1",
+        "source_url": "https://example.test/first",
+        "title": "First",
+    }
+    second = {
+        "source_name": "PubMed",
+        "source_id": "2",
+        "source_url": "https://example.test/second",
+        "title": "Second",
+    }
+    repeated_identity = {
+        **first,
+        "source_name": " wikipedia ",
+        "source_url": "https://example.test/repeated-identity",
+        "title": "Repeated identity",
+    }
+    repeated_url = {
+        "source_name": "Books",
+        "source_id": "3",
+        "source_url": "https://EXAMPLE.test/second#copy",
+        "title": "Repeated URL",
+    }
+    third = {"source_name": "Archive", "title": "Third"}
+
+    assert search.deduplicate_results(
+        [first, second, repeated_identity, repeated_url, third]
+    ) == [first, second, third]
+
+
+def test_deduplicate_results_preserves_multiple_identity_less_records():
+    malformed_one = {"description": "Missing all identity fields"}
+    malformed_two = {"source_name": {"unexpected": "mapping"}, "title": ["list"]}
+
+    assert search.result_identity(malformed_one) is None
+    assert search.result_identity(malformed_two) is None
+    assert search.deduplicate_results([malformed_one, malformed_two]) == [
+        malformed_one,
+        malformed_two,
+    ]
+
+
+def test_browse_search_all_deduplicates_cards_without_changing_source_counts(monkeypatch):
+    import app as flask_app
+
+    dedicated_results = [
+        {
+            "source_name": "Wikipedia",
+            "source_id": "wiki-1",
+            "source_url": "https://EXAMPLE.test/shared#intro",
+            "title": "First provider copy",
+        },
+        {
+            "source_name": "Wikipedia",
+            "source_id": "wiki-2",
+            "source_url": "https://example.test/dedicated",
+            "title": "Dedicated result",
+        },
+    ]
+    whitelist_results = [
+        {
+            "source_name": "JSTOR",
+            "source_id": "jstor-9",
+            "source_url": "https://example.test/shared#abstract",
+            "title": "Same URL",
+        },
+        {
+            "source_name": " wikipedia ",
+            "source_id": "wiki-2",
+            "source_url": "https://example.test/repeated-id",
+            "title": "Same provider identity",
+        },
+        {
+            "source_name": "Open Archive",
+            "source_id": "archive-3",
+            "source_url": "https://example.test/unique",
+            "title": "Unique whitelist result",
+        },
+    ]
+    monkeypatch.setattr(
+        flask_app.search,
+        "wikipedia",
+        lambda _query, _num_results, *, user_id: dedicated_results,
+    )
+    monkeypatch.setattr(
+        flask_app.search,
+        "whitelist_search",
+        lambda _query, _num_results, *, user_id: whitelist_results,
+    )
+
+    with flask_app.app.test_request_context(
+        "/api/browse/search-all",
+        method="POST",
+        json={
+            "query": "archive",
+            "sources": ["wikipedia", "whitelist"],
+            "num_results": 10,
+        },
+    ):
+        flask_app.session["user_id"] = 7
+        response = flask_app.browse_search_all()
+
+    payload = response.get_json()
+    assert [item["title"] for item in payload["results"]] == [
+        "First provider copy",
+        "Dedicated result",
+        "Unique whitelist result",
+    ]
+    assert payload["source_counts"] == {"wikipedia": 2, "whitelist": 3}
+
+
 def test_whitelist_search_calls_per_domain(monkeypatch):
     recorded = []
 

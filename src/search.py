@@ -1,5 +1,8 @@
 import os
 import re
+from collections.abc import Mapping
+from urllib.parse import urlsplit, urlunsplit
+
 import requests
 import src.whitelist as whitelist
 import src.db as db
@@ -10,6 +13,112 @@ GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
 GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY", "")
 GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID", "")
 SERP_API_KEY = os.getenv("SERP_API_KEY", "")
+
+
+def normalize_identity_text(value):
+    """Return case-folded, collapsed whitespace for untrusted scalar input."""
+    if value is None or not isinstance(value, (str, int, float, bool)):
+        return ""
+    return " ".join(str(value).split()).casefold()
+
+
+def canonical_source_url(value):
+    """Return normalized absolute HTTP(S) URL without fragment, or empty string."""
+    if not isinstance(value, str):
+        return ""
+
+    raw_value = value.strip()
+    if not raw_value or any(character.isspace() for character in raw_value):
+        return ""
+
+    try:
+        parsed = urlsplit(raw_value)
+        scheme = parsed.scheme.lower()
+        hostname = parsed.hostname
+        port = parsed.port
+    except (TypeError, ValueError):
+        return ""
+
+    if scheme not in {"http", "https"} or not parsed.netloc or not hostname:
+        return ""
+
+    normalized_hostname = hostname.lower()
+    if ":" in normalized_hostname:
+        normalized_hostname = f"[{normalized_hostname}]"
+
+    userinfo = ""
+    if parsed.username is not None:
+        userinfo = parsed.username
+        if parsed.password is not None:
+            userinfo += f":{parsed.password}"
+        userinfo += "@"
+
+    netloc = f"{userinfo}{normalized_hostname}"
+    if port is not None:
+        netloc += f":{port}"
+
+    return urlunsplit((scheme, netloc, parsed.path, parsed.query, ""))
+
+
+def result_identity(item):
+    """Return source/id, URL, display tuple, or None in approved priority order."""
+    if not isinstance(item, Mapping):
+        return None
+
+    source_name = normalize_identity_text(item.get("source_name"))
+    source_id_value = item.get("source_id")
+    if isinstance(source_id_value, (str, int, float, bool)):
+        source_id = str(source_id_value).strip()
+    else:
+        source_id = ""
+
+    if source_name and source_id:
+        return ("source_id", source_name, source_id)
+
+    source_url = canonical_source_url(item.get("source_url"))
+    if source_url:
+        return ("url", source_url)
+
+    title = normalize_identity_text(item.get("title"))
+    if source_name and title:
+        return ("display", source_name, title)
+
+    return None
+
+
+def deduplicate_results(results):
+    """Preserve first-seen order; reject repeated primary identity OR canonical URL."""
+    if results is None or isinstance(results, (str, bytes, Mapping)):
+        return []
+
+    try:
+        result_items = iter(results)
+    except TypeError:
+        return []
+
+    unique_results = []
+    seen_identities = set()
+    seen_urls = set()
+    for item in result_items:
+        identity = result_identity(item)
+        source_url = (
+            canonical_source_url(item.get("source_url"))
+            if isinstance(item, Mapping)
+            else ""
+        )
+
+        if identity is not None and identity in seen_identities:
+            continue
+        if source_url and source_url in seen_urls:
+            continue
+
+        unique_results.append(item)
+        if identity is not None:
+            seen_identities.add(identity)
+        if source_url:
+            seen_urls.add(source_url)
+
+    return unique_results
 
 
 def wikipedia(query, num_results, *, user_id):

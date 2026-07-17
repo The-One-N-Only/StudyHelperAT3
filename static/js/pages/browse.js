@@ -13,6 +13,119 @@ let lastSearchQuery = null;
 let lastSearchSources = null;
 let lastSearchFilters = null;
 let isLoadingMore = false;
+let resultWindow = 10;
+let searchExhausted = false;
+
+function normalizeIdentityText(value) {
+    if (value === null || value === undefined) return '';
+    if (!['string', 'number', 'boolean'].includes(typeof value)) return '';
+    const collapsed = String(value).trim().replace(/\s+/gu, ' ');
+    return collapsed.toUpperCase().toLowerCase();
+}
+
+function canonicalSourceUrl(value) {
+    if (typeof value !== 'string') return '';
+
+    const rawValue = value.trim();
+    if (!rawValue || /\s/u.test(rawValue) || rawValue.includes('\\')) return '';
+
+    const match = rawValue.match(
+        /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]+)([^?#]*)(\?[^#]*)?(?:#.*)?$/u
+    );
+    if (!match) return '';
+
+    const scheme = match[1].toLowerCase();
+    if (scheme !== 'http' && scheme !== 'https') return '';
+
+    try {
+        const parsed = new URL(rawValue);
+        if (!parsed.hostname || parsed.protocol !== `${scheme}:`) return '';
+    } catch (_err) {
+        return '';
+    }
+
+    const authority = match[2];
+    const userinfoEnd = authority.lastIndexOf('@');
+    const userinfo = userinfoEnd >= 0 ? authority.slice(0, userinfoEnd + 1) : '';
+    const hostAndPort = authority.slice(userinfoEnd + 1);
+    let normalizedHostAndPort = '';
+
+    if (hostAndPort.startsWith('[')) {
+        const closingBracket = hostAndPort.indexOf(']');
+        if (closingBracket < 2) return '';
+        const hostname = hostAndPort.slice(1, closingBracket).toLowerCase();
+        const port = hostAndPort.slice(closingBracket + 1);
+        normalizedHostAndPort = `[${hostname}]${port}`;
+    } else {
+        const portStart = hostAndPort.lastIndexOf(':');
+        const hasPort = portStart >= 0;
+        const hostname = (hasPort ? hostAndPort.slice(0, portStart) : hostAndPort).toLowerCase();
+        const port = hasPort ? hostAndPort.slice(portStart) : '';
+        if (!hostname || hostname.includes(':')) return '';
+        normalizedHostAndPort = `${hostname}${port}`;
+    }
+
+    return `${scheme}://${userinfo}${normalizedHostAndPort}${match[3]}${match[4] || ''}`;
+}
+
+function resultIdentity(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+
+    const sourceName = normalizeIdentityText(item.source_name);
+    const sourceId = ['string', 'number', 'boolean'].includes(typeof item.source_id)
+        ? String(item.source_id).trim()
+        : '';
+    if (sourceName && sourceId) {
+        return ['source_id', sourceName, sourceId];
+    }
+
+    const sourceUrl = canonicalSourceUrl(item.source_url);
+    if (sourceUrl) {
+        return ['url', sourceUrl];
+    }
+
+    const title = normalizeIdentityText(item.title);
+    if (sourceName && title) {
+        return ['display', sourceName, title];
+    }
+
+    return null;
+}
+
+function deduplicateResults(results) {
+    if (!Array.isArray(results)) return [];
+
+    const uniqueResults = [];
+    const seenIdentities = new Set();
+    const seenUrls = new Set();
+    results.forEach((item) => {
+        const identity = resultIdentity(item);
+        const identityKey = identity ? JSON.stringify(identity) : '';
+        const sourceUrl = item && typeof item === 'object' && !Array.isArray(item)
+            ? canonicalSourceUrl(item.source_url)
+            : '';
+
+        if (identityKey && seenIdentities.has(identityKey)) return;
+        if (sourceUrl && seenUrls.has(sourceUrl)) return;
+
+        uniqueResults.push(item);
+        if (identityKey) seenIdentities.add(identityKey);
+        if (sourceUrl) seenUrls.add(sourceUrl);
+    });
+    return uniqueResults;
+}
+
+function mergeUniqueResults(existing, incoming) {
+    const existingResults = deduplicateResults(existing);
+    const mergedResults = deduplicateResults([
+        ...existingResults,
+        ...(Array.isArray(incoming) ? incoming : [])
+    ]);
+    return {
+        results: mergedResults,
+        addedCount: mergedResults.length - existingResults.length
+    };
+}
 
 // Load whitelisted domains
 async function loadWhitelistDomains() {
@@ -320,6 +433,9 @@ function renderWhitelistCheckboxes() {
     });
     
     container.innerHTML = html;
+    if (lastSearchSources !== null) {
+        applySelectedSources(lastSearchSources);
+    }
 }
 
 function appendQueryTerm(term) {
@@ -348,6 +464,14 @@ function getSelectedSources() {
     return Array.from(sources);
 }
 
+function applySelectedSources(sources) {
+    if (!Array.isArray(sources)) return;
+    const selectedSources = new Set(sources);
+    pageRoot.querySelectorAll('input[type="checkbox"][value]').forEach((checkbox) => {
+        checkbox.checked = selectedSources.has(checkbox.value);
+    });
+}
+
 function buildFilters() {
     const filters = {};
     const yearFrom = pageRoot.querySelector('#filterYearFrom').value.trim();
@@ -372,7 +496,9 @@ function getBrowseState() {
             content_type: pageRoot.querySelector('#filterContentType').value,
             sorting: pageRoot.querySelector('#filterSorting').value
         },
-        results: currentSearchResults
+        results: currentSearchResults,
+        resultWindow,
+        searchExhausted
     };
 }
 
@@ -397,27 +523,36 @@ function restoreBrowseState() {
         const yearToEl = pageRoot.querySelector('#filterYearTo');
         const contentTypeEl = pageRoot.querySelector('#filterContentType');
         const sortingEl = pageRoot.querySelector('#filterSorting');
-        const sourceCheckboxes = pageRoot.querySelectorAll('input[type="checkbox"][value]');
 
-        if (searchInput && state.query) searchInput.value = state.query;
-        if (yearFromEl && state.filters?.min_date) yearFromEl.value = state.filters.min_date;
-        if (yearToEl && state.filters?.max_date) yearToEl.value = state.filters.max_date;
-        if (contentTypeEl && state.filters?.content_type) contentTypeEl.value = state.filters.content_type;
-        if (sortingEl && state.filters?.sorting) sortingEl.value = state.filters.sorting;
+        const restoredQuery = typeof state.query === 'string' ? state.query.trim() : '';
+        const restoredSources = Array.isArray(state.sources)
+            ? state.sources.filter((source) => typeof source === 'string')
+            : [];
+        const restoredFilters = state.filters
+            && typeof state.filters === 'object'
+            && !Array.isArray(state.filters)
+            ? { ...state.filters }
+            : {};
 
-        if (sourceCheckboxes.length && Array.isArray(state.sources)) {
-            sourceCheckboxes.forEach((checkbox) => {
-                if (checkbox.value.startsWith('whitelist_')) {
-                    checkbox.checked = state.sources.includes('whitelist');
-                } else {
-                    checkbox.checked = state.sources.includes(checkbox.value);
-                }
-            });
-        }
+        if (searchInput) searchInput.value = restoredQuery;
+        if (yearFromEl) yearFromEl.value = restoredFilters.min_date || '';
+        if (yearToEl) yearToEl.value = restoredFilters.max_date || '';
+        if (contentTypeEl) contentTypeEl.value = restoredFilters.content_type || '';
+        if (sortingEl) sortingEl.value = restoredFilters.sorting || '';
 
-        if (Array.isArray(state.results) && state.results.length > 0) {
-            currentSearchResults = state.results;
-            lastSearchSources = Array.isArray(state.sources) ? state.sources : [];
+        lastSearchQuery = restoredQuery || null;
+        lastSearchSources = restoredSources;
+        lastSearchFilters = restoredFilters;
+        resultWindow = Number.isInteger(state.resultWindow)
+            && state.resultWindow >= 10
+            && state.resultWindow % 10 === 0
+            ? state.resultWindow
+            : 10;
+        searchExhausted = state.searchExhausted === true;
+        applySelectedSources(restoredSources);
+
+        currentSearchResults = deduplicateResults(state.results);
+        if (currentSearchResults.length > 0) {
             renderResults(sortResults(currentSearchResults, state.filters?.sorting || ''));
             renderSidebar(currentSourceCounts, currentSearchResults);
         }
@@ -477,6 +612,8 @@ function performSearch() {
     lastSearchSources = sources;
     lastSearchFilters = filters;
     isLoadingMore = false;
+    resultWindow = 10;
+    searchExhausted = false;
 
     fetch('/api/browse/search-all', {
         method: 'POST',
@@ -486,7 +623,7 @@ function performSearch() {
         .then((r) => r.json())
         .then((result) => {
             if (result.status) {
-                currentSearchResults = result.results || [];
+                currentSearchResults = deduplicateResults(result.results);
                 currentSourceCounts = result.source_counts || {};
                 saveBrowseState();
                 renderResults(currentSearchResults);
@@ -525,8 +662,8 @@ function renderResults(results) {
         const buttonContainer = document.createElement('div');
         buttonContainer.className = 'text-center mt-4 mb-3';
         buttonContainer.innerHTML = `
-            <button class="btn btn-outline-primary btn-secondary-wood" id="loadMoreBtn" type="button">
-                <span id="loadMoreText">Load More Results</span>
+            <button class="btn btn-outline-primary btn-secondary-wood" id="loadMoreBtn" type="button"${searchExhausted ? ' disabled' : ''}>
+                <span id="loadMoreText">${searchExhausted ? 'No more results.' : 'Load More Results'}</span>
                 <span id="loadMoreSpinner" class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true" style="display: none;"></span>
             </button>
         `;
@@ -540,11 +677,12 @@ function renderResults(results) {
 }
 
 function loadMoreResults() {
-    if (isLoadingMore || !lastSearchQuery || !lastSearchSources) {
+    if (isLoadingMore || searchExhausted || !lastSearchQuery || !lastSearchSources) {
         return;
     }
 
     isLoadingMore = true;
+    const nextWindow = resultWindow + 10;
     const loadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
     const loadMoreText = pageRoot.querySelector('#loadMoreText');
     const loadMoreSpinner = pageRoot.querySelector('#loadMoreSpinner');
@@ -565,15 +703,20 @@ function loadMoreResults() {
         body: JSON.stringify({
             query: lastSearchQuery,
             sources: lastSearchSources,
-            num_results: 20,
+            num_results: nextWindow,
             filters: lastSearchFilters || {}
         })
     })
-        .then((r) => r.json())
+        .then((r) => {
+            if (!r.ok) throw new Error('Load more request failed');
+            return r.json();
+        })
         .then((result) => {
-            if (result.status && result.results) {
-                const newResults = result.results || [];
-                currentSearchResults = currentSearchResults.concat(newResults);
+            if (result.status) {
+                const merged = mergeUniqueResults(currentSearchResults, result.results);
+                currentSearchResults = merged.results;
+                resultWindow = nextWindow;
+                searchExhausted = merged.addedCount === 0;
                 if (result.source_counts) {
                     currentSourceCounts = result.source_counts;
                 }
@@ -581,7 +724,7 @@ function loadMoreResults() {
                 renderResults(currentSearchResults);
                 renderSidebar(currentSourceCounts, currentSearchResults);
             } else {
-                showToast('No more results available', 'info');
+                showToast('Failed to load more results', 'danger');
             }
         })
         .catch(() => {
@@ -589,14 +732,19 @@ function loadMoreResults() {
         })
         .finally(() => {
             isLoadingMore = false;
-            if (loadMoreBtn) {
-                loadMoreBtn.disabled = false;
+            const currentLoadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
+            const currentLoadMoreText = pageRoot.querySelector('#loadMoreText');
+            const currentLoadMoreSpinner = pageRoot.querySelector('#loadMoreSpinner');
+            if (currentLoadMoreBtn) {
+                currentLoadMoreBtn.disabled = searchExhausted;
             }
-            if (loadMoreText) {
-                loadMoreText.textContent = 'Load More Results';
+            if (currentLoadMoreText) {
+                currentLoadMoreText.textContent = searchExhausted
+                    ? 'No more results.'
+                    : 'Load More Results';
             }
-            if (loadMoreSpinner) {
-                loadMoreSpinner.style.display = 'none';
+            if (currentLoadMoreSpinner) {
+                currentLoadMoreSpinner.style.display = 'none';
             }
         });
 }

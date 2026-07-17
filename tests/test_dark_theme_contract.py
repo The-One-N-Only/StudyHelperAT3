@@ -2720,6 +2720,9 @@ class FakeElement {
     this.textContent = "";
     this.value = "";
     this.checked = false;
+    this.disabled = false;
+    this.children = [];
+    this.style = {};
     this.src = "";
     this.alt = "";
   }
@@ -2746,6 +2749,10 @@ class FakeElement {
   }
   querySelectorAll() {
     return [];
+  }
+  appendChild(child) {
+    this.children.push(child);
+    return child;
   }
   focus() {}
 }
@@ -2922,7 +2929,7 @@ process.stdout.write(JSON.stringify({
 """
 
 
-BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""
+BROWSE_DOM_RUNTIME = r"""
 const controls = new Map();
 function control(selector, value = "") {
   const element = new FakeElement(selector);
@@ -2939,16 +2946,41 @@ control("#filterYearFrom");
 control("#filterYearTo");
 control("#filterContentType");
 control("#sidebarContainer");
-control("#resultsContainer");
+const resultsContainer = control("#resultsContainer");
 control("#whitelistCheckboxes");
 const wikipedia = new FakeElement("wikipedia");
 wikipedia.value = "wikipedia";
 wikipedia.checked = true;
-menu.querySelectorAll = () => [wikipedia];
+const whitelistWikipedia = new FakeElement("whitelist wikipedia");
+whitelistWikipedia.value = "whitelist_en.wikipedia.org";
+whitelistWikipedia.checked = false;
+const whitelistBooks = new FakeElement("whitelist books");
+whitelistBooks.value = "whitelist_books.google.com";
+whitelistBooks.checked = false;
+const sourceCheckboxes = [wikipedia, whitelistWikipedia, whitelistBooks];
+function matchingCheckboxes(selector) {
+  return selector.includes(":checked")
+    ? sourceCheckboxes.filter((checkbox) => checkbox.checked)
+    : sourceCheckboxes;
+}
+menu.querySelectorAll = matchingCheckboxes;
+
+Object.defineProperty(resultsContainer, "innerHTML", {
+  configurable: true,
+  get() { return this._innerHTML || ""; },
+  set(value) {
+    this._innerHTML = String(value);
+    this.children = [];
+    globalThis.renderedItems.length = 0;
+    controls.delete("#loadMoreBtn");
+    controls.delete("#loadMoreText");
+    controls.delete("#loadMoreSpinner");
+  },
+});
 
 const root = new FakeElement("root");
 root.querySelector = (selector) => controls.get(selector) || null;
-root.querySelectorAll = () => [wikipedia];
+root.querySelectorAll = matchingCheckboxes;
 const documentControl = new FakeElement("document");
 globalThis.document = {
   addEventListener: documentControl.addEventListener.bind(documentControl),
@@ -2956,20 +2988,159 @@ globalThis.document = {
     return id === "google-cse-script" ? {} : null;
   },
   body: { appendChild() {} },
-  createElement() {
-    return new FakeElement("created");
+  createElement(tag) {
+    const element = new FakeElement("created " + tag);
+    Object.defineProperty(element, "innerHTML", {
+      configurable: true,
+      get() { return this._innerHTML || ""; },
+      set(value) {
+        const markup = String(value);
+        this._innerHTML = markup;
+        if (!markup.includes('id="loadMoreBtn"')) return;
+
+        const button = new FakeElement("#loadMoreBtn");
+        const text = new FakeElement("#loadMoreText");
+        const spinner = new FakeElement("#loadMoreSpinner");
+        button.disabled = /<button[^>]*\sdisabled(?:\s|>)/.test(markup);
+        const textMatch = markup.match(/id="loadMoreText">([^<]*)</);
+        text.textContent = textMatch ? textMatch[1] : "";
+        spinner.style.display = "none";
+        controls.set("#loadMoreBtn", button);
+        controls.set("#loadMoreText", text);
+        controls.set("#loadMoreSpinner", spinner);
+      },
+    });
+    return element;
   },
 };
 globalThis.window = {};
+globalThis.escapeHtml = (value) => String(value);
+const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+"""
+
+
+BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+const fetchCalls = [];
+const first = {
+  source_name: "Wikipedia",
+  source_id: "wiki-1",
+  source_url: "https://EXAMPLE.test/first#intro",
+  title: "First",
+};
+const second = {
+  source_name: "PubMed",
+  source_id: "pubmed-2",
+  source_url: "https://example.test/second",
+  title: "Second",
+};
+const third = {
+  source_name: "Open Archive",
+  source_id: "archive-3",
+  source_url: "https://example.test/third",
+  title: "Third",
+};
+const responses = [
+  {
+    status: true,
+    results: [
+      first,
+      { ...first, source_name: " wikipedia ", source_url: "https://example.test/id-copy", title: "Repeated ID" },
+      second,
+      { source_name: "JSTOR", source_id: "jstor-4", source_url: "https://example.test/first#copy", title: "Repeated URL" },
+    ],
+    source_counts: { wikipedia: 2, pubmed: 2 },
+  },
+  { status: true, results: [first, second, third], source_counts: { wikipedia: 1, pubmed: 1 } },
+  { status: true, results: [first, second, third], source_counts: { wikipedia: 1, pubmed: 1 } },
+];
+globalThis.fetch = async (url, options) => {
+  fetchCalls.push({ url, options });
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  const response = responses.shift();
+  invariant(response, "unexpected extra search request");
+  return { ok: true, async json() { return response; } };
+};
+globalThis.toastCalls = [];
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+
+const searchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
+invariant(searchCalls.length === 3, "search did not issue three cumulative windows");
+invariant(searchCalls[0].options.method === "POST", "search method changed");
+const body = JSON.parse(searchCalls[0].options.body);
+invariant(body.query === "archive", "search query changed");
+invariant(body.sources.length === 1 && body.sources[0] === "wikipedia", "search sources changed");
+invariant(body.num_results === 10, "search result count changed");
+
+process.stdout.write(JSON.stringify({
+  html: root.innerHTML,
+  body,
+  requestSizes: searchCalls.map((call) => JSON.parse(call.options.body).num_results),
+  renderedTitles: globalThis.renderedItems.map((item) => item.title),
+  loadMoreDisabled: controls.get("#loadMoreBtn").disabled,
+  loadMoreText: controls.get("#loadMoreText").textContent,
+}));
+"""
+
+
+RESTORED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+const restoredState = {
+  query: "restored archive",
+  sources: ["wikipedia", "whitelist_en.wikipedia.org"],
+  filters: {
+    min_date: "1990",
+    max_date: "2020",
+    content_type: "review",
+    sorting: "recent",
+  },
+  results: [
+    {
+      source_name: "Wikipedia",
+      source_id: "wiki-1",
+      source_url: "https://example.test/first",
+      title: "Restored first",
+    },
+    {
+      source_name: " wikipedia ",
+      source_id: "wiki-1",
+      source_url: "https://example.test/duplicate",
+      title: "Restored duplicate",
+    },
+    {
+      source_name: "Open Archive",
+      source_id: "archive-2",
+      source_url: "https://example.test/second",
+      title: "Restored second",
+    },
+  ],
+};
 globalThis.localStorage = {
-  getItem() { return null; },
+  getItem(key) {
+    invariant(key === "studyhelper_browse_state", "wrong restore key");
+    return JSON.stringify(restoredState);
+  },
   setItem() {},
 };
 const fetchCalls = [];
 globalThis.fetch = async (url, options) => {
   fetchCalls.push({ url, options });
   if (url === "/static/whitelist.json") {
-    return { ok: true, async json() { return { domains: [] }; } };
+    return {
+      ok: true,
+      async json() { return { domains: ["en.wikipedia.org", "books.google.com"] }; },
+    };
   }
   return { json() { return new Promise(() => {}); } };
 };
@@ -2977,17 +3148,25 @@ globalThis.toastCalls = [];
 
 const { initBrowse } = await import(process.argv[1]);
 initBrowse(root);
-await go.dispatch("click");
+await flushPromises();
+const initialButtonDisabled = controls.get("#loadMoreBtn").disabled;
+await controls.get("#loadMoreBtn").dispatch("click");
 
-const searchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
-invariant(searchCalls.length === 1, "Go did not issue exactly one search");
-invariant(searchCalls[0].options.method === "POST", "search method changed");
-const body = JSON.parse(searchCalls[0].options.body);
-invariant(body.query === "archive", "search query changed");
-invariant(body.sources.length === 1 && body.sources[0] === "wikipedia", "search sources changed");
-invariant(body.num_results === 10, "search result count changed");
-
-process.stdout.write(JSON.stringify({ html: root.innerHTML, body }));
+const searchCall = fetchCalls.find((call) => call.url === "/api/browse/search-all");
+const loadBody = searchCall ? JSON.parse(searchCall.options.body) : null;
+process.stdout.write(JSON.stringify({
+  query: search.value,
+  filters: {
+    min_date: controls.get("#filterYearFrom").value,
+    max_date: controls.get("#filterYearTo").value,
+    content_type: controls.get("#filterContentType").value,
+    sorting: sorting.value,
+  },
+  checkedSources: sourceCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value),
+  renderedTitles: globalThis.renderedItems.map((item) => item.title),
+  initialButtonDisabled,
+  loadBody,
+}));
 """
 
 
@@ -3011,7 +3190,7 @@ BROWSE_IMPORT_REPLACEMENTS = (
     ),
     (
         "import { createCard } from '../card.js';",
-        "const createCard = () => ({});",
+        "const createCard = (item) => { globalThis.renderedItems.push(item); return item; };",
     ),
 )
 TASK6_DARK_ONLY_CLASSES = (
@@ -3091,6 +3270,15 @@ def browse_runtime(source: str | None = None) -> dict:
         BROWSE_IMPORT_REPLACEMENTS,
         BROWSE_RUNTIME_HARNESS,
         "browse",
+    )
+
+
+def restored_browse_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        RESTORED_BROWSE_RUNTIME_HARNESS,
+        "restored browse",
     )
 
 
@@ -3346,6 +3534,44 @@ def test_task6_browse_runtime_keeps_go_search_listener_and_payload():
     }
 
 
+def test_task2_browse_pagination_merges_cumulative_windows_until_exhausted():
+    rendered = browse_runtime()
+
+    assert rendered["renderedTitles"] == ["First", "Second", "Third"]
+    assert rendered["requestSizes"] == [10, 20, 30]
+    assert rendered["loadMoreDisabled"] is True
+    assert rendered["loadMoreText"] == "No more results."
+
+
+def test_task2_restored_browse_deduplicates_legacy_state_and_restores_exact_inputs():
+    rendered = restored_browse_runtime()
+
+    assert rendered["query"] == "restored archive"
+    assert rendered["filters"] == {
+        "min_date": "1990",
+        "max_date": "2020",
+        "content_type": "review",
+        "sorting": "recent",
+    }
+    assert rendered["checkedSources"] == [
+        "wikipedia",
+        "whitelist_en.wikipedia.org",
+    ]
+    assert rendered["renderedTitles"] == ["Restored first", "Restored second"]
+    assert rendered["initialButtonDisabled"] is False
+    assert rendered["loadBody"] == {
+        "query": "restored archive",
+        "sources": ["wikipedia", "whitelist_en.wikipedia.org"],
+        "num_results": 20,
+        "filters": {
+            "min_date": "1990",
+            "max_date": "2020",
+            "content_type": "review",
+            "sorting": "recent",
+        },
+    }
+
+
 def test_task6_runtime_guards_catch_go_listener_and_unsaved_label_mutations():
     browse = read_text("static/js/pages/browse.js")
     listener = "    goBtn.addEventListener('click', performSearch);\n"
@@ -3416,7 +3642,7 @@ def test_task6_browse_structure_preserves_light_output_and_supports_mobile_stack
     assert expected_ids.issubset({tag.get("id") for tag in soup.select("[id]")})
 
     assert browse.count("fetch('/api/browse/search-all'") == 2
-    assert "num_results: 20" in browse
+    assert "const nextWindow = resultWindow + 10;" in browse
     assert "localStorage.setItem(BROWSE_STORAGE_KEY" in browse
     assert "localStorage.getItem(BROWSE_STORAGE_KEY" in browse
     assert "loadMoreBtn.addEventListener('click', loadMoreResults)" in browse
