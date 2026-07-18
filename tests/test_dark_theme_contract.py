@@ -3220,12 +3220,22 @@ function makeCard() {
   return card;
 }
 
+const serverRenderedImage = new FakeElement("server rendered image", "card-img-top result-card-image");
+serverRenderedImage.src = "https://upload.wikimedia.org/broken.jpg";
+serverRenderedImage.setAttribute("data-fallback-src", "/static/img/illustrations/scrollwork-flourish.svg");
+serverRenderedImage.setAttribute("data-image-kind", "remote");
+
 globalThis.document = {
-  baseURI: "https://study.test/browse",
-  createElement(tag) {
-    invariant(tag === "div", "unexpected card element: " + tag);
-    return makeCard();
-  },
+    baseURI: "https://study.test/browse",
+    readyState: "complete",
+    createElement(tag) {
+      invariant(tag === "div", "unexpected card element: " + tag);
+      return makeCard();
+    },
+    querySelectorAll(selector) {
+      invariant(selector === ".result-card-image[data-fallback-src]", "unexpected image selector: " + selector);
+      return [serverRenderedImage];
+    },
 };
 globalThis.fetch = async (url, options) => {
   fetchCalls.push({ url, options });
@@ -3240,7 +3250,8 @@ globalThis.window = { openViewer(item) { globalThis.viewedItem = item; } };
 globalThis.hydrateCalls = hydrateCalls;
 globalThis.toastCalls = toastCalls;
 
-const { createCard } = await import(process.argv[1]);
+const { createCard, enhanceResultCardImages } = await import(process.argv[1]);
+enhanceResultCardImages(document);
 const attack = '"><img src=x onerror=alert(1)>';
 const hostileItem = {
   id: '17" autofocus onfocus="alert(1)',
@@ -3376,6 +3387,7 @@ const remoteImage = remoteCard.nodes.get(".card-img-top");
 const remoteBeforeError = remoteImage.src;
 await remoteImage.dispatch("error");
 const remoteAfterError = remoteImage.src;
+await serverRenderedImage.dispatch("error");
 
 process.stdout.write(JSON.stringify({
   template: hostileCard.innerHTML,
@@ -3409,6 +3421,12 @@ process.stdout.write(JSON.stringify({
     fallback: remoteImage.getAttribute("data-fallback-src"),
     kind: remoteImage.getAttribute("data-image-kind"),
     errorOnce: remoteImage.listenerOptions.get("error")?.once === true,
+  },
+  serverRendered: {
+    src: serverRenderedImage.src,
+    kind: serverRenderedImage.getAttribute("data-image-kind"),
+    listenerCount: serverRenderedImage.listeners.get("error")?.length || 0,
+    errorOnce: serverRenderedImage.listenerOptions.get("error")?.once === true,
   },
 }));
 """
@@ -5825,6 +5843,12 @@ def test_task1_card_image_fallback_parity_and_remote_failure_contract():
         "afterError": "/static/img/illustrations/open-book.svg",
         "fallback": "/static/img/illustrations/open-book.svg",
         "kind": "fallback",
+        "errorOnce": True,
+    }
+    assert client["serverRendered"] == {
+        "src": "/static/img/illustrations/scrollwork-flourish.svg",
+        "kind": "fallback",
+        "listenerCount": 1,
         "errorOnce": True,
     }
 

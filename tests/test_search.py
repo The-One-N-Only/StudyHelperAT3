@@ -541,6 +541,46 @@ def test_browse_serpapi_gbooks_cover_supports_edition_path_id(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "source_url",
+    (
+        "https://user:password@books.google.com/books?id=zyTCAlFPjgYC",
+        "https://books.google.com:444/books?id=zyTCAlFPjgYC",
+        "https://books.google.com/books?id=zyTCAlFPjgYC#fragment",
+        "https://books.google.com/books\\?id=zyTCAlFPjgYC",
+        "https://books.google.com/books?id=zyTCAlF PjgYC",
+        "https://[broken/books?id=zyTCAlFPjgYC",
+    ),
+)
+def test_browse_serpapi_gbooks_cover_rejects_unsafe_source_url(source_url):
+    assert search._google_books_volume_id(source_url) == ""
+    assert search._google_books_cover_url(source_url) == ""
+
+
+def test_browse_serpapi_gbooks_cover_applies_to_explicit_whitelist_source(
+    monkeypatch,
+):
+    link = "https://books.google.com/books?id=whitelist-book-1"
+    results, requests_seen = _run_browse_serpapi_image_results(
+        monkeypatch,
+        [{
+            "title": "Whitelisted book",
+            "link": link,
+            "thumbnail": "https://tracking.invalid/hostile.jpg",
+        }],
+        source="whitelist_books.google.com",
+    )
+
+    assert results[0]["thumb_url"] == (
+        "https://books.google.com/books/content?id=whitelist-book-1"
+        "&printsec=frontcover&img=1&zoom=1"
+    )
+    assert results[0]["source_name"] == "Google Books"
+    assert results[0]["source_id"] == link
+    assert len(requests_seen) == 1
+    assert requests_seen[0][1]["q"] == "archive site:books.google.com"
+
+
+@pytest.mark.parametrize(
     ("thumbnail", "favicon", "allowed_prefixes", "expected"),
     (
         (

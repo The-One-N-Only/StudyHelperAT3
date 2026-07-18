@@ -9,6 +9,27 @@ const RESULT_IMAGE_FALLBACKS = {
     academic: '/static/img/illustrations/stacked-books.svg',
     other: '/static/img/illustrations/compass-rose.svg',
 };
+const enhancedResultImages = new WeakSet();
+
+function enhanceResultImage(image) {
+    if (!image || enhancedResultImages.has(image)) return;
+
+    const fallbackImage = image.getAttribute('data-fallback-src');
+    if (!Object.values(RESULT_IMAGE_FALLBACKS).includes(fallbackImage)) return;
+
+    enhancedResultImages.add(image);
+    image.addEventListener('error', () => {
+        if (image.getAttribute('data-image-kind') === 'fallback') return;
+        image.src = fallbackImage;
+        image.setAttribute('data-image-kind', 'fallback');
+    }, { once: true });
+}
+
+export function enhanceResultCardImages(root = document) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('.result-card-image[data-fallback-src]')
+        .forEach((image) => enhanceResultImage(image));
+}
 
 export function createCard(item) {
     const card = document.createElement('div');
@@ -52,11 +73,7 @@ export function createCard(item) {
     image.setAttribute('referrerpolicy', 'no-referrer');
     image.setAttribute('data-fallback-src', fallbackImage);
     image.setAttribute('data-image-kind', remoteImage ? 'remote' : 'fallback');
-    image.addEventListener('error', () => {
-        if (image.src === fallbackImage) return;
-        image.src = fallbackImage;
-        image.setAttribute('data-image-kind', 'fallback');
-    }, { once: true });
+    enhanceResultImage(image);
     card.querySelector('.card-title').textContent = String(item.title ?? '');
     card.querySelector('.card-description').textContent = String(item.description ?? '');
     card.querySelector('.result-source-text').textContent = String(item.source_name ?? '');
@@ -112,6 +129,18 @@ function safeRemoteImageUrl(value) {
         return value;
     } catch (_error) {
         return '';
+    }
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener(
+            'DOMContentLoaded',
+            () => enhanceResultCardImages(document),
+            { once: true },
+        );
+    } else {
+        enhanceResultCardImages(document);
     }
 }
 

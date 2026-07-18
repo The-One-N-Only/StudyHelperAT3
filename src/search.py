@@ -132,16 +132,28 @@ def _safe_browse_image_url(value):
 
 
 def _google_books_volume_id(source_url):
-    if not isinstance(source_url, str):
+    if not isinstance(source_url, str) or not source_url:
+        return ""
+    if (
+        source_url != source_url.strip()
+        or "\\" in source_url
+        or any(char.isspace() for char in source_url)
+    ):
         return ""
     try:
         parsed = urlsplit(source_url)
+        port = parsed.port
     except (TypeError, ValueError):
         return ""
 
     hostname = (parsed.hostname or "").lower()
-    if parsed.scheme.lower() != "https" or not _host_matches_suffix(
-        hostname, "books.google.com"
+    if (
+        parsed.scheme.lower() != "https"
+        or not _host_matches_suffix(hostname, "books.google.com")
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in (None, 443)
+        or parsed.fragment
     ):
         return ""
 
@@ -170,11 +182,12 @@ def _google_books_cover_url(source_url):
     )
 
 
-def _browse_result_image_url(item, source):
-    if source == "gbooks":
-        cover_url = _google_books_cover_url(item.get("link", ""))
-        if cover_url:
-            return cover_url
+def _browse_result_image_url(item):
+    cover_url = _google_books_cover_url(
+        item.get("link", "") or item.get("source_id", "")
+    )
+    if cover_url:
+        return cover_url
     return (
         _safe_browse_image_url(item.get("thumbnail", ""))
         or _safe_browse_image_url(item.get("favicon", ""))
@@ -248,7 +261,7 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
             item_data = {
                 "title": item.get("title", ""),
                 "description": item.get("snippet", ""),
-                "thumb_url": _browse_result_image_url(item, source),
+                "thumb_url": _browse_result_image_url(item),
                 "thumb_mime": "image/jpeg",
                 "thumb_height": 0,
                 "source_url": link,
