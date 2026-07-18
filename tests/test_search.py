@@ -581,6 +581,58 @@ def test_browse_serpapi_gbooks_cover_applies_to_explicit_whitelist_source(
 
 
 @pytest.mark.parametrize(
+    "item",
+    (
+        {"source_id": "VpNa9UckT24C"},
+        {
+            "link": "https://books.google.com/books?hl=en",
+            "source_id": "VpNa9UckT24C",
+        },
+        {
+            "link": "https://user:password@books.google.com/books?id=hostile",
+            "source_id": "VpNa9UckT24C",
+        },
+    ),
+)
+def test_browse_serpapi_gbooks_cover_accepts_bounded_raw_source_id_independently(
+    item,
+):
+    assert search._browse_result_image_url(item) == (
+        "https://books.google.com/books/content?id=VpNa9UckT24C"
+        "&printsec=frontcover&img=1&zoom=1"
+    )
+
+
+@pytest.mark.parametrize(
+    "source_id",
+    (
+        "VpNa9UckT24C/extra",
+        "VpNa9UckT24C?download=1",
+        " VpNa9UckT24C",
+        "A" * 221,
+        "https://evil.example/books?id=VpNa9UckT24C",
+        "https://user:password@books.google.com/books?id=VpNa9UckT24C",
+        "https://books.google.com:444/books?id=VpNa9UckT24C",
+        "https://books.google.com/books?id=VpNa9UckT24C#fragment",
+    ),
+)
+def test_browse_serpapi_gbooks_cover_rejects_invalid_raw_or_url_source_id(
+    source_id,
+):
+    safe_thumbnail = "https://serpapi.com/safe.jpg"
+
+    assert search._browse_result_image_url({
+        "link": "https://books.google.com/books?hl=en",
+        "source_id": source_id,
+        "thumbnail": safe_thumbnail,
+    }) == safe_thumbnail
+
+
+def test_browse_serpapi_gbooks_cover_does_not_treat_raw_result_link_as_volume_id():
+    assert search._browse_result_image_url({"link": "VpNa9UckT24C"}) == ""
+
+
+@pytest.mark.parametrize(
     ("thumbnail", "favicon", "allowed_prefixes", "expected"),
     (
         (

@@ -31,7 +31,7 @@ DARK_TEXTURE_NAMES = (
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 DARK_CSS_MARKER = "/* Candlelit Archive: dark theme foundation */"
-DARK_CSS_SHA256 = "846e4fd517487f7795152cf8e49774af8786d37cdf875f494d845d0cc4367ff4"
+DARK_CSS_SHA256 = "8f03e946180eedd5fa87a26cee4e3ece3580f4c399201584dd5442facb7815cd"
 LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
 CSS_TOKEN_PATTERN = re.compile(
     r'/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'

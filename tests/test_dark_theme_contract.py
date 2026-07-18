@@ -4711,6 +4711,142 @@ process.stdout.write(JSON.stringify({
 """
 
 
+BROKEN_IMAGE_GROUPED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.currentResultCards = [];
+globalThis.imageSourceSelections = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.hydrateCalls = [];
+globalThis.toastCalls = [];
+document.readyState = "complete";
+document.querySelectorAll = () => [];
+
+const originalResultsMarkup = Object.getOwnPropertyDescriptor(resultsContainer, "innerHTML");
+Object.defineProperty(resultsContainer, "innerHTML", {
+  configurable: true,
+  get() { return originalResultsMarkup.get.call(this); },
+  set(value) {
+    globalThis.currentResultCards = [];
+    originalResultsMarkup.set.call(this, value);
+  },
+});
+
+const browseCreateElement = document.createElement.bind(document);
+document.createElement = (tag) => {
+  const element = browseCreateElement(tag);
+  if (tag !== "div") return element;
+
+  const browseMarkup = Object.getOwnPropertyDescriptor(element, "innerHTML");
+  Object.defineProperty(element, "innerHTML", {
+    configurable: true,
+    get() { return browseMarkup.get.call(this); },
+    set(value) {
+      browseMarkup.set.call(this, value);
+      if (!String(value).includes("result-card-image")) return;
+
+      const image = new FakeElement("result image", "card-img-top result-card-image");
+      let imageSource = "";
+      Object.defineProperty(image, "src", {
+        configurable: true,
+        get() { return imageSource; },
+        set(nextSource) {
+          imageSource = String(nextSource);
+          globalThis.imageSourceSelections.push(imageSource);
+        },
+      });
+      const nodes = new Map([
+        [".card-img-top", image],
+        [".card-title", new FakeElement("title", "card-title")],
+        [".card-description", new FakeElement("description", "card-description")],
+        [".result-source-text", new FakeElement("source", "result-source-text")],
+        [".save-btn", new FakeElement("save", "save-btn")],
+        [".save-icon-light", new FakeElement("light icon")],
+        [".save-icon-dark", new FakeElement("dark icon")],
+        [".view-btn", new FakeElement("view", "view-btn")],
+        [".add-btn", new FakeElement("add", "add-btn")],
+        [".workspace-select", new FakeElement("workspace", "workspace-select")],
+      ]);
+      nodes.get(".save-btn").querySelector = (selector) => nodes.get(selector);
+      this.querySelector = (selector) => {
+        const node = nodes.get(selector);
+        invariant(node, "unexpected result card selector: " + selector);
+        return node;
+      };
+      globalThis.currentResultCards.push({ card: this, nodes });
+    },
+  });
+  return element;
+};
+
+const brokenUrl = "https://upload.wikimedia.org/broken-rank-one.jpg";
+const wikiItems = [
+  {
+    source_name: "Wikipedia",
+    source_id: "wiki-1",
+    source_url: "https://en.wikipedia.org/wiki/Archive_1",
+    title: "wiki-1",
+    publication_date: "2020-01-01",
+    thumb_url: brokenUrl,
+  },
+  {
+    source_name: "Wikipedia",
+    source_id: "wiki-2",
+    source_url: "https://en.wikipedia.org/wiki/Archive_2",
+    title: "wiki-2",
+    publication_date: "2024-01-01",
+    thumb_url: "",
+  },
+];
+const payload = {
+  status: true,
+  results: wikiItems,
+  grouped_results: { wikipedia: wikiItems },
+  source_counts: { wikipedia: 2 },
+};
+globalThis.fetch = async (url) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  invariant(url === "/api/browse/search-all", "unexpected broken-image endpoint");
+  return { ok: true, async json() { return payload; } };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+
+const initialImage = globalThis.currentResultCards[0].nodes.get(".card-img-top");
+invariant(initialImage.src === brokenUrl, "rank-one remote image was not selected initially");
+await initialImage.dispatch("error");
+
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+const afterPaging = globalThis.currentResultCards.map(({ nodes }) => ({
+  title: nodes.get(".card-title").textContent,
+  src: nodes.get(".card-img-top").src,
+  kind: nodes.get(".card-img-top").getAttribute("data-image-kind"),
+}));
+
+sorting.value = "recent";
+await sorting.dispatch("change", { target: sorting });
+const afterSorting = globalThis.currentResultCards.map(({ nodes }) => ({
+  title: nodes.get(".card-title").textContent,
+  src: nodes.get(".card-img-top").src,
+  kind: nodes.get(".card-img-top").getAttribute("data-image-kind"),
+}));
+
+process.stdout.write(JSON.stringify({
+  brokenUrlSelections: globalThis.imageSourceSelections.filter(
+    (source) => source === brokenUrl
+  ).length,
+  initialFallback: initialImage.src,
+  afterPaging,
+  afterSorting,
+}));
+"""
+
+
 UNEVEN_GROUPED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 globalThis.localStorage = { getItem() { return null; }, setItem() {} };
@@ -5757,6 +5893,32 @@ def grouped_browse_runtime(source: str | None = None) -> dict:
     )
 
 
+def broken_image_grouped_browse_runtime(
+    browse_source: str | None = None,
+    card_source: str | None = None,
+) -> dict:
+    executable_card = card_source or read_text("static/js/card.js")
+    for original, replacement in CARD_IMPORT_REPLACEMENTS:
+        assert executable_card.count(original) == 1
+        executable_card = executable_card.replace(original, replacement, 1)
+    card_module_url = "data:text/javascript;base64," + base64.b64encode(
+        executable_card.encode("utf-8")
+    ).decode("ascii")
+    replacements = (
+        BROWSE_IMPORT_REPLACEMENTS[0],
+        (
+            "import { createCard } from '../card.js';",
+            f"import {{ createCard }} from {json.dumps(card_module_url)};",
+        ),
+    )
+    return run_task6_module_harness(
+        browse_source or read_text("static/js/pages/browse.js"),
+        replacements,
+        BROKEN_IMAGE_GROUPED_BROWSE_RUNTIME_HARNESS,
+        "broken-image grouped browse",
+    )
+
+
 def uneven_grouped_browse_runtime(source: str | None = None) -> dict:
     return run_task6_module_harness(
         source or read_text("static/js/pages/browse.js"),
@@ -6364,6 +6526,8 @@ def test_browse_archive_visual_assets_are_canonical_optimized_and_motion_safe():
     root = ET.fromstring(scholar)
     assert root.tag.rsplit("}", 1)[-1] == "svg"
     assert (root.attrib.get("width"), root.attrib.get("height")) == ("2448", "1468")
+    assert root.attrib.get("viewBox") == "0 0 2448 1468"
+    assert scholar_path.stat().st_size < 700_000
 
     assert gif_path.stat().st_size < 4_000_000
     assert gif_dimensions_frames_and_duration(gif_path) == (480, 480, 33, 1100)
@@ -6410,6 +6574,50 @@ def test_browse_empty_and_loader_css_is_bounded_theme_aware_and_blended():
     assert css_rule_group_declarations(mobile, (".browse-loader-art",))["width"] == (
         "min(22rem, 100%)"
     )
+
+
+def test_browse_loader_height_bounds_stay_positive_in_short_landscape_viewports():
+    css = read_text("static/css/custom.css")
+    results = css_rule_group_declarations(css, ("#resultsContainer",))
+    loader = css_rule_group_declarations(css, (".loader-container",))
+    art = css_rule_group_declarations(css, (".browse-loader-art",))
+    mobile = css_block_body(css, "@media (max-width: 575.98px)")
+    mobile_art = css_rule_group_declarations(mobile, (".browse-loader-art",))
+
+    assert results["min-height"] == (
+        "clamp(7rem, calc(100vh - 16rem), 28rem)"
+    )
+    assert loader["min-height"] == "100%"
+    assert loader["overflow"] == "hidden"
+    assert art["max-height"] == (
+        "clamp(1rem, calc(100vh - 20rem), 24rem)"
+    )
+    assert mobile_art["max-height"] == (
+        "clamp(1rem, calc(100vh - 20rem), 22rem)"
+    )
+
+    for width, height in ((667, 375), (844, 390), (1024, 500), (500, 320)):
+        container_height = min(max(height - (16 * 16), 7 * 16), 28 * 16)
+        art_cap = 22 * 16 if width <= 575.98 else 24 * 16
+        art_height = min(max(height - (20 * 16), 16), art_cap)
+        assert art_height > 0
+        assert art_height + (4 * 16) <= container_height
+
+
+def test_browse_broken_thumbnail_is_not_reselected_after_paging_and_sorting():
+    rendered = broken_image_grouped_browse_runtime()
+    fallback = "/static/img/illustrations/scrollwork-flourish.svg"
+
+    assert rendered["brokenUrlSelections"] == 1
+    assert rendered["initialFallback"] == fallback
+    assert rendered["afterPaging"] == [
+        {"title": "wiki-1", "src": fallback, "kind": "fallback"},
+        {"title": "wiki-2", "src": fallback, "kind": "fallback"},
+    ]
+    assert rendered["afterSorting"] == [
+        {"title": "wiki-2", "src": fallback, "kind": "fallback"},
+        {"title": "wiki-1", "src": fallback, "kind": "fallback"},
+    ]
 
 
 def test_task6_browse_runtime_starts_search_without_legacy_globals():

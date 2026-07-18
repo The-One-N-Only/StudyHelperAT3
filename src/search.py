@@ -174,6 +174,14 @@ def _google_books_volume_id(source_url):
 
 def _google_books_cover_url(source_url):
     volume_id = _google_books_volume_id(source_url)
+    return _google_books_cover_url_from_id(volume_id)
+
+
+def _google_books_cover_url_from_id(volume_id):
+    if not isinstance(volume_id, str) or not GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(
+        volume_id
+    ):
+        return ""
     if not volume_id:
         return ""
     return _safe_browse_image_url(
@@ -183,8 +191,11 @@ def _google_books_cover_url(source_url):
 
 
 def _browse_result_image_url(item):
-    cover_url = _google_books_cover_url(
-        item.get("link", "") or item.get("source_id", "")
+    source_id = item.get("source_id", "")
+    cover_url = (
+        _google_books_cover_url(item.get("link", ""))
+        or _google_books_cover_url(source_id)
+        or _google_books_cover_url_from_id(source_id)
     )
     if cover_url:
         return cover_url

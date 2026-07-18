@@ -10,6 +10,12 @@ const RESULT_IMAGE_FALLBACKS = {
     other: '/static/img/illustrations/compass-rose.svg',
 };
 const enhancedResultImages = new WeakSet();
+const failedResultImageUrls = new Set();
+
+function switchToResultImageFallback(image, fallbackImage) {
+    image.src = fallbackImage;
+    image.setAttribute('data-image-kind', 'fallback');
+}
 
 function enhanceResultImage(image) {
     if (!image || enhancedResultImages.has(image)) return;
@@ -18,10 +24,21 @@ function enhanceResultImage(image) {
     if (!Object.values(RESULT_IMAGE_FALLBACKS).includes(fallbackImage)) return;
 
     enhancedResultImages.add(image);
+    const remoteImage = safeRemoteImageUrl(
+        image.getAttribute('src') || image.src
+    );
+    if (
+        image.getAttribute('data-image-kind') === 'remote'
+        && remoteImage
+        && failedResultImageUrls.has(remoteImage)
+    ) {
+        switchToResultImageFallback(image, fallbackImage);
+        return;
+    }
     image.addEventListener('error', () => {
         if (image.getAttribute('data-image-kind') === 'fallback') return;
-        image.src = fallbackImage;
-        image.setAttribute('data-image-kind', 'fallback');
+        if (remoteImage) failedResultImageUrls.add(remoteImage);
+        switchToResultImageFallback(image, fallbackImage);
     }, { once: true });
 }
 
@@ -63,7 +80,10 @@ export function createCard(item) {
     const addButton = card.querySelector('.add-btn');
     const fallbackImage = resultImageFallback(item);
     const remoteImage = safeRemoteImageUrl(item.thumb_url);
-    image.src = remoteImage || fallbackImage;
+    const selectedRemoteImage = remoteImage && !failedResultImageUrls.has(remoteImage)
+        ? remoteImage
+        : '';
+    image.src = selectedRemoteImage || fallbackImage;
     image.alt = '';
     image.loading = 'lazy';
     image.decoding = 'async';
@@ -72,7 +92,7 @@ export function createCard(item) {
     image.setAttribute('decoding', 'async');
     image.setAttribute('referrerpolicy', 'no-referrer');
     image.setAttribute('data-fallback-src', fallbackImage);
-    image.setAttribute('data-image-kind', remoteImage ? 'remote' : 'fallback');
+    image.setAttribute('data-image-kind', selectedRemoteImage ? 'remote' : 'fallback');
     enhanceResultImage(image);
     card.querySelector('.card-title').textContent = String(item.title ?? '');
     card.querySelector('.card-description').textContent = String(item.description ?? '');
