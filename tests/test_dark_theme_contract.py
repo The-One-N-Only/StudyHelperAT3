@@ -7609,6 +7609,11 @@ class FakeElement {
     this._textContent = "";
     children.forEach((child) => this.appendChild(child));
   }
+  remove() {
+    if (!this.parentNode) return;
+    this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+    this.parentNode = null;
+  }
   setAttribute(name, value) {
     const normalized = String(value);
     this.attributes.set(name, normalized);
@@ -7738,6 +7743,57 @@ async function flush() {
   for (let index = 0; index < 6; index += 1) await Promise.resolve();
 }
 
+function installFakeClock() {
+  let nextId = 1;
+  const timeouts = [];
+  const intervals = [];
+  const clearedTimeouts = [];
+  const clearedIntervals = [];
+  globalThis.setTimeout = (callback, delay) => {
+    const timer = { id: nextId++, callback, delay, cleared: false, fired: false };
+    timeouts.push(timer);
+    return timer.id;
+  };
+  globalThis.clearTimeout = (timerId) => {
+    const timer = timeouts.find((candidate) => candidate.id === timerId);
+    if (timer) timer.cleared = true;
+    clearedTimeouts.push(timerId);
+  };
+  globalThis.setInterval = (callback, delay) => {
+    const timer = { id: nextId++, callback, delay, cleared: false };
+    intervals.push(timer);
+    return timer.id;
+  };
+  globalThis.clearInterval = (timerId) => {
+    const timer = intervals.find((candidate) => candidate.id === timerId);
+    if (timer) timer.cleared = true;
+    clearedIntervals.push(timerId);
+  };
+  return {
+    timeouts,
+    intervals,
+    clearedTimeouts,
+    clearedIntervals,
+    fireTimeout(delay) {
+      const timer = timeouts.find(
+        (candidate) => candidate.delay === delay && !candidate.cleared && !candidate.fired,
+      );
+      invariant(timer, `missing active ${delay}ms timeout`);
+      timer.fired = true;
+      timer.callback();
+      return timer;
+    },
+    tickInterval(delay) {
+      const timer = intervals.find(
+        (candidate) => candidate.delay === delay && !candidate.cleared,
+      );
+      invariant(timer, `missing active ${delay}ms interval`);
+      timer.callback();
+      return timer;
+    },
+  };
+}
+
 function showViewerOffcanvas() {
   offcanvas.classList.add("show");
   offcanvas.dispatchEvent({ type: "shown.bs.offcanvas" });
@@ -7762,7 +7818,7 @@ function googleBook(id, overrides = {}) {
   };
 }
 
-function installGoogleBooks() {
+function installGoogleBooks({ constructorReady = true } = {}) {
   const viewers = [];
   const loads = [];
   let apiCallback = null;
@@ -7778,16 +7834,16 @@ function installGoogleBooks() {
     }
     resize() { this.resizeCalls += 1; }
   }
-  globalThis.google = {
-    books: {
-      load() { apiLoadCalls += 1; },
-      setOnLoadCallback(callback) { apiCallback = callback; },
-      DefaultViewer,
-    },
+  const books = {
+    load() { apiLoadCalls += 1; },
+    setOnLoadCallback(callback) { apiCallback = callback; },
   };
+  if (constructorReady) books.DefaultViewer = DefaultViewer;
+  globalThis.google = { books };
   return {
     viewers,
     loads,
+    makeConstructorReady() { books.DefaultViewer = DefaultViewer; },
     get apiCallback() { return apiCallback; },
     get apiLoadCalls() { return apiLoadCalls; },
   };
@@ -7795,7 +7851,146 @@ function installGoogleBooks() {
 
 const { openViewer } = await import(process.argv[1]);
 
-if (scenario === "google_waits_for_offcanvas") {
+if (scenario === "google_readiness_poll_success") {
+  const clock = installFakeClock();
+  globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
+  const opening = openViewer(googleBook("poll-ready"));
+  showViewerOffcanvas();
+  await flush();
+  invariant(scripts.length === 1, "readiness path did not append one script");
+
+  const api = installGoogleBooks({ constructorReady: false });
+  scripts[0].onload();
+  invariant(api.apiLoadCalls === 1, "google.books.load was not called");
+  invariant(typeof api.apiCallback === "function", "official readiness callback missing");
+  await flush();
+  invariant(api.loads.length === 0, "viewer constructed before DefaultViewer existed");
+  invariant(clock.intervals.length === 1, "50ms readiness poll was not scheduled");
+  invariant(!clock.intervals[0].cleared, "readiness poll stopped before constructor existed");
+
+  api.makeConstructorReady();
+  clock.tickInterval(50);
+  await flush();
+  invariant(api.loads.length === 1, "constructor poll did not start viewer");
+  invariant(api.loads[0].identifier === "poll-ready", "polled viewer received wrong volume");
+  api.loads[0].success();
+  await opening;
+  invariant(clock.timeouts.some((timer) => timer.delay === 10000 && timer.cleared),
+    "readiness watchdog was not cleared");
+  invariant(clock.intervals.every((timer) => timer.cleared), "readiness poll leaked");
+  process.stdout.write(JSON.stringify({
+    identifier: api.loads[0].identifier,
+    apiLoadCalls: api.apiLoadCalls,
+    pollDelay: clock.intervals[0].delay,
+  }));
+} else if (scenario === "google_retry_after_script_error") {
+  const clock = installFakeClock();
+  globalThis.fetch = async () => { throw new Error("Google Books must not proxy"); };
+  const firstOpening = openViewer(googleBook("first-script-failure"));
+  showViewerOffcanvas();
+  await flush();
+  invariant(scripts.length === 1, "first attempt did not append one script");
+  scripts[0].onerror({ secret: "first-loader-failure" });
+  await firstOpening;
+  invariant(document.head.children.length === 0, "failed script was not removed");
+
+  const secondOpening = openViewer(googleBook("retry-success"));
+  await flush();
+  invariant(scripts.length === 2, "retry did not append one new script");
+  invariant(document.head.children.length === 1, "retry left duplicate active scripts");
+  const api = installGoogleBooks();
+  scripts[1].onload();
+  api.apiCallback();
+  await flush();
+  invariant(api.loads.length === 1, "retry did not start viewer");
+  api.loads[0].success();
+  await secondOpening;
+  invariant(clock.intervals.every((timer) => timer.cleared), "retry leaked readiness poll");
+  process.stdout.write(JSON.stringify({
+    scriptCount: scripts.length,
+    activeScripts: document.head.children.length,
+    identifier: api.loads[0].identifier,
+  }));
+} else if (scenario === "google_readiness_timeout_reset") {
+  const clock = installFakeClock();
+  globalThis.fetch = async () => { throw new Error("Google Books must not proxy"); };
+  const firstOpening = openViewer(googleBook("readiness-timeout"));
+  showViewerOffcanvas();
+  await flush();
+  const unavailableApi = installGoogleBooks({ constructorReady: false });
+  scripts[0].onload();
+  invariant(unavailableApi.apiLoadCalls === 1, "timed readiness did not initialize API");
+  clock.fireTimeout(10000);
+  await firstOpening;
+  invariant(document.head.children.length === 0, "watchdog did not remove failed script");
+
+  const secondOpening = openViewer(googleBook("after-watchdog"));
+  await flush();
+  invariant(scripts.length === 2, "watchdog rejection did not reset shared loader");
+  const readyApi = installGoogleBooks();
+  scripts[1].onload();
+  readyApi.apiCallback();
+  await flush();
+  invariant(readyApi.loads.length === 1, "watchdog retry did not start viewer");
+  readyApi.loads[0].success();
+  await secondOpening;
+  process.stdout.write(JSON.stringify({
+    watchdogDelay: clock.timeouts.find((timer) => timer.delay === 10000).delay,
+    scriptCount: scripts.length,
+    identifier: readyApi.loads[0].identifier,
+  }));
+} else if (scenario === "google_readiness_concurrent_stale") {
+  const clock = installFakeClock();
+  globalThis.fetch = async () => { throw new Error("Google Books must not proxy"); };
+  showViewerOffcanvas();
+  const staleOpening = openViewer(googleBook("stale-shared-loader"));
+  await flush();
+  invariant(scripts.length === 1, "first concurrent opening did not append loader");
+  const newestOpening = openViewer(googleBook("newest-shared-loader"));
+  await flush();
+  invariant(scripts.length === 1, "concurrent openings did not share loader");
+
+  const api = installGoogleBooks();
+  scripts[0].onload();
+  api.apiCallback();
+  await flush();
+  invariant(api.loads.length === 1, "stale opening constructed a viewer");
+  invariant(api.loads[0].identifier === "newest-shared-loader", "newest volume did not win");
+  api.loads[0].success();
+  await newestOpening;
+  await staleOpening;
+  const newestCanvas = api.loads[0].viewer.container;
+  invariant(contains(viewerBody, newestCanvas), "stale opening cleared newest canvas");
+  invariant(resizeObservers.length === 1, "stale opening attached a ResizeObserver");
+  resizeObservers[0].callback();
+  invariant(api.viewers[0].resizeCalls === 1, "newest viewer did not remain resizable");
+  invariant(clock.intervals.every((timer) => timer.cleared), "shared loader poll leaked");
+  process.stdout.write(JSON.stringify({
+    scriptCount: scripts.length,
+    identifiers: api.loads.map((load) => load.identifier),
+    resizeCalls: api.viewers[0].resizeCalls,
+  }));
+} else if (scenario === "google_success_cancels_timeout") {
+  const clock = installFakeClock();
+  const api = installGoogleBooks();
+  globalThis.fetch = async () => { throw new Error("Google Books must not proxy"); };
+  showViewerOffcanvas();
+  const opening = openViewer(googleBook("fast-success"));
+  await flush();
+  invariant(api.loads.length === 1, "ready constructor did not start viewer");
+  const renderTimer = clock.timeouts.find((timer) => timer.delay === 12000);
+  invariant(renderTimer, "12-second render timeout was not scheduled");
+  api.loads[0].success();
+  await opening;
+  invariant(renderTimer.cleared, "render success did not cancel timeout");
+  invariant(contains(viewerBody, api.loads[0].viewer.container), "success canvas missing");
+  invariant(!collectedText(viewerBody).includes("timed out"), "success was replaced by fallback");
+  process.stdout.write(JSON.stringify({
+    delay: renderTimer.delay,
+    cleared: renderTimer.cleared,
+    fallbackVisible: collectedText(viewerBody).includes("timed out"),
+  }));
+} else if (scenario === "google_waits_for_offcanvas") {
   globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
   const opening = openViewer(googleBook("wait-for-sidebar"));
   invariant(scripts.length === 0, "Google Books started before offcanvas shown");
@@ -7806,39 +8001,45 @@ if (scenario === "google_waits_for_offcanvas") {
   await opening;
   process.stdout.write(JSON.stringify({ scriptCount: scripts.length }));
 } else if (scenario === "google_timeout_fallback") {
-  const timers = [];
-  const clearedTimers = [];
+  const clock = installFakeClock();
   let openedTabs = 0;
-  globalThis.setTimeout = (callback, delay) => {
-    const timer = { id: timers.length + 1, callback, delay };
-    timers.push(timer);
-    return timer.id;
-  };
-  globalThis.clearTimeout = (timerId) => { clearedTimers.push(timerId); };
   globalThis.open = () => { openedTabs += 1; };
   globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
 
   const item = googleBook("timeout-volume");
+  const api = installGoogleBooks();
   const opening = openViewer(item);
   showViewerOffcanvas();
   await flush();
-  invariant(scripts.length === 1, "timeout path did not start native loader");
-  invariant(timers.length === 1, "Google Books timeout was not scheduled");
-  invariant(timers[0].delay === 8000, "Google Books timeout was not eight seconds");
-  timers[0].callback();
+  invariant(scripts.length === 0, "ready API appended a duplicate loader script");
+  invariant(api.loads.length === 1, "timeout path did not start native viewer");
+  const renderTimer = clock.timeouts.find((timer) => timer.delay === 12000);
+  invariant(renderTimer, "Google Books timeout was not 12 seconds");
+  clock.fireTimeout(12000);
   await opening;
 
   const text = collectedText(viewerBody);
   const links = viewerBody.querySelectorAll("a");
+  const covers = viewerBody.querySelectorAll("img");
   invariant(text.includes(item.title), "timeout fallback lost book metadata");
-  invariant(text.includes("timed out"), "timeout fallback reason missing");
+  invariant(text.includes(item.description), "timeout fallback lost description");
+  invariant(text.includes("PARTIAL / SAMPLE"), "timeout fallback lost preview status");
+  invariant(text.includes("twelve seconds"), "timeout duration copy was not derived safely");
+  invariant(covers.length === 1 && covers[0].src === item.thumb_url, "timeout cover missing");
   invariant(links.length === 1, "timeout fallback link missing");
+  invariant(links[0].target === "_blank" && links[0].rel === "noopener noreferrer",
+    "timeout fallback link protections missing");
   invariant(openedTabs === 0, "timeout forcibly opened a new tab");
+  api.loads[0].success();
+  await flush();
+  invariant(collectedText(viewerBody).includes("twelve seconds"),
+    "late success replaced timeout fallback");
   process.stdout.write(JSON.stringify({
-    delay: timers[0].delay,
+    delay: renderTimer.delay,
+    text,
     fallback: links[0].href,
     openedTabs,
-    clearedTimers,
+    cleared: renderTimer.cleared,
   }));
 } else if (scenario === "google_serp_url_volume_id") {
   globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
@@ -8107,6 +8308,46 @@ def test_google_books_viewer_loads_volume_once_and_rejects_stale_openings():
     }
 
 
+def test_google_books_readiness_poll_waits_for_constructor_when_callback_is_absent():
+    assert viewer_runtime("google_readiness_poll_success") == {
+        "identifier": "poll-ready",
+        "apiLoadCalls": 1,
+        "pollDelay": 50,
+    }
+
+
+def test_google_books_retry_after_script_failure_replaces_only_failed_loader():
+    assert viewer_runtime("google_retry_after_script_error") == {
+        "scriptCount": 2,
+        "activeScripts": 1,
+        "identifier": "retry-success",
+    }
+
+
+def test_google_books_readiness_timeout_resets_loader_for_successful_retry():
+    assert viewer_runtime("google_readiness_timeout_reset") == {
+        "watchdogDelay": 10000,
+        "scriptCount": 2,
+        "identifier": "after-watchdog",
+    }
+
+
+def test_google_books_readiness_concurrent_calls_share_loader_and_reject_stale_view():
+    assert viewer_runtime("google_readiness_concurrent_stale") == {
+        "scriptCount": 1,
+        "identifiers": ["newest-shared-loader"],
+        "resizeCalls": 1,
+    }
+
+
+def test_google_books_success_cancels_render_timeout_before_fallback():
+    assert viewer_runtime("google_success_cancels_timeout") == {
+        "delay": 12000,
+        "cleared": True,
+        "fallbackVisible": False,
+    }
+
+
 def test_google_books_viewer_parses_serpapi_result_url_without_access_metadata():
     assert viewer_runtime("google_serp_url_volume_id") == {"identifier": "serp-volume"}
 
@@ -8120,9 +8361,11 @@ def test_google_books_waits_for_visible_offcanvas_before_loading_viewer():
 def test_google_books_timeout_uses_safe_sidebar_fallback_without_forced_popup():
     rendered = viewer_runtime("google_timeout_fallback")
 
-    assert rendered["delay"] == 8000
+    assert rendered["delay"] == 12000
+    assert "twelve seconds" in rendered["text"]
     assert rendered["fallback"].startswith("https://books.google.com/")
     assert rendered["openedTabs"] == 0
+    assert rendered["cleared"] is True
 
 
 def test_google_books_fallback_renders_metadata_without_unsafe_links():

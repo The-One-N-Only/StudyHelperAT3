@@ -4,7 +4,9 @@ import { showToast } from './toast.js';
 import { createWorkspaceSelectElement, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
 
 const GOOGLE_BOOKS_API_URL = 'https://www.google.com/books/jsapi.js';
-const GOOGLE_BOOKS_RENDER_TIMEOUT_MS = 8000;
+const GOOGLE_BOOKS_RENDER_TIMEOUT_MS = 12000;
+const GOOGLE_BOOKS_API_READY_TIMEOUT_MS = 10000;
+const GOOGLE_BOOKS_API_POLL_INTERVAL_MS = 50;
 const PROXY_IFRAME_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox';
 
 let viewerOffcanvas;
@@ -210,43 +212,113 @@ function googleBooksVolumeId(item) {
 }
 
 function loadGoogleBooksApi() {
+    const readyApi = window.google?.books;
+    if (readyApi?.DefaultViewer) return Promise.resolve(readyApi);
     if (googleBooksApiPromise) return googleBooksApiPromise;
 
-    googleBooksApiPromise = new Promise((resolve, reject) => {
-        if (window.google?.books?.DefaultViewer) {
-            resolve(window.google.books);
-            return;
-        }
+    let script;
+    const loaderPromise = new Promise((resolve, reject) => {
+        let readinessPollId;
+        let readinessWatchdogId;
+        let settled = false;
 
-        const script = document.createElement('script');
+        const cleanup = () => {
+            if (readinessPollId !== undefined) {
+                clearInterval(readinessPollId);
+                readinessPollId = undefined;
+            }
+            if (readinessWatchdogId !== undefined) {
+                clearTimeout(readinessWatchdogId);
+                readinessWatchdogId = undefined;
+            }
+            if (script) {
+                script.onload = null;
+                script.onerror = null;
+            }
+        };
+
+        const resolveIfReady = () => {
+            if (settled) return true;
+            const booksApi = window.google?.books;
+            if (!booksApi?.DefaultViewer) return false;
+
+            settled = true;
+            cleanup();
+            resolve(booksApi);
+            return true;
+        };
+
+        const rejectLoader = (error) => {
+            if (settled || resolveIfReady()) return;
+
+            settled = true;
+            cleanup();
+            if (script?.parentNode) script.remove();
+            reject(error);
+        };
+
+        readinessWatchdogId = setTimeout(() => {
+            rejectLoader(new Error('Google Books API readiness timed out'));
+        }, GOOGLE_BOOKS_API_READY_TIMEOUT_MS);
+
+        script = document.createElement('script');
         script.src = GOOGLE_BOOKS_API_URL;
         script.async = true;
         script.onload = () => {
             const booksApi = window.google?.books;
             if (!booksApi?.load || !booksApi?.setOnLoadCallback) {
-                reject(new Error('Google Books API loader unavailable'));
+                rejectLoader(new Error('Google Books API loader unavailable'));
                 return;
             }
 
             try {
                 booksApi.load();
                 booksApi.setOnLoadCallback(() => {
-                    const loadedApi = window.google?.books;
-                    if (!loadedApi?.DefaultViewer) {
-                        reject(new Error('Google Books viewer unavailable'));
-                        return;
-                    }
-                    resolve(loadedApi);
+                    resolveIfReady();
                 });
             } catch {
-                reject(new Error('Google Books API initialization failed'));
+                rejectLoader(new Error('Google Books API initialization failed'));
+                return;
             }
+
+            if (resolveIfReady() || settled) return;
+            readinessPollId = setInterval(
+                resolveIfReady,
+                GOOGLE_BOOKS_API_POLL_INTERVAL_MS,
+            );
         };
-        script.onerror = () => reject(new Error('Google Books API script failed'));
+        script.onerror = () => {
+            rejectLoader(new Error('Google Books API script failed'));
+        };
         document.head.appendChild(script);
     });
 
+    const retryablePromise = loaderPromise.catch((error) => {
+        if (googleBooksApiPromise === retryablePromise) {
+            googleBooksApiPromise = undefined;
+        }
+        throw error;
+    });
+    googleBooksApiPromise = retryablePromise;
     return googleBooksApiPromise;
+}
+
+function numberAsEnglishWords(value) {
+    const smallNumbers = [
+        'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven',
+        'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen',
+        'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen',
+    ];
+    if (Number.isInteger(value) && value >= 0 && value < smallNumbers.length) {
+        return smallNumbers[value];
+    }
+    return String(value);
+}
+
+function googleBooksRenderTimeoutLabel() {
+    const seconds = GOOGLE_BOOKS_RENDER_TIMEOUT_MS / 1000;
+    const unit = seconds === 1 ? 'second' : 'seconds';
+    return `${numberAsEnglishWords(seconds)} ${unit}`;
 }
 
 function renderGoogleBooksFallback(body, item, reason) {
@@ -414,7 +486,7 @@ async function renderGoogleBooksViewerWithTimeout(body, item, generation) {
                 renderGoogleBooksFallback(
                     body,
                     item,
-                    'The embedded Google Books preview timed out after eight seconds.',
+                    `The embedded Google Books preview timed out after ${googleBooksRenderTimeoutLabel()}.`,
                 );
             }
             resolve();
