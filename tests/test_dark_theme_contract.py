@@ -4861,6 +4861,91 @@ process.stdout.write(JSON.stringify({
 """
 
 
+RESTORED_PENDING_LOAD_MORE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+const cachedItems = Array.from({ length: 3 }, (_, index) => ({
+  source_name: "Wikipedia",
+  source_id: `wiki-${index + 1}`,
+  source_url: `https://en.wikipedia.org/wiki/archive-${index + 1}`,
+  title: `Restored ${index + 1}`,
+}));
+const restoredState = {
+  version: 2,
+  query: "restored archive",
+  sources: ["wikipedia"],
+  filters: { min_date: "", max_date: "", content_type: "", sorting: "" },
+  results: cachedItems,
+  groupedResults: { wikipedia: cachedItems },
+  sourceCounts: { wikipedia: 3 },
+  groupPage: 1,
+  resultWindow: 10,
+  searchExhausted: false,
+};
+globalThis.localStorage = {
+  getItem(key) {
+    invariant(key === "studyhelper_browse_state", "wrong restore key");
+    return JSON.stringify(restoredState);
+  },
+  setItem() {},
+};
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+const whitelistReadiness = deferred();
+globalThis.fetch = async (url) => {
+  if (url === "/static/whitelist.json") return whitelistReadiness.promise;
+  invariant(url === "/api/browse/search-all", "unexpected restored pending endpoint");
+  return { ok: true, json() { return new Promise(() => {}); } };
+};
+globalThis.toastCalls = [];
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await flushPromises();
+
+const restoredLoadMore = controls.get("#loadMoreBtn");
+invariant(restoredLoadMore && !restoredLoadMore.disabled,
+  "restored non-exhausted results lacked an enabled Load More control");
+const titlesBeforeSearch = globalThis.renderedItems.map((item) => item.title);
+
+await go.dispatch("click");
+await flushPromises();
+const duringReadiness = {
+  titles: globalThis.renderedItems.map((item) => item.title),
+  busy: resultsContainer.getAttribute("aria-busy"),
+  loaderCount: resultsContainer.children.filter(
+    (child) => child.className.split(/\s+/).includes("loader-container")
+  ).length,
+};
+
+await restoredLoadMore.dispatch("click");
+await flushPromises();
+const afterLoadMoreClick = {
+  titles: globalThis.renderedItems.map((item) => item.title),
+  busy: resultsContainer.getAttribute("aria-busy"),
+  loaderCount: resultsContainer.children.filter(
+    (child) => child.className.split(/\s+/).includes("loader-container")
+  ).length,
+};
+
+whitelistReadiness.resolve({
+  ok: true,
+  async json() { return { domains: [] }; },
+});
+await flushPromises();
+
+process.stdout.write(JSON.stringify({
+  titlesBeforeSearch,
+  duringReadiness,
+  afterLoadMoreClick,
+}));
+"""
+
+
 MAX_RANK_RESTORED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 const cachedItems = Array.from({ length: 20 }, (_, index) => ({
@@ -5694,6 +5779,15 @@ def restored_browse_runtime(source: str | None = None) -> dict:
     )
 
 
+def restored_pending_load_more_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        RESTORED_PENDING_LOAD_MORE_RUNTIME_HARNESS,
+        "restored pending Load More",
+    )
+
+
 def max_rank_restored_browse_runtime(source: str | None = None) -> dict:
     browse_source = source or read_text("static/js/pages/browse.js")
     browse_source += "\nexport { getBrowseState };\n"
@@ -6230,6 +6324,18 @@ def test_browse_loading_no_source_preserves_existing_results_and_clears_owned_st
     ]
     assert rendered["terminalBusy"] == "false"
     assert rendered["terminalLoaderCount"] == 0
+
+
+def test_browse_loading_blocks_restored_load_more_during_source_readiness():
+    rendered = restored_pending_load_more_runtime()
+
+    assert rendered["titlesBeforeSearch"] == ["Restored 1"]
+    assert rendered["duringReadiness"] == {
+        "titles": ["Restored 1"],
+        "busy": "true",
+        "loaderCount": 1,
+    }
+    assert rendered["afterLoadMoreClick"] == rendered["duringReadiness"]
 
 
 def test_browse_loading_is_generation_owned_through_stale_result_race():

@@ -405,6 +405,9 @@ function showPartialSourceWarning(result) {
 
 function syncBrowseLoadingState(resultsContainer) {
     if (!resultsContainer) return;
+    // Loader membership is intent-owned, so it is also the source of truth for
+    // blocking restored paging throughout readiness and request work.
+    isInitialSearchPending = searchLoaders.size > 0;
     const containerLoaders = Array.from(searchLoaders.values()).filter(
         (loader) => loader.container === resultsContainer
     );
