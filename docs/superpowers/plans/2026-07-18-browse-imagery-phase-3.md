@@ -15,6 +15,7 @@
 **Files:**
 - Modify: `src/search.py`
 - Modify: `static/js/card.js`
+- Modify: `static/js/pages/browse.js` (thumbnail normalization only)
 - Modify: `templates/macros.html`
 - Modify: `static/css/custom.css`
 - Modify: `tests/test_search.py`
@@ -48,6 +49,7 @@ In `src/search.py`:
 - Prefer derived Google Books cover, then safe SerpAPI `thumbnail`, then safe SerpAPI `favicon`.
 - Set `thumb_mime` and `thumb_height` consistently without fetching image bytes.
 - Use the helper in `browse_serpapi_search`; preserve query, ranking, pagination, whitelist, persistence, and error behavior.
+- Replace Browse's legacy blanket thumbnail blanking with strict preservation of normalized HTTPS `thumb_url` values. Keep all ranking, dedupe, restoration, and request-generation logic unchanged.
 
 Run the focused tests again. Expected: PASS.
 
