@@ -4,6 +4,8 @@ Quick test script to verify Claude integration is working
 Run with: python test_claude_integration.py
 """
 
+__test__ = False
+
 import os
 import sys
 import json
@@ -26,7 +28,7 @@ def test_api_key():
         print("   ⚠️  API key doesn't look valid (should start with sk-ant-)")
         return False
     
-    print(f"   ✅ API Key configured: {api_key[:20]}...")
+    print("   ✅ ANTHROPIC_API_KEY is configured")
     return True
 
 def test_anthropic_import():
@@ -101,7 +103,7 @@ def test_claude_api():
         client = anthropic.Anthropic(api_key=api_key)
         
         message = client.messages.create(
-            model=os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8"),
+            model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
             max_tokens=10,
             messages=[
                 {"role": "user", "content": "Say OK"}

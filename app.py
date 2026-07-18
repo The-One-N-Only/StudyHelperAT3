@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template, session, redirect, u
 from flask_session import Session
 import os
 from dotenv import load_dotenv
+load_dotenv()
 import io
 import src.db as db
 import src.search as search
@@ -12,8 +13,6 @@ import src.citations as citations
 import src.files as files
 import src.export as export
 import src.answer as answer
-import src.local_ai as local_ai
-import src.whitelist as whitelist
 import json
 import uuid
 import mimetypes
@@ -25,8 +24,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 import logging
 from flask import g
-
-load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -222,13 +219,6 @@ def logout():
     logging.info(f"User {user_id} logged out")
     return redirect(url_for('login'))
 
-@app.route('/api/config/google-books-key', methods=['GET'])
-def get_google_books_api_key():
-    api_key = os.getenv('GOOGLE_BOOKS_API_KEY', '')
-    if not api_key:
-        return jsonify({'status': False, 'error': 'Google Books API key not configured'}), 404
-    return jsonify({'status': True, 'google_books_api_key': api_key})
-
 @app.route('/api/browse/search', methods=['POST'])
 def browse_search():
     data = request.json
@@ -291,10 +281,7 @@ def browse_search_all():
     data = request.json
     query = data['query']
     num_results = data.get('num_results', 20)
-    default_sources = ['wikipedia', 'gbooks', 'pubmed', 'scholar', 'whitelist']
-    requested_sources = data.get('sources')
-    explicit_sources = requested_sources is not None
-    sources = requested_sources if explicit_sources else default_sources
+    sources = data.get('sources', ['wikipedia', 'gbooks', 'scholar'])
     filters = data.get('filters', {})
     user_id = session.get('user_id')
 
@@ -306,10 +293,10 @@ def browse_search_all():
         'wikipedia': (search.wikipedia, (query, num_results)),
         'gbooks': (search.gbooks, (query, num_results, filters)),
         'pubmed': (pubmed.search, (query, num_results, filters.get('mesh_terms', []), filters.get('min_date'), filters.get('max_date'))),
-        'scholar': (search.google_scholar, (query, num_results,))
+        'scholar': (search.google_scholar, (query, num_results,)),
+        'whitelist': (search.whitelist_search, (query, num_results,))
     }
 
-    # De-duplicate requested sources while preserving order.
     requested_sources = []
     seen_sources = set()
     for source in sources:
@@ -318,17 +305,12 @@ def browse_search_all():
         seen_sources.add(source)
         requested_sources.append(source)
 
-    # If explicit whitelist domains are selected, ignore generic whitelist to prevent duplication.
-    if any(src.startswith('whitelist_') for src in requested_sources):
-        requested_sources = [src for src in requested_sources if src != 'whitelist']
+    # An explicit domain is more precise than the generic whitelist fan-out.
+    if any(source.startswith('whitelist_') for source in requested_sources):
+        requested_sources = [
+            source for source in requested_sources if source != 'whitelist'
+        ]
 
-    # Disable Wikipedia/PubMed only for default source sets, not explicit requests.
-    disabled_sources = []
-    if not explicit_sources:
-        disabled_sources = [src for src in requested_sources if src in ('wikipedia', 'pubmed')]
-        requested_sources = [src for src in requested_sources if src not in ('wikipedia', 'pubmed')]
-
-    # Execute searches in parallel
     grouped_results = {}
     source_counts = {}
 
@@ -339,11 +321,6 @@ def browse_search_all():
             if source in search_tasks:
                 func, args = search_tasks[source]
                 futures[source] = executor.submit(func, *args, user_id=user_id)
-            elif source == 'whitelist':
-                for domain in whitelist.get_whitelisted_domains():
-                    key = f'whitelist_{domain}'
-                    if key not in futures:
-                        futures[key] = executor.submit(search.whitelist_search, query, num_results, domains=[domain], user_id=user_id)
             elif source.startswith('whitelist_'):
                 domain = source.split('_', 1)[1]
                 futures[source] = executor.submit(search.whitelist_search, query, num_results, domains=[domain], user_id=user_id)
@@ -362,22 +339,32 @@ def browse_search_all():
                 grouped_results[source] = []
                 source_counts[source] = 0
 
-    for source in disabled_sources:
-        grouped_results[source] = []
-        source_counts[source] = 0
-
-    # Preserve the full result list from each source group so the browse UI can render
-    # multiple results per source and support the Load More Results flow.
+    flattened = [
+        (source, item)
+        for source, items in grouped_results.items()
+        for item in items
+    ]
+    unique_items = iter(search.deduplicate_results([item for _, item in flattened]))
+    next_unique = next(unique_items, None)
+    deduplicated_groups = {source: [] for source in grouped_results}
     all_results = []
-    for items in grouped_results.values():
-        all_results.extend(items or [])
+    for source, item in flattened:
+        if item is not next_unique:
+            continue
+        response_item = search.with_response_dedupe_metadata(item)
+        deduplicated_groups[source].append(response_item)
+        all_results.append(response_item)
+        next_unique = next(unique_items, None)
 
-    logging.info(f"User {user_id} performed multi-source search for '{query}' across {len(futures)} sources")
+    logging.info(
+        f"User {user_id} performed multi-source search for '{query}' "
+        f"across {len(futures)} sources"
+    )
 
     return jsonify({
         'status': True,
         'results': all_results,
-        'grouped_results': grouped_results,
+        'grouped_results': deduplicated_groups,
         'source_counts': source_counts
     })
 
@@ -395,7 +382,7 @@ def browse_summary():
     try:
         summary = summarise.summarise_search_results(query, results, atn)
         logging.info(f"User {user_id} requested search summary for '{query}'")
-        return jsonify({'status': True, 'summary': summary})
+        return jsonify(summary)
     except Exception as e:
         logging.error(f"Search summary failed for user {user_id}: {str(e)}")
         return jsonify({'status': False, 'error': 'Search summarisation failed'}), 500
@@ -439,7 +426,7 @@ def api_summarise():
     
     if url:
         try:
-            result = summarise.summarise_url(url, data.get('title', ''), atn, user_id)
+            result = summarise.summarise_url(url, data.get('title', ''), atn)
         except ValueError:
             return jsonify({'status': False, 'error': 'URL not allowed'}), 403
     elif file_id:

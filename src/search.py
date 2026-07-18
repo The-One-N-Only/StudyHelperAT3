@@ -1,20 +1,256 @@
+import json
+import math
 import os
 import re
+from collections.abc import Mapping
+from urllib.parse import urlsplit, urlunsplit
+
 import requests
-from urllib.parse import quote
-import json
-import xml.etree.ElementTree as ET
 import src.whitelist as whitelist
 import src.db as db
-from dotenv import load_dotenv
-
-load_dotenv()
+import src.pubmed as pubmed
 
 USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
 GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY", "")
 GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID", "")
 SERP_API_KEY = os.getenv("SERP_API_KEY", "")
+CUSTOM_SEARCH_PAGE_SIZE = 10
+CUSTOM_SEARCH_MAX_RESULTS = 100
+CUSTOM_SEARCH_SAFE_MAX_RESULTS = 99
+
+
+def _bounded_search_count(num_results, maximum=CUSTOM_SEARCH_MAX_RESULTS):
+    try:
+        requested = int(num_results)
+    except (TypeError, ValueError):
+        return 0
+    return min(max(requested, 0), maximum)
+
+
+def _google_custom_search_items(query, num_results):
+    """Return valid pages while keeping Google's ``start + num`` at 100 or less."""
+    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
+        return []
+
+    # Custom Search uses a one-based start index and rejects start + num > 100.
+    # Without relying on optional nextPage metadata, 99 is the safe result ceiling.
+    target = _bounded_search_count(
+        num_results,
+        maximum=CUSTOM_SEARCH_SAFE_MAX_RESULTS,
+    )
+    items = []
+    start = 1
+    while len(items) < target:
+        page_size = min(
+            CUSTOM_SEARCH_PAGE_SIZE,
+            target - len(items),
+            100 - start,
+        )
+        if page_size < 1:
+            break
+        params = {
+            "key": GOOGLE_SEARCH_API_KEY,
+            "cx": GOOGLE_SEARCH_ENGINE_ID,
+            "q": query,
+            "num": page_size,
+            "start": start,
+        }
+        try:
+            response = requests.get(
+                "https://www.googleapis.com/customsearch/v1",
+                params=params,
+                headers={"User-Agent": USER_AGENT},
+                timeout=10,
+            )
+            if response.status_code != 200:
+                break
+            payload = response.json()
+        except Exception:
+            break
+
+        if not isinstance(payload, Mapping):
+            break
+        page_items = payload.get("items", [])
+        if (
+            not isinstance(page_items, list)
+            or not page_items
+            or not all(isinstance(item, Mapping) for item in page_items)
+        ):
+            break
+        page_items = page_items[:page_size]
+        items.extend(page_items)
+        if len(page_items) < page_size:
+            break
+        start += page_size
+
+    return items
+
+
+def normalize_identity_text(value):
+    """Return case-folded, collapsed whitespace for untrusted scalar input."""
+    if value is None or not isinstance(value, (str, int, float, bool)):
+        return ""
+    return " ".join(str(value).split()).casefold()
+
+
+def canonical_source_url(value):
+    """Return normalized absolute HTTP(S) URL without fragment, or empty string."""
+    if not isinstance(value, str):
+        return ""
+
+    raw_value = value.strip()
+    if (
+        not raw_value
+        or "\\" in raw_value
+        or any(character.isspace() for character in raw_value)
+    ):
+        return ""
+
+    try:
+        parsed = urlsplit(raw_value)
+        scheme = parsed.scheme.lower()
+        hostname = parsed.hostname
+        port = parsed.port
+    except (TypeError, ValueError):
+        return ""
+
+    if scheme not in {"http", "https"} or not parsed.netloc or not hostname:
+        return ""
+
+    normalized_hostname = hostname.lower()
+    if ":" in normalized_hostname:
+        normalized_hostname = f"[{normalized_hostname}]"
+
+    userinfo = ""
+    if parsed.username is not None:
+        userinfo = parsed.username
+        if parsed.password is not None:
+            userinfo += f":{parsed.password}"
+        userinfo += "@"
+
+    netloc = f"{userinfo}{normalized_hostname}"
+    if port is not None:
+        netloc += f":{port}"
+
+    return urlunsplit((scheme, netloc, parsed.path, parsed.query, ""))
+
+
+def result_identity(item):
+    """Return source/id, URL, display tuple, or None in approved priority order."""
+    if not isinstance(item, Mapping):
+        return None
+
+    source_name = normalize_identity_text(item.get("source_name"))
+    source_id_value = item.get("source_id")
+    if isinstance(source_id_value, str):
+        source_id = str(source_id_value).strip()
+    elif isinstance(source_id_value, bool):
+        source_id = "true" if source_id_value else "false"
+    elif isinstance(source_id_value, int):
+        source_id = str(source_id_value)
+    elif isinstance(source_id_value, float) and math.isfinite(source_id_value):
+        source_id = (
+            str(int(source_id_value))
+            if source_id_value.is_integer()
+            else str(source_id_value)
+        )
+    else:
+        source_id = ""
+
+    if source_name and source_id:
+        return ("source_id", source_name, source_id)
+
+    source_url = canonical_source_url(item.get("source_url"))
+    if source_url:
+        return ("url", source_url)
+
+    title = normalize_identity_text(item.get("title"))
+    if source_name and title:
+        return ("display", source_name, title)
+
+    return None
+
+
+def with_response_dedupe_metadata(item):
+    """Return a result copy carrying the server's canonical dedupe keys."""
+    if not isinstance(item, Mapping):
+        return item
+
+    response_item = dict(item)
+    identity = result_identity(item)
+    response_item["_dedupe_identity"] = (
+        json.dumps(identity, ensure_ascii=False, separators=(",", ":"))
+        if identity is not None
+        else ""
+    )
+    response_item["_canonical_source_url"] = canonical_source_url(
+        item.get("source_url")
+    )
+    return response_item
+
+
+def deduplicate_results(results):
+    """Keep first item from each identity/URL connected component, in order."""
+    if results is None or isinstance(results, (str, bytes, Mapping)):
+        return []
+
+    try:
+        result_items = iter(results)
+    except TypeError:
+        return []
+
+    items = list(result_items)
+    parents = list(range(len(items)))
+    ranks = [0] * len(items)
+
+    def find(index):
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(left, right):
+        left_root = find(left)
+        right_root = find(right)
+        if left_root == right_root:
+            return
+        if ranks[left_root] < ranks[right_root]:
+            left_root, right_root = right_root, left_root
+        parents[right_root] = left_root
+        if ranks[left_root] == ranks[right_root]:
+            ranks[left_root] += 1
+
+    first_index_by_key = {}
+    for index, item in enumerate(items):
+        identity = result_identity(item)
+        source_url = (
+            canonical_source_url(item.get("source_url"))
+            if isinstance(item, Mapping)
+            else ""
+        )
+        keys = []
+        if identity is not None:
+            keys.append(("identity", identity))
+        if source_url:
+            keys.append(("url", source_url))
+
+        for key in keys:
+            previous_index = first_index_by_key.get(key)
+            if previous_index is None:
+                first_index_by_key[key] = index
+            else:
+                union(index, previous_index)
+
+    first_index_by_component = {}
+    for index in range(len(items)):
+        first_index_by_component.setdefault(find(index), index)
+
+    return [
+        item
+        for index, item in enumerate(items)
+        if first_index_by_component[find(index)] == index
+    ]
 
 
 def wikipedia(query, num_results, *, user_id):
@@ -78,7 +314,7 @@ def wikipedia(query, num_results, *, user_id):
 def gbooks(query, num_results, filters, *, user_id):
     params = {
         "q": query,
-        "maxResults": num_results
+        "maxResults": min(max(int(num_results), 0), 40)
     }
     if GOOGLE_BOOKS_API_KEY:
         params["key"] = GOOGLE_BOOKS_API_KEY
@@ -98,6 +334,9 @@ def gbooks(query, num_results, filters, *, user_id):
             results = []
             for item in data.get("items", []):
                 vol = item.get("volumeInfo", {})
+                access = item.get("accessInfo", {})
+                if not isinstance(access, Mapping):
+                    access = {}
                 item_data = {
                     "title": vol.get("title", ""),
                     "description": vol.get("description", ""),
@@ -109,7 +348,20 @@ def gbooks(query, num_results, filters, *, user_id):
                     "source_id": item.get("id", "")
                 }
                 if item_data["source_url"] and whitelist.is_allowed(item_data["source_url"]):
-                    results.append(db.get_item_by_source("gbooks", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+                    persisted_item = (
+                        db.get_item_by_source(
+                            "gbooks", item_data["source_id"], user_id, True
+                        )
+                        or db.create_item(item_data, user_id, True)
+                    )
+                    response_item = dict(persisted_item)
+                    response_item["accessInfo"] = {
+                        "embeddable": access.get("embeddable") is True,
+                        "webReaderLink": access.get("webReaderLink", ""),
+                        "viewability": access.get("viewability", "UNKNOWN"),
+                        "accessViewStatus": access.get("accessViewStatus", "NONE"),
+                    }
+                    results.append(response_item)
             return results
         return []
     except:
@@ -117,105 +369,85 @@ def gbooks(query, num_results, filters, *, user_id):
 
 
 def _search_serpapi(query, num_results, scope, *, user_id):
-    """Search one whitelisted academic site using SerpApi."""
+    """Search whitelisted academic sites using SerpApi."""
     if not SERP_API_KEY or not scope:
         return []
 
     try:
+        target = _bounded_search_count(num_results)
         q = f"{query} ({scope})".strip()
-        params = {
-            "q": q,
-            "num": min(num_results, 10),
-            "api_key": SERP_API_KEY,
-            "engine": "google"
-        }
-        headers = {"User-Agent": USER_AGENT}
-        resp = requests.get(
-            "https://serpapi.com/search",
-            params=params,
-            headers=headers,
-            timeout=10
-        )
-        if resp.status_code != 200:
-            return []
-
-        data = resp.json()
         results = []
-        for item in data.get("organic_results", []):
-            link = item.get("link", "")
-            if not link or not whitelist.is_allowed(link):
-                continue
-
-            domain = whitelist.get_domain(link)
-            item_data = {
-                "title": item.get("title", ""),
-                "description": item.get("snippet", ""),
-                "thumb_url": "",
-                "thumb_mime": "image/jpeg",
-                "thumb_height": 0,
-                "source_url": link,
-                "source_name": whitelist.get_display_name_for_domain(domain) if domain else "Whitelisted Source",
-                "source_id": link
-            }
-            results.append(
-                db.get_item_by_source(
-                    item_data["source_name"], item_data["source_id"], user_id, True
-                ) or db.create_item(item_data, user_id, True)
+        start = 0
+        while len(results) < target and start < CUSTOM_SEARCH_MAX_RESULTS:
+            page_size = min(
+                CUSTOM_SEARCH_PAGE_SIZE,
+                target - len(results),
+                CUSTOM_SEARCH_MAX_RESULTS - start,
             )
+            params = {
+                "q": q,
+                "num": page_size,
+                "start": start,
+                "api_key": SERP_API_KEY,
+                "engine": "google"
+            }
+            headers = {"User-Agent": USER_AGENT}
+            try:
+                resp = requests.get(
+                    "https://serpapi.com/search",
+                    params=params,
+                    headers=headers,
+                    timeout=10
+                )
+                if resp.status_code != 200:
+                    break
+                payload = resp.json()
+                if not isinstance(payload, Mapping):
+                    break
+                page_items = payload.get("organic_results", [])
+            except Exception:
+                # Later-page provider corruption must not erase earlier good pages.
+                break
+            if not isinstance(page_items, list) or not page_items:
+                break
+            page_items = page_items[:page_size]
+            page_results = []
+            try:
+                for item in page_items:
+                    if not isinstance(item, Mapping):
+                        raise ValueError("Malformed SerpApi result item")
+                    link = item.get("link", "")
+                    if not link or not whitelist.is_allowed(link):
+                        continue
+
+                    domain = whitelist.get_domain(link)
+                    item_data = {
+                        "title": item.get("title", ""),
+                        "description": item.get("snippet", ""),
+                        "thumb_url": "",
+                        "thumb_mime": "image/jpeg",
+                        "thumb_height": 0,
+                        "source_url": link,
+                        "source_name": whitelist.get_display_name_for_domain(domain) if domain else "Whitelisted Source",
+                        "source_id": link
+                    }
+                    page_results.append(
+                        db.get_item_by_source(
+                            item_data["source_name"], item_data["source_id"], user_id, True
+                        ) or db.create_item(item_data, user_id, True)
+                    )
+                    if len(results) + len(page_results) >= target:
+                        break
+            except Exception:
+                break
+            results.extend(page_results)
+
+            if len(page_items) < page_size:
+                break
+            start += page_size
         return results
     except Exception:
         return []
-
-
-def _search_whitelist_site(query, num_results, domain, *, user_id):
-    """Search one whitelisted domain via SerpAPI and return up to ten results."""
-    if not query or not domain:
-        return []
-
-    scope = f"site:{domain}"
-    domain_results = _search_serpapi(query, num_results, scope, user_id=user_id)
-    if domain_results:
-        return domain_results
-
-    fallback_link = f"https://{domain}/"
-    if whitelist.is_allowed(fallback_link):
-        item_data = {
-            "title": f"{domain} homepage",
-            "description": f"Search results for '{query}' were not available from the API.",
-            "thumb_url": "",
-            "thumb_mime": "image/jpeg",
-            "thumb_height": 0,
-            "source_url": fallback_link,
-            "source_name": whitelist.get_display_name_for_domain(domain) if domain else "Whitelisted Source",
-            "source_id": fallback_link,
-        }
-        return [
-            db.get_item_by_source(item_data["source_name"], item_data["source_id"], user_id, True)
-            or db.create_item(item_data, user_id, True)
-        ]
-    return []
-
-
-def whitelist_search(query, num_results, domains=None, *, user_id):
-    """Search each whitelisted domain and return up to ten results per domain."""
-    if not query:
-        return []
-
-    requested_domains = domains or whitelist.get_whitelisted_domains()
-    if not requested_domains:
-        return []
-
-    results = []
-    for domain in requested_domains:
-        domain_items = _search_whitelist_site(query, num_results, domain, user_id=user_id) or []
-        # assign per-domain rank (1..n) so the UI can reveal them incrementally
-        for i, it in enumerate(domain_items[:10], start=1):
-            try:
-                it['whitelist_rank'] = int(it.get('whitelist_rank', i))
-            except Exception:
-                it['whitelist_rank'] = i
-        results.extend(domain_items)
-    return results
 
 
 def google_scholar(query, num_results, *, user_id):
@@ -228,25 +460,9 @@ def google_scholar(query, num_results, *, user_id):
         return []
     
     try:
-        # Use Google Custom Search API configured to search scholar.google.com
-        url = "https://www.googleapis.com/customsearch/v1"
-        params = {
-            "key": GOOGLE_SEARCH_API_KEY,
-            "cx": GOOGLE_SEARCH_ENGINE_ID,  # Custom search engine ID configured for academic sites
-            "q": query,
-            "num": min(num_results, 10)  # API limit is 10 per request
-        }
-        
-        headers = {"User-Agent": USER_AGENT}
-        resp = requests.get(url, params=params, headers=headers, timeout=10)
-        
-        if resp.status_code != 200:
-            return []
-        
-        data = resp.json()
+        target = _bounded_search_count(num_results)
         results = []
-        
-        for item in data.get("items", []):
+        for item in _google_custom_search_items(query, target):
             # Only include results from whitelisted domains
             link = item.get("link", "")
             if not whitelist.is_allowed(link):
@@ -264,68 +480,34 @@ def google_scholar(query, num_results, *, user_id):
             }
             
             results.append(db.get_item_by_source(item_data["source_name"], item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
-            
+            if len(results) >= target:
+                break
+
         return results
-    except:
+    except Exception:
         return []
 
 
-def _normalize_search_result(link, title, description):
-    normalized_link = (link or "").strip()
-    if not normalized_link:
-        return None
-    if not whitelist.is_allowed(normalized_link):
-        return None
-    return {
-        "title": (title or "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-        "description": (description or "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-        "thumb_url": "",
-        "thumb_mime": "image/jpeg",
-        "thumb_height": 0,
-        "source_url": normalized_link,
-        "source_name": "whitelist",
-        "source_id": normalized_link,
-    }
-
-
-def _search_with_google_cse(query, num_results):
-    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
+def _search_whitelist_site(query, num_results, domain, *, user_id):
+    """Search a specific whitelisted domain and return up to `num_results` items."""
+    target = _bounded_search_count(num_results)
+    if not domain or target == 0:
         return []
 
-    scopes = whitelist.get_whitelist_search_scope()
-    if not scopes:
-        return []
+    scope = f"site:{domain}"
+    if SERP_API_KEY:
+        return _search_serpapi(query, target, scope, user_id=user_id)
 
-    results = []
-    seen_links = set()
-    per_domain_limit = max(1, min(num_results, 10))
-
-    for scope in scopes:
-        if len(results) >= num_results:
-            break
-
-        q = f"{query} {scope}"
+    display_name = whitelist.get_display_name_for_domain(domain)
+    if GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
         try:
-            url = "https://www.googleapis.com/customsearch/v1"
-            params = {
-                "key": GOOGLE_SEARCH_API_KEY,
-                "cx": GOOGLE_SEARCH_ENGINE_ID,
-                "q": q,
-                "num": per_domain_limit
-            }
-
-            headers = {"User-Agent": USER_AGENT}
-            resp = requests.get(url, params=params, headers=headers, timeout=10)
-            if resp.status_code != 200:
-                continue
-
-            data = resp.json()
-            for item in data.get("items", []):
+            q = f"{query} {scope}"
+            results = []
+            for item in _google_custom_search_items(q, target):
                 link = item.get("link", "")
-                if not whitelist.is_allowed(link) or link in seen_links:
+                if not link or not whitelist.is_allowed(link):
                     continue
 
-                seen_links.add(link)
                 item_data = {
                     "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
                     "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
@@ -333,20 +515,63 @@ def _search_with_google_cse(query, num_results):
                     "thumb_mime": "image/jpeg",
                     "thumb_height": 0,
                     "source_url": link,
-                    "source_name": "whitelist",
+                    "source_name": display_name,
                     "source_id": link
                 }
-                results.append(db.get_item_by_source("whitelist", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
-                if len(results) >= num_results:
+                results.append(db.get_item_by_source(item_data["source_name"], item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+                if len(results) >= target:
                     break
+            return results
         except Exception:
-            continue
+            return []
+
+    # Fallback search implementations for popular whitelisted domains.
+    if domain == 'en.wikipedia.org':
+        return wikipedia(query, target, user_id=user_id)
+    if domain == 'pubmed.ncbi.nlm.nih.gov':
+        return pubmed.search(query, target, mesh_terms=None, min_date=None, max_date=None, user_id=user_id)
+    if domain == 'books.google.com':
+        return gbooks(query, target, {}, user_id=user_id)
+    if domain == 'scholar.google.com':
+        return google_scholar(query, target, user_id=user_id)
+
+    return []
+
+
+def whitelist_search(query, num_results, domains=None, *, user_id):
+    """Search across approved whitelisted academic domains using Google Custom Search or SerpApi."""
+    target = _bounded_search_count(num_results)
+    explicit_domains = domains
+    if explicit_domains is None:
+        explicit_domains = whitelist.get_whitelisted_domains()
+
+    if not explicit_domains or target == 0:
+        return []
+
+    if SERP_API_KEY and domains is None:
+        scope = whitelist.get_whitelist_search_scope()
+        return _search_serpapi(query, target, scope, user_id=user_id)
+
+    if domains is not None:
+        results = []
+        for domain in explicit_domains:
+            remaining = target - len(results)
+            if remaining <= 0:
+                break
+            site_results = _search_whitelist_site(
+                query,
+                remaining,
+                domain,
+                user_id=user_id,
+            )
+            results.extend(site_results[:remaining])
+        return results
+
+    # Ensure each domain contributes at most one result to avoid overwhelming the UI.
+    results = []
+    for domain in explicit_domains:
+        site_results = _search_whitelist_site(query, min(target, 1), domain, user_id=user_id)
+        if site_results:
+            results.extend(site_results[:1])
 
     return results
-
-
-def _search_with_bing_rss(query, num_results):
-    """Fallback stub used by tests: attempt to fetch RSS/ATOM feeds for each scope.
-    The implementation here is minimal and returns an empty list by default.
-    """
-    return []

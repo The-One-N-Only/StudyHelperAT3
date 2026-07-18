@@ -25,7 +25,7 @@ def extract_text(file_path, file_type):
             parts = []
             for para in doc.paragraphs:
                 parts.append(para.text)
-            return "\n".join(parts)
+            return "\n".join(parts) + ("\n" if parts else "")
         elif file_type == "xlsx" or file_type == "xls":
             try:
                 import openpyxl

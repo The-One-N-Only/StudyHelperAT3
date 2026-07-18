@@ -1,19 +1,24 @@
 {% macro card(item) %}
-<div class="card card-fixed shadow-sm rounded-3 h-100">
-    <img src="{{ item.thumb_url or '/static/img/placeholder.png' }}" class="card-img-top" style="height: 130px; object-fit: contain; background-color: var(--bs-body-secondary);" alt="">
+{% set thumbnail_url = item.thumb_url or '/static/img/placeholder.png' %}
+{% if not (thumbnail_url.startswith('/') or thumbnail_url.startswith('http://') or thumbnail_url.startswith('https://')) %}
+{% set thumbnail_url = '/static/img/placeholder.png' %}
+{% endif %}
+<div class="card card-fixed shadow-sm surface-leather result-card rounded-3 h-100">
+    <img src="{{ thumbnail_url }}" class="card-img-top" style="height: 130px; object-fit: contain; background-color: var(--bs-body-secondary);" alt="">
     <div class="card-body">
         <h6 class="card-title text-truncate mb-1">{{ item.title }}</h6>
         <p class="card-text small text-muted card-description mb-2">{{ item.description }}</p>
         <div class="d-flex align-items-center justify-content-between">
-            <small class="text-muted"><i class="bi bi-globe2"></i> {{ item.source_name }}</small>
-            <button class="btn btn-link btn-sm p-0 save-btn" data-item-id="{{ item.id }}">
-                <i class="bi bi-bookmark{{ '-fill text-danger' if item.saved else '' }}"></i>
+            <small class="text-muted result-source"><i class="bi bi-globe2" aria-hidden="true"></i> <span class="result-source-text">{{ item.source_name }}</span></small>
+            <button class="btn btn-link btn-sm p-0 icon-button save-btn" data-item-id="{{ item.id }}" type="button" aria-label="{{ 'Remove saved result' if item.saved else 'Save result' }}" aria-pressed="{{ 'true' if item.saved else 'false' }}">
+                <i class="bi {{ 'bi-bookmark-fill text-danger' if item.saved else 'bi-bookmark' }} save-icon-light" aria-hidden="true"></i>
+                <i class="bi {{ 'bi-bookmark-check' if item.saved else 'bi-bookmark' }} save-icon-dark d-none" aria-hidden="true"></i>
             </button>
         </div>
     </div>
-    <div class="card-footer bg-transparent border-top p-2">
-        <button class="btn btn-outline-secondary btn-sm w-50 view-btn" data-item-id="{{ item.id }}">View</button>
-        <button class="btn btn-primary btn-sm w-50 add-btn" data-item-id="{{ item.id }}">Add</button>
+    <div class="card-footer bg-transparent border-top p-2 result-card-actions">
+        <button class="btn btn-outline-secondary btn-secondary-wood btn-sm w-50 view-btn" data-item-id="{{ item.id }}" type="button">View</button>
+        <button class="btn btn-primary btn-secondary-wood btn-sm w-50 add-btn" data-item-id="{{ item.id }}" type="button">Add</button>
     </div>
 </div>
 {% endmacro %}

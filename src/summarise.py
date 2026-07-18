@@ -4,18 +4,13 @@ import json
 import logging
 import src.whitelist as whitelist
 import src.proxy as proxy
-import src.local_ai as local_ai
-from dotenv import load_dotenv
 
-load_dotenv()
-
+AI_NOT_CONFIGURED_ERROR = (
+    "Alexander is not configured. Add ANTHROPIC_API_KEY and restart StudyLib."
+)
+AI_PROVIDER_ERROR = "Alexander could not reach the AI service. Try again shortly."
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_SUMMARISE_MODEL = os.getenv("ANTHROPIC_SUMMARISE_MODEL", "claude-haiku-4-5-20251001")
-USE_LOCAL_AI = os.getenv("USE_LOCAL_AI", "0") != "0"
-
-
-def _use_local():
-    return USE_LOCAL_AI or not ANTHROPIC_API_KEY
 
 
 def _anthropic_request(prompt: str):
@@ -57,20 +52,20 @@ def _parse_ai_json_response(content: str) -> dict:
     return {}
 
 
-def summarise_url(url, title, atn=None, user_id=None):
-    # Allow summarisation requests for any URL; proxy.fetch_source will
-    # enforce access rules and return an appropriate error if needed.
+def summarise_url(url, title=None, atn=None, user_id=None) -> dict:
+    if not ANTHROPIC_API_KEY:
+        return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
+
+    if not whitelist.is_allowed(url):
+        raise ValueError("URL not allowed")
 
     fetched = proxy.fetch_source(url)
     if not fetched["status"]:
         return fetched
 
     text = fetched.get("text", "")
-    if len(text) < 10:
-        return {"status": False, "error": "This source does not contain sufficient information to generate a summary (insufficient)."}
-
-    if _use_local():
-        return local_ai.summarize_source(text, title or fetched.get("title", ""), atn)
+    if len(text) < 100:
+        return {"status": False, "error": "This source contains insufficient information to generate a summary."}
 
     user_prompt = f"Title: {title}\n\nContent:\n{text[:4000]}\n\n"
     if atn:
@@ -83,15 +78,18 @@ def summarise_url(url, title, atn=None, user_id=None):
         if not result:
             raise ValueError('Unable to parse model response')
         result["status"] = True
-        logging.info(f"User {user_id} requested AI summary for {url}")
+        if user_id is not None:
+            logging.info(f"User {user_id} requested AI summary for {url}")
         return result
-    except requests.Timeout:
-        return {"status": False, "error": "Summarisation timed out"}
     except Exception:
-        return {"status": False, "error": "Summarisation error"}
+        logging.exception("Anthropic request failed while summarising URL")
+        return {"status": False, "error": AI_PROVIDER_ERROR}
 
 
-def summarise_file(file_id, user_id, atn=None):
+def summarise_file(file_id, user_id, atn=None) -> dict:
+    if not ANTHROPIC_API_KEY:
+        return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
+
     import src.db as db
     files = db.get_uploaded_files(user_id)
     file_data = next((f for f in files if f["id"] == file_id), None)
@@ -100,10 +98,7 @@ def summarise_file(file_id, user_id, atn=None):
 
     text = file_data["extracted_text"]
     if len(text) < 100:
-        return {"status": False, "error": "This file does not contain sufficient information to generate a summary."}
-
-    if _use_local():
-        return local_ai.summarize_source(text, file_data.get("filename", ""), atn)
+        return {"status": False, "error": "This file contains insufficient information to generate a summary."}
 
     user_prompt = f"File: {file_data['filename']}\n\nContent:\n{text[:6000]}\n\n"
     if atn:
@@ -118,67 +113,55 @@ def summarise_file(file_id, user_id, atn=None):
         result["status"] = True
         logging.info(f"User {user_id} requested AI summary for file {file_id}")
         return result
-    except requests.Timeout:
-        return {"status": False, "error": "Summarisation timed out"}
     except Exception:
-        return {"status": False, "error": "Summarisation error"}
+        logging.exception("Anthropic request failed while summarising file")
+        return {"status": False, "error": AI_PROVIDER_ERROR}
 
 
-def summarise_search_results(query: str, results: list[dict], atn: str | None = None) -> str:
-    # Use only the top-ranked result from each whitelisted source for summarisation.
-    rank_one_results = []
+def summarise_search_results(query: str, results: list[dict], atn: str | None = None) -> dict:
+    if not ANTHROPIC_API_KEY:
+        return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
+
+    summary_results = []
     seen_domains = set()
-    for r in results:
-        if r.get('whitelist_rank') == 1:
-            domain = whitelist.get_domain(r.get('source_url', '') or '')
-            if domain and domain not in seen_domains:
-                seen_domains.add(domain)
-                rank_one_results.append(r)
+    for result in results:
+        if result.get("whitelist_rank") != 1:
+            continue
+        domain = whitelist.get_domain(result.get("source_url", "") or "")
+        if domain and domain not in seen_domains:
+            seen_domains.add(domain)
+            summary_results.append(result)
 
-    if not rank_one_results:
-        # Fallback to the first unique source if no whitelist rank is assigned.
+    if not summary_results:
         seen_sources = set()
-        for r in results:
-            source = r.get('source_name', '').lower()
+        for result in results:
+            source = (result.get("source_name") or "").strip().casefold()
             if source in seen_sources:
                 continue
             seen_sources.add(source)
-            rank_one_results.append(r)
+            summary_results.append(result)
 
-    if _use_local():
-        try:
-            return local_ai.summarize_search_results(query, rank_one_results, atn)
-        except Exception:
-            pass
-
-    prompt = "You are an academic research assistant for secondary school students. Summarise the most relevant search results clearly and concisely in 2-3 sentences.\n\n"
+    prompt = "Briefly summarise these search results in 2-3 sentences. Be concise and factual.\n\n"
     if atn:
-        prompt = f"For the assessment task: {atn}\n\n" + prompt
-    prompt += f"Query: {query}\n\n"
-    prompt += "Top search results:\n"
-
-    for result in rank_one_results[:10]:
-        title = (result.get('title') or 'Untitled').strip()
-        description = (result.get('description') or '').strip()
-        source = result.get('source_name') or result.get('source_url') or 'Unknown source'
-        prompt += f"- {title} ({source}): {description}\n"
-
+        prompt = f"For the following assessment task: {atn}\n\n" + prompt
+    prompt += "Search results:\n"
+    for result in summary_results[:10]:
+        title = result.get('title', 'Untitled')
+        description = result.get('description', '').strip()
+        prompt += f"- {title}: {description}\n"
     prompt += "\nSummary:"
 
     try:
         content = _anthropic_request(prompt)
-        summary = content.strip()
-        if not summary:
-            raise ValueError('Empty summary')
-        return summary
+        return {"status": True, "summary": content.strip()}
     except Exception:
-        # Deterministic fallback summary if API fails.
+        logging.exception("Anthropic request failed while summarising search results")
         snippets = []
-        for result in rank_one_results[:5]:
-            title = (result.get('title') or 'Untitled').strip()
-            description = (result.get('description') or '').strip()
+        for result in summary_results[:5]:
+            title = (result.get("title") or "Untitled").strip()
+            description = (result.get("description") or "").strip()
             if description:
-                snippets.append(f"{title}: {description.split('.')[0]}")
+                snippets.append(f"{title}: {description.split('.', 1)[0].strip()}")
         if snippets:
-            return ' '.join(snippets[:3])
-        return 'Unable to generate a coherent summary from the available search results.'
+            return {"status": True, "summary": " ".join(snippets[:3])}
+        return {"status": False, "error": AI_PROVIDER_ERROR}

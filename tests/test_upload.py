@@ -21,7 +21,7 @@ def test_extract_text_docx():
         mock_doc.return_value.paragraphs = [mock_para]
         
         result = files.extract_text("test.docx", "docx")
-        assert result == "DOCX text"
+        assert result == "DOCX text\n"
 
 def test_extract_text_txt():
     with patch('builtins.open', create=True) as mock_open:
