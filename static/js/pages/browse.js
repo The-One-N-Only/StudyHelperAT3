@@ -7,6 +7,7 @@ const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'scholar'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 const BROWSE_STATE_VERSION = 2;
 const BROWSE_REQUEST_TIMEOUT_MS = 30000;
+const BROWSE_WHITELIST_TIMEOUT_MS = 5000;
 const RESULTS_PER_SOURCE_PER_RANK = 1;
 const MAX_VISIBLE_SOURCE_RANK = 10;
 const DEDUPE_IDENTITY_PROPERTY = '_dedupe_identity';
@@ -28,6 +29,7 @@ let pendingMasterSourceSelection = null;
 let pendingSourceSelectionOverrides = new Map();
 let isLoadingMore = false;
 let searchGeneration = 0;
+let searchIntentGeneration = 0;
 let browseInitGeneration = 0;
 let browseSourceReadiness = Promise.resolve();
 let isInitialSearchPending = false;
@@ -254,17 +256,33 @@ function mergeUniqueResults(existing, incoming) {
 
 // Load whitelisted domains
 async function loadWhitelistDomains() {
+    const controller = new AbortController();
+    let timeoutId = null;
+
     try {
-        const response = await fetch('/static/whitelist.json');
-        if (!response.ok) return [];
+        const timeout = new Promise((resolve) => {
+            timeoutId = setTimeout(() => {
+                controller.abort();
+                resolve(null);
+            }, BROWSE_WHITELIST_TIMEOUT_MS);
+        });
+        const response = await Promise.race([
+            fetch('/static/whitelist.json', { signal: controller.signal }),
+            timeout,
+        ]);
+        if (!response || !response.ok) return [];
         const whitelist = await response.json();
         return [
             ...(whitelist.domains || []),
             ...(whitelist.domain_patterns || []),
         ];
     } catch (err) {
-        console.warn('Unable to load whitelist domains', err);
+        if (err?.name !== 'AbortError') {
+            console.warn('Unable to load whitelist domains', err);
+        }
         return [];
+    } finally {
+        if (timeoutId !== null) clearTimeout(timeoutId);
     }
 }
 
@@ -365,7 +383,10 @@ function showPartialSourceWarning(result) {
 
 export function initBrowse(root) {
     const initGeneration = ++browseInitGeneration;
+    searchIntentGeneration += 1;
     searchGeneration += 1;
+    isInitialSearchPending = false;
+    isLoadingMore = false;
     pageRoot = root;
     whitelistDomains = [];
     whitelistSourcesRendered = false;
@@ -460,6 +481,9 @@ export function initBrowse(root) {
         </div>
     `;
 
+    const sortingSelect = pageRoot.querySelector('#filterSorting');
+    if (sortingSelect) sortingSelect.disabled = false;
+
     const initialQuery = getInitialBrowseQuery();
 
     registerEvents(initGeneration);
@@ -469,7 +493,12 @@ export function initBrowse(root) {
     browseSourceReadiness = loadWhitelistDomains().then((domains) => {
         if (initGeneration !== browseInitGeneration) return false;
         whitelistDomains = domains;
-        renderWhitelistCheckboxes();
+        try {
+            renderWhitelistCheckboxes();
+        } catch (err) {
+            console.warn('Unable to render whitelist domains', err);
+            settleWhitelistSourcesWithoutDynamic();
+        }
         return true;
     });
 
@@ -791,14 +820,19 @@ function setAllSourcesSelected(selected) {
     syncMasterSourceCheckbox();
 }
 
+function settleWhitelistSourcesWithoutDynamic() {
+    whitelistDomains = [];
+    whitelistSourcesRendered = true;
+    pendingMasterSourceSelection = null;
+    pendingSourceSelectionOverrides.clear();
+    syncMasterSourceCheckbox();
+}
+
 function renderWhitelistCheckboxes() {
     const container = pageRoot.querySelector('#whitelistCheckboxes');
     if (!container) return;
     if (!whitelistDomains || whitelistDomains.length === 0) {
-        whitelistSourcesRendered = true;
-        pendingMasterSourceSelection = null;
-        pendingSourceSelectionOverrides.clear();
-        syncMasterSourceCheckbox();
+        settleWhitelistSourcesWithoutDynamic();
         return;
     }
     
@@ -1028,10 +1062,13 @@ async function performSearch(options = {}) {
     if (!query) return;
 
     const filters = buildFilters();
-    const generation = ++searchGeneration;
+    const intentGeneration = ++searchIntentGeneration;
     const sourceReadiness = browseSourceReadiness;
     await sourceReadiness;
-    if (initGeneration !== browseInitGeneration || generation !== searchGeneration) return;
+    if (
+        initGeneration !== browseInitGeneration
+        || intentGeneration !== searchIntentGeneration
+    ) return;
 
     const sources = getSelectedSources();
     if (sources.length === 0) {
@@ -1039,6 +1076,7 @@ async function performSearch(options = {}) {
         return;
     }
 
+    const generation = ++searchGeneration;
     if (options.updateUrl !== false) updateBrowseUrl(query);
 
     const resultsContainer = pageRoot.querySelector('#resultsContainer');

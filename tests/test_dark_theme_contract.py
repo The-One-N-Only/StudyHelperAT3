@@ -3360,6 +3360,7 @@ const search = control("#searchInput", "archive");
 const go = control("#goBtn");
 const filters = control("#filtersDropdown");
 const menu = control(".browse-dropdown-menu");
+const master = control("#filterAllSources");
 const sorting = control("#filterSorting");
 control("#filterYearFrom");
 control("#filterYearTo");
@@ -3758,10 +3759,12 @@ const sources = [
   source("Google Scholar", "scholar", true),
 ];
 let whitelistMarkup = "";
+const throwOnWhitelistRender = __THROW_ON_WHITELIST_RENDER__;
 Object.defineProperty(whitelistContainer, "innerHTML", {
   configurable: true,
   get() { return this._innerHTML || ""; },
   set(value) {
+    if (throwOnWhitelistRender) throw new Error("whitelist render failed");
     whitelistMarkup = String(value);
     this._innerHTML = whitelistMarkup;
     sources.splice(4);
@@ -3806,6 +3809,30 @@ globalThis.localStorage = {
   setItem() {},
 };
 
+const nativeSetTimeout = globalThis.setTimeout;
+const nativeClearTimeout = globalThis.clearTimeout;
+const readinessTimers = [];
+const clearedReadinessTimers = [];
+globalThis.setTimeout = (callback, delay, ...args) => {
+  if (delay === 5000) {
+    const timer = { callback, delay, id: readinessTimers.length + 1 };
+    readinessTimers.push(timer);
+    return timer;
+  }
+  return nativeSetTimeout(callback, delay, ...args);
+};
+globalThis.clearTimeout = (timer) => {
+  if (readinessTimers.includes(timer)) {
+    clearedReadinessTimers.push(timer.id);
+    return;
+  }
+  nativeClearTimeout(timer);
+};
+const unhandledRejections = [];
+process.on("unhandledRejection", (error) => {
+  unhandledRejections.push(error.message);
+});
+
 function deferredResponse() {
   let resolve;
   let reject;
@@ -3818,8 +3845,17 @@ function deferredResponse() {
 
 const whitelistResponse = deferredResponse();
 const apiBodies = [];
+let whitelistSignal = null;
 globalThis.fetch = async (url, options = {}) => {
-  if (url === "/static/whitelist.json") return whitelistResponse.promise;
+  if (url === "/static/whitelist.json") {
+    whitelistSignal = options.signal || null;
+    whitelistSignal?.addEventListener("abort", () => {
+      const error = new Error("whitelist timeout");
+      error.name = "AbortError";
+      whitelistResponse.reject(error);
+    }, { once: true });
+    return whitelistResponse.promise;
+  }
   if (url === "/api/browse/search-all") {
     apiBodies.push(JSON.parse(options.body));
     return {
@@ -3865,6 +3901,10 @@ process.stdout.write(JSON.stringify({
   masterValue: master.value,
   master: { checked: master.checked, indeterminate: master.indeterminate },
   toastCalls: globalThis.toastCalls,
+  readinessTimerDelays: readinessTimers.map((timer) => timer.delay),
+  clearedReadinessTimers,
+  whitelistAborted: whitelistSignal?.aborted || false,
+  unhandledRejections,
 }));
 """
 
@@ -3960,11 +4000,16 @@ function deferredResponse() {
 }
 const oldWhitelist = deferredResponse();
 const newWhitelist = deferredResponse();
+const replacementWhitelist = deferredResponse();
 let whitelistCall = 0;
 const apiBodies = [];
 globalThis.fetch = async (url, options = {}) => {
   if (url === "/static/whitelist.json") {
-    const response = whitelistCall === 0 ? oldWhitelist.promise : newWhitelist.promise;
+    const response = [
+      oldWhitelist.promise,
+      newWhitelist.promise,
+      replacementWhitelist.promise,
+    ][whitelistCall];
     whitelistCall += 1;
     return response;
   }
@@ -3987,7 +4032,12 @@ globalThis.fetch = async (url, options = {}) => {
 
 const oldPage = makePage("old");
 const newPage = makePage("new");
-const { initBrowse } = await import(process.argv[1]);
+const replacementPage = makePage("replacement");
+const {
+  initBrowse,
+  setBrowseLoadingStateForTest,
+  getBrowseLoadingStateForTest,
+} = await import(process.argv[1]);
 
 window.location.search = "?q=old";
 initBrowse(oldPage.root);
@@ -4017,6 +4067,22 @@ for (let index = 0; index < 3; index += 1) {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+setBrowseLoadingStateForTest(true, true);
+replacementPage.controls.get("#filterSorting").disabled = true;
+window.location.search = "";
+initBrowse(replacementPage.root);
+const resetAfterReinit = {
+  loadingState: getBrowseLoadingStateForTest(),
+  sortingDisabled: replacementPage.controls.get("#filterSorting").disabled,
+};
+replacementWhitelist.resolve({
+  ok: true,
+  async json() { return { domains: [] }; },
+});
+for (let index = 0; index < 3; index += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 process.stdout.write(JSON.stringify({
   afterOldResolution,
   finalApiQueries: apiBodies.map((body) => body.query),
@@ -4024,6 +4090,8 @@ process.stdout.write(JSON.stringify({
   oldMarkup: oldPage.whitelistMarkup,
   newMarkup: newPage.whitelistMarkup,
   newQuery: newPage.controls.get("#searchInput").value,
+  resetAfterReinit,
+  replacementMarkup: replacementPage.whitelistMarkup,
 }));
 """
 
@@ -4185,6 +4253,86 @@ invariant(globalThis.toastCalls[0][1] === "danger", "Browse error toast variant 
 invariant(sorting.disabled === false, "Browse failure left sorting disabled");
 
 process.stdout.write(JSON.stringify({ toast: globalThis.toastCalls[0] }));
+"""
+
+
+BROWSE_ACTIVE_INVALID_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.toastCalls = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+
+function deferredResponse() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+const activeSearch = deferredResponse();
+const apiBodies = [];
+const activeResult = {
+  source_name: "Wikipedia",
+  source_id: "active-a",
+  source_url: "https://example.test/active-a",
+  title: "Active A",
+};
+globalThis.fetch = async (url, options = {}) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  if (url === "/api/browse/search-all") {
+    apiBodies.push(JSON.parse(options.body));
+    return activeSearch.promise;
+  }
+  throw new Error("unexpected fetch: " + url);
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await flushPromises();
+
+search.value = "search a";
+await go.dispatch("click");
+await flushPromises();
+const duringActive = {
+  sortingDisabled: sorting.disabled,
+  loading: resultsContainer.innerHTML.includes("Searching..."),
+  apiQueries: apiBodies.map((body) => body.query),
+};
+
+master.checked = false;
+await master.dispatch("change");
+search.value = "search b";
+await go.dispatch("click");
+await flushPromises();
+const afterInvalid = {
+  sortingDisabled: sorting.disabled,
+  loading: resultsContainer.innerHTML.includes("Searching..."),
+  apiQueries: apiBodies.map((body) => body.query),
+  toastCalls: globalThis.toastCalls,
+};
+
+activeSearch.resolve({
+  ok: true,
+  async json() {
+    return {
+      status: true,
+      results: [activeResult],
+      grouped_results: { wikipedia: [activeResult] },
+      source_counts: { wikipedia: 1 },
+    };
+  },
+});
+await flushPromises();
+await flushPromises();
+
+process.stdout.write(JSON.stringify({
+  duringActive,
+  afterInvalid,
+  finalSortingDisabled: sorting.disabled,
+  finalLoading: resultsContainer.innerHTML.includes("Searching..."),
+  renderedTitles: globalThis.renderedItems.map((item) => item.title),
+  apiQueries: apiBodies.map((body) => body.query),
+}));
 """
 
 
@@ -5135,6 +5283,7 @@ def browse_source_readiness_runtime(
     outcome: str,
     *,
     restored: bool = False,
+    render_failure: bool = False,
     source: str | None = None,
 ) -> dict:
     actions = {
@@ -5174,6 +5323,9 @@ whitelistResponse.resolve({ ok: false });
         "failure": """
 whitelistResponse.reject(new Error("whitelist unavailable"));
 """,
+        "timeout": """
+if (readinessTimers.length === 1) readinessTimers[0].callback();
+""",
     }
     assert action in actions
     assert outcome in settlements
@@ -5196,6 +5348,10 @@ whitelistResponse.reject(new Error("whitelist unavailable"));
         }
     harness = BROWSE_SOURCE_READINESS_RUNTIME_HARNESS
     harness = harness.replace("__RESTORED_STATE__", json.dumps(restored_state))
+    harness = harness.replace(
+        "__THROW_ON_WHITELIST_RENDER__",
+        "true" if render_failure else "false",
+    )
     harness = harness.replace("__PRE_READINESS_ACTIONS__", actions[action])
     harness = harness.replace("__WHITELIST_SETTLEMENT__", settlements[outcome])
     browse_source = source or read_text("static/js/pages/browse.js")
@@ -5209,8 +5365,18 @@ whitelistResponse.reject(new Error("whitelist unavailable"));
 
 
 def browse_reinit_readiness_runtime(source: str | None = None) -> dict:
+    browse_source = source or read_text("static/js/pages/browse.js")
+    browse_source += """
+export function setBrowseLoadingStateForTest(initialPending, loadingMore) {
+    isInitialSearchPending = initialPending;
+    isLoadingMore = loadingMore;
+}
+export function getBrowseLoadingStateForTest() {
+    return { isInitialSearchPending, isLoadingMore };
+}
+"""
     return run_task6_module_harness(
-        source or read_text("static/js/pages/browse.js"),
+        browse_source,
         BROWSE_IMPORT_REPLACEMENTS,
         BROWSE_REINIT_READINESS_RUNTIME_HARNESS,
         "browse reinit readiness",
@@ -5232,6 +5398,15 @@ def browse_error_runtime(source: str | None = None) -> dict:
         BROWSE_IMPORT_REPLACEMENTS,
         BROWSE_ERROR_RUNTIME_HARNESS,
         "Browse error",
+    )
+
+
+def browse_active_invalid_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_ACTIVE_INVALID_RUNTIME_HARNESS,
+        "Browse active invalid action",
     )
 
 
@@ -5635,6 +5810,26 @@ def test_browse_timeout_aborts_request_and_clears_loading_state():
     }
 
 
+def test_browse_invalid_source_action_does_not_orphan_active_search_loading_state():
+    assert browse_active_invalid_runtime() == {
+        "duringActive": {
+            "sortingDisabled": True,
+            "loading": True,
+            "apiQueries": ["search a"],
+        },
+        "afterInvalid": {
+            "sortingDisabled": True,
+            "loading": True,
+            "apiQueries": ["search a"],
+            "toastCalls": [["Please select at least one source", "warning"]],
+        },
+        "finalSortingDisabled": False,
+        "finalLoading": False,
+        "renderedTitles": ["Active A"],
+        "apiQueries": ["search a"],
+    }
+
+
 def test_browse_partial_failure_renders_results_with_one_safe_warning():
     rendered = browse_partial_runtime()
 
@@ -5775,6 +5970,7 @@ def test_browse_pending_source_intent_wins_deferred_whitelist_restore_race():
 
 
 def test_browse_search_waits_for_current_whitelist_source_readiness():
+    browse = read_text("static/js/pages/browse.js")
     selected = browse_source_readiness_runtime("master_latest", "success")
     restored = browse_source_readiness_runtime(
         "restored",
@@ -5785,6 +5981,12 @@ def test_browse_search_waits_for_current_whitelist_source_readiness():
         outcome: browse_source_readiness_runtime("dedicated", outcome)
         for outcome in ("empty", "non_ok", "failure")
     }
+    timed_out = browse_source_readiness_runtime("dedicated", "timeout")
+    render_failed = browse_source_readiness_runtime(
+        "dedicated",
+        "success",
+        render_failure=True,
+    )
     all_sources = [
         "wikipedia",
         "gbooks",
@@ -5795,6 +5997,7 @@ def test_browse_search_waits_for_current_whitelist_source_readiness():
     ]
     dedicated_sources = ["wikipedia", "gbooks", "scholar"]
 
+    assert "const BROWSE_WHITELIST_TIMEOUT_MS = 5000;" in browse
     assert selected["dynamicBeforeResolution"] == 0
     assert selected["apiCountBeforeResolution"] == 0
     assert len(selected["apiBodies"]) == 1
@@ -5826,6 +6029,25 @@ def test_browse_search_waits_for_current_whitelist_source_readiness():
         assert rendered["selectedSources"] == dedicated_sources, outcome
         assert rendered["dynamicAfterResolution"] == 0, outcome
 
+    for rendered in (selected, restored, *settled_without_dynamic.values()):
+        assert rendered["readinessTimerDelays"] == [5000]
+        assert rendered["clearedReadinessTimers"] == [1]
+        assert rendered["unhandledRejections"] == []
+
+    for outcome, rendered in (("timeout", timed_out), ("render failure", render_failed)):
+        assert rendered["apiCountBeforeResolution"] == 0, outcome
+        assert len(rendered["apiBodies"]) == 1, outcome
+        assert rendered["apiBodies"][0]["query"] == "dedicated", outcome
+        assert rendered["apiBodies"][0]["sources"] == dedicated_sources, outcome
+        assert rendered["selectedSources"] == dedicated_sources, outcome
+        assert rendered["dynamicAfterResolution"] == 0, outcome
+        assert rendered["readinessTimerDelays"] == [5000], outcome
+        assert rendered["clearedReadinessTimers"] == [1], outcome
+        assert rendered["unhandledRejections"] == [], outcome
+
+    assert timed_out["whitelistAborted"] is True
+    assert render_failed["whitelistAborted"] is False
+
 
 def test_browse_reinit_ignores_older_whitelist_readiness_and_search_continuation():
     rendered = browse_reinit_readiness_runtime()
@@ -5842,6 +6064,14 @@ def test_browse_reinit_ignores_older_whitelist_readiness_and_search_continuation
     assert 'value="whitelist_new.example"' in rendered["newMarkup"]
     assert "whitelist_old.example" not in rendered["newMarkup"]
     assert rendered["newQuery"] == "new"
+    assert rendered["resetAfterReinit"] == {
+        "loadingState": {
+            "isInitialSearchPending": False,
+            "isLoadingMore": False,
+        },
+        "sortingDisabled": False,
+    }
+    assert rendered["replacementMarkup"] == ""
 
 
 def test_browse_grouped_paging_reveals_each_cached_rank_without_refetching():
