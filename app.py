@@ -229,49 +229,30 @@ def browse_search():
     filters = data.get('filters', {})
     user_id = session.get('user_id')
 
-    # If specific source provided (backward compatible)
-    if source:
-        if source == 'wikipedia':
-            results = search.wikipedia(query, num_results, user_id=user_id)
-        elif source == 'gbooks':
-            results = search.gbooks(query, num_results, filters, user_id=user_id)
-        elif source == 'pubmed':
-            mesh_terms = filters.get('mesh_terms', [])
-            min_date = filters.get('min_date', None)
-            max_date = filters.get('max_date', None)
-            results = pubmed.search(query, num_results, mesh_terms=mesh_terms, min_date=min_date, max_date=max_date, user_id=user_id)
-        elif source == 'whitelist':
-            results = search.whitelist_search(query, num_results, user_id=user_id)
-        elif source.startswith('whitelist_'):
-            domain = source.split('_', 1)[1]
-            results = search.whitelist_search(query, num_results, domains=[domain], user_id=user_id)
-        else:
-            results = []
-        logging.info(f"User {user_id} searched for '{query}' on {source}")
+    if not search.SERP_API_KEY:
+        return jsonify({
+            'status': False,
+            'error': 'Browse search is not configured. Add SERP_API_KEY and restart StudyLib.'
+        }), 503
 
-    # If multiple sources provided (new: filter-based search)
-    elif sources:
-        results = []
-        for source in sources:
-            source_results = []
-            try:
-                if source == 'wikipedia':
-                    source_results = search.wikipedia(query, num_results, user_id=user_id)
-                elif source == 'gbooks':
-                    source_results = search.gbooks(query, num_results, filters, user_id=user_id)
-                elif source == 'pubmed':
-                    mesh_terms = filters.get('mesh_terms', [])
-                    min_date = filters.get('min_date', None)
-                    max_date = filters.get('max_date', None)
-                    source_results = pubmed.search(query, num_results, mesh_terms=mesh_terms, min_date=min_date, max_date=max_date, user_id=user_id)
-                results.extend(source_results or [])
-            except Exception as e:
-                logging.error(f"Failed to search {source}: {str(e)}")
+    requested_sources = [source] if source else list(dict.fromkeys(sources or []))
+    results = []
+    try:
+        for requested_source in requested_sources:
+            results.extend(search.browse_serpapi_search(
+                query,
+                num_results,
+                requested_source,
+                filters,
+                user_id=user_id,
+            ))
+    except search.SerpApiProviderError:
+        return jsonify({
+            'status': False,
+            'error': 'Browse search could not reach SerpAPI. Try again shortly.'
+        }), 502
 
-        logging.info(f"User {user_id} searched for '{query}' on sources: {sources}")
-
-    else:
-        results = []
+    logging.info(f"User {user_id} searched for '{query}' on sources: {requested_sources}")
 
     return jsonify({'status': True, 'results': results})
 
@@ -288,14 +269,11 @@ def browse_search_all():
     if not query or not sources:
         return jsonify({'status': False, 'error': 'Query and sources required'}), 400
 
-    # Define per-source search tasks.
-    search_tasks = {
-        'wikipedia': (search.wikipedia, (query, num_results)),
-        'gbooks': (search.gbooks, (query, num_results, filters)),
-        'pubmed': (pubmed.search, (query, num_results, filters.get('mesh_terms', []), filters.get('min_date'), filters.get('max_date'))),
-        'scholar': (search.google_scholar, (query, num_results,)),
-        'whitelist': (search.whitelist_search, (query, num_results,))
-    }
+    if not search.SERP_API_KEY:
+        return jsonify({
+            'status': False,
+            'error': 'Browse search is not configured. Add SERP_API_KEY and restart StudyLib.'
+        }), 503
 
     requested_sources = []
     seen_sources = set()
@@ -311,33 +289,69 @@ def browse_search_all():
             source for source in requested_sources if source != 'whitelist'
         ]
 
+    selected_sources = set(requested_sources)
+    dedicated_source_by_domain = {
+        domain: source
+        for source, (domain, _source_name) in search.BROWSE_SOURCE_DOMAINS.items()
+    }
+    requested_sources = [
+        source
+        for source in requested_sources
+        if not (
+            source.startswith('whitelist_')
+            and dedicated_source_by_domain.get(source.split('_', 1)[1])
+            in selected_sources
+        )
+    ]
+
     grouped_results = {}
     source_counts = {}
+    source_errors = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
-        futures = {}
-
-        for source in requested_sources:
-            if source in search_tasks:
-                func, args = search_tasks[source]
-                futures[source] = executor.submit(func, *args, user_id=user_id)
-            elif source.startswith('whitelist_'):
-                domain = source.split('_', 1)[1]
-                futures[source] = executor.submit(search.whitelist_search, query, num_results, domains=[domain], user_id=user_id)
-
-        for source in futures:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+    futures = {
+        source: executor.submit(
+            search.browse_serpapi_search,
+            query,
+            num_results,
+            source,
+            filters,
+            user_id=user_id,
+        )
+        for source in requested_sources
+    }
+    try:
+        done, not_done = concurrent.futures.wait(futures.values(), timeout=30)
+        for source, future in futures.items():
+            if future in not_done:
+                future.cancel()
+                logging.warning("SerpAPI Browse search timed out for source %s", source)
+                source_errors[source] = 'Search timed out'
+                grouped_results[source] = []
+                source_counts[source] = 0
+                continue
             try:
-                source_results = futures[source].result(timeout=15) or []
+                source_results = future.result() or []
                 grouped_results[source] = source_results
                 source_counts[source] = len(source_results)
-            except concurrent.futures.TimeoutError:
-                logging.warning(f"Search timeout for source: {source}")
+            except search.SerpApiProviderError:
+                source_errors[source] = 'SerpAPI search failed'
                 grouped_results[source] = []
                 source_counts[source] = 0
-            except Exception as e:
-                logging.error(f"Search failed for {source}: {str(e)}")
+            except Exception:
+                logging.exception("Browse search failed for source %s", source)
+                source_errors[source] = 'Search failed'
                 grouped_results[source] = []
                 source_counts[source] = 0
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    if futures and len(source_errors) == len(futures):
+        return jsonify({
+            'status': False,
+            'error': 'Browse search could not reach SerpAPI. Try again shortly.',
+            'source_errors': source_errors,
+        }), 502
 
     flattened = [
         (source, item)
@@ -365,7 +379,8 @@ def browse_search_all():
         'status': True,
         'results': all_results,
         'grouped_results': deduplicated_groups,
-        'source_counts': source_counts
+        'source_counts': source_counts,
+        'source_errors': source_errors,
     })
 
 @app.route('/api/browse/summary', methods=['POST'])

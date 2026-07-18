@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import os
 import re
@@ -8,16 +9,27 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 import src.whitelist as whitelist
 import src.db as db
-import src.pubmed as pubmed
 
 USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
-GOOGLE_SEARCH_API_KEY = os.getenv("GOOGLE_SEARCH_API_KEY", "")
-GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID", "")
 SERP_API_KEY = os.getenv("SERP_API_KEY", "")
 CUSTOM_SEARCH_PAGE_SIZE = 10
 CUSTOM_SEARCH_MAX_RESULTS = 100
-CUSTOM_SEARCH_SAFE_MAX_RESULTS = 99
+
+BROWSE_SOURCE_DOMAINS = {
+    "wikipedia": ("en.wikipedia.org", "wikipedia"),
+    "gbooks": ("books.google.com", "gbooks"),
+    "scholar": ("scholar.google.com", "scholar"),
+    "pubmed": ("pubmed.ncbi.nlm.nih.gov", "pubmed"),
+}
+
+
+class SerpApiConfigurationError(RuntimeError):
+    """Raised when Browse cannot start because SerpAPI is not configured."""
+
+
+class SerpApiProviderError(RuntimeError):
+    """Raised when SerpAPI cannot provide a usable first result page."""
 
 
 def _bounded_search_count(num_results, maximum=CUSTOM_SEARCH_MAX_RESULTS):
@@ -28,63 +40,132 @@ def _bounded_search_count(num_results, maximum=CUSTOM_SEARCH_MAX_RESULTS):
     return min(max(requested, 0), maximum)
 
 
-def _google_custom_search_items(query, num_results):
-    """Return valid pages while keeping Google's ``start + num`` at 100 or less."""
-    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
+def _browse_source_scope(source):
+    if source in BROWSE_SOURCE_DOMAINS:
+        domain, source_name = BROWSE_SOURCE_DOMAINS[source]
+        return f"site:{domain}", source_name
+
+    if source == "whitelist":
+        return whitelist.get_whitelist_search_scope(), None
+
+    if isinstance(source, str) and source.startswith("whitelist_"):
+        domain = source.split("_", 1)[1]
+        if domain not in whitelist.get_whitelisted_domains():
+            return "", None
+        return f"site:{domain}", whitelist.get_display_name_for_domain(domain)
+
+    return "", None
+
+
+def _browse_serp_query(query, scope, filters):
+    terms = [str(query).strip(), scope]
+    filters = filters if isinstance(filters, Mapping) else {}
+
+    min_date = str(filters.get("min_date", "")).strip()
+    max_date = str(filters.get("max_date", "")).strip()
+    if min_date.isdigit():
+        terms.append(f"after:{int(min_date) - 1}-12-31")
+    if max_date.isdigit():
+        terms.append(f"before:{int(max_date) + 1}-01-01")
+
+    content_type = str(filters.get("content_type", "")).strip()
+    if content_type in {"review", "survey", "case study", "full text"}:
+        terms.append(f'"{content_type}"')
+
+    return " ".join(term for term in terms if term)
+
+
+def browse_serpapi_search(query, num_results, source, filters, *, user_id):
+    """Return whitelisted SerpAPI results for one Browse source group."""
+    if not SERP_API_KEY:
+        raise SerpApiConfigurationError("SERP_API_KEY is not configured")
+
+    target = _bounded_search_count(num_results)
+    scope, fixed_source_name = _browse_source_scope(source)
+    if target == 0 or not scope:
         return []
 
-    # Custom Search uses a one-based start index and rejects start + num > 100.
-    # Without relying on optional nextPage metadata, 99 is the safe result ceiling.
-    target = _bounded_search_count(
-        num_results,
-        maximum=CUSTOM_SEARCH_SAFE_MAX_RESULTS,
-    )
-    items = []
-    start = 1
-    while len(items) < target:
-        page_size = min(
-            CUSTOM_SEARCH_PAGE_SIZE,
-            target - len(items),
-            100 - start,
-        )
-        if page_size < 1:
-            break
+    scoped_query = _browse_serp_query(query, scope, filters)
+    results = []
+    start = 0
+    while len(results) < target and start < CUSTOM_SEARCH_MAX_RESULTS:
+        page_size = min(CUSTOM_SEARCH_PAGE_SIZE, target - len(results))
         params = {
-            "key": GOOGLE_SEARCH_API_KEY,
-            "cx": GOOGLE_SEARCH_ENGINE_ID,
-            "q": query,
+            "q": scoped_query,
             "num": page_size,
             "start": start,
+            "api_key": SERP_API_KEY,
+            "engine": "google",
         }
         try:
             response = requests.get(
-                "https://www.googleapis.com/customsearch/v1",
+                "https://serpapi.com/search",
                 params=params,
                 headers={"User-Agent": USER_AGENT},
                 timeout=10,
             )
-            if response.status_code != 200:
-                break
             payload = response.json()
-        except Exception:
+            if response.status_code != 200:
+                raise ValueError(f"SerpAPI returned HTTP {response.status_code}")
+            if not isinstance(payload, Mapping):
+                raise ValueError("SerpAPI returned a non-object response")
+            if payload.get("error"):
+                raise ValueError(str(payload["error"]))
+            page_items = payload.get("organic_results", [])
+            if not isinstance(page_items, list) or not all(
+                isinstance(item, Mapping) for item in page_items
+            ):
+                raise ValueError("SerpAPI returned invalid organic results")
+        except Exception as error:
+            logging.exception(
+                "SerpAPI Browse search failed for source %s at offset %s",
+                source,
+                start,
+            )
+            if results:
+                break
+            raise SerpApiProviderError("SerpAPI Browse search failed") from error
+
+        if not page_items:
             break
 
-        if not isinstance(payload, Mapping):
-            break
-        page_items = payload.get("items", [])
-        if (
-            not isinstance(page_items, list)
-            or not page_items
-            or not all(isinstance(item, Mapping) for item in page_items)
-        ):
-            break
-        page_items = page_items[:page_size]
-        items.extend(page_items)
+        for item in page_items[:page_size]:
+            link = item.get("link", "")
+            if not link or not whitelist.is_allowed(link):
+                continue
+            domain = whitelist.get_domain(link)
+            source_name = fixed_source_name or (
+                whitelist.get_display_name_for_domain(domain)
+                if domain
+                else "Whitelisted Source"
+            )
+            item_data = {
+                "title": item.get("title", ""),
+                "description": item.get("snippet", ""),
+                "thumb_url": item.get("thumbnail", ""),
+                "thumb_mime": "image/jpeg",
+                "thumb_height": 0,
+                "source_url": link,
+                "source_name": source_name,
+                "source_id": link,
+            }
+            results.append(
+                db.get_item_by_source(
+                    item_data["source_name"],
+                    item_data["source_id"],
+                    user_id,
+                    True,
+                )
+                or db.create_item(item_data, user_id, True)
+            )
+            if len(results) >= target:
+                break
+
         if len(page_items) < page_size:
             break
-        start += page_size
+        start += CUSTOM_SEARCH_PAGE_SIZE
 
-    return items
+    return results
 
 
 def normalize_identity_text(value):
@@ -450,128 +531,34 @@ def _search_serpapi(query, num_results, scope, *, user_id):
         return []
 
 
-def google_scholar(query, num_results, *, user_id):
-    """
-    Search Google Scholar for academic papers.
-    Note: This is a simplified implementation. Google Scholar doesn't have a public API,
-    so this would need to be implemented using scraping or Google Custom Search API.
-    """
-    if not GOOGLE_SEARCH_API_KEY or not GOOGLE_SEARCH_ENGINE_ID:
-        return []
-    
-    try:
-        target = _bounded_search_count(num_results)
-        results = []
-        for item in _google_custom_search_items(query, target):
-            # Only include results from whitelisted domains
-            link = item.get("link", "")
-            if not whitelist.is_allowed(link):
-                continue
-                
-            item_data = {
-                "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-                "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-                "thumb_url": "",
-                "thumb_mime": "image/jpeg",
-                "thumb_height": 0,
-                "source_url": link,
-                "source_name": whitelist.get_display_name_for_domain('scholar.google.com'),
-                "source_id": link  # Use URL as ID since no unique ID from search
-            }
-            
-            results.append(db.get_item_by_source(item_data["source_name"], item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
-            if len(results) >= target:
-                break
-
-        return results
-    except Exception:
-        return []
-
-
-def _search_whitelist_site(query, num_results, domain, *, user_id):
-    """Search a specific whitelisted domain and return up to `num_results` items."""
-    target = _bounded_search_count(num_results)
-    if not domain or target == 0:
-        return []
-
-    scope = f"site:{domain}"
-    if SERP_API_KEY:
-        return _search_serpapi(query, target, scope, user_id=user_id)
-
-    display_name = whitelist.get_display_name_for_domain(domain)
-    if GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
-        try:
-            q = f"{query} {scope}"
-            results = []
-            for item in _google_custom_search_items(q, target):
-                link = item.get("link", "")
-                if not link or not whitelist.is_allowed(link):
-                    continue
-
-                item_data = {
-                    "title": item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-                    "description": item.get("snippet", "").replace("<b>", "").replace("</b>", "").replace("&#39;", "'"),
-                    "thumb_url": "",
-                    "thumb_mime": "image/jpeg",
-                    "thumb_height": 0,
-                    "source_url": link,
-                    "source_name": display_name,
-                    "source_id": link
-                }
-                results.append(db.get_item_by_source(item_data["source_name"], item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
-                if len(results) >= target:
-                    break
-            return results
-        except Exception:
-            return []
-
-    # Fallback search implementations for popular whitelisted domains.
-    if domain == 'en.wikipedia.org':
-        return wikipedia(query, target, user_id=user_id)
-    if domain == 'pubmed.ncbi.nlm.nih.gov':
-        return pubmed.search(query, target, mesh_terms=None, min_date=None, max_date=None, user_id=user_id)
-    if domain == 'books.google.com':
-        return gbooks(query, target, {}, user_id=user_id)
-    if domain == 'scholar.google.com':
-        return google_scholar(query, target, user_id=user_id)
-
-    return []
-
-
 def whitelist_search(query, num_results, domains=None, *, user_id):
-    """Search across approved whitelisted academic domains using Google Custom Search or SerpApi."""
-    target = _bounded_search_count(num_results)
-    explicit_domains = domains
-    if explicit_domains is None:
-        explicit_domains = whitelist.get_whitelisted_domains()
+    """Search approved academic domains through SerpAPI only."""
+    if not SERP_API_KEY:
+        raise SerpApiConfigurationError("SERP_API_KEY is not configured")
 
-    if not explicit_domains or target == 0:
+    target = _bounded_search_count(num_results)
+    if target == 0:
         return []
 
-    if SERP_API_KEY and domains is None:
+    if domains is None:
         scope = whitelist.get_whitelist_search_scope()
         return _search_serpapi(query, target, scope, user_id=user_id)
 
-    if domains is not None:
-        results = []
-        for domain in explicit_domains:
-            remaining = target - len(results)
-            if remaining <= 0:
-                break
-            site_results = _search_whitelist_site(
+    results = []
+    approved_domains = set(whitelist.get_whitelisted_domains())
+    for domain in domains:
+        if domain not in approved_domains:
+            continue
+        remaining = target - len(results)
+        if remaining <= 0:
+            break
+        results.extend(
+            _search_serpapi(
                 query,
                 remaining,
-                domain,
+                f"site:{domain}",
                 user_id=user_id,
-            )
-            results.extend(site_results[:remaining])
-        return results
-
-    # Ensure each domain contributes at most one result to avoid overwhelming the UI.
-    results = []
-    for domain in explicit_domains:
-        site_results = _search_whitelist_site(query, min(target, 1), domain, user_id=user_id)
-        if site_results:
-            results.extend(site_results[:1])
+            )[:remaining]
+        )
 
     return results

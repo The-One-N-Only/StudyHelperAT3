@@ -113,8 +113,6 @@ def test_env_example_and_model_defaults_match_hosted_contract():
         "ANTHROPIC_SUMMARISE_MODEL=claude-haiku-4-5-20251001\n"
         "SERP_API_KEY=\n"
         "GOOGLE_BOOKS_API_KEY=\n"
-        "GOOGLE_SEARCH_API_KEY=\n"
-        "GOOGLE_SEARCH_ENGINE_ID=\n"
         "PUBMED_API_KEY=\n"
     )
     assert _read(".env.example") == expected
@@ -123,6 +121,20 @@ def test_env_example_and_model_defaults_match_hosted_contract():
         _env_default("src/summarise.py", "ANTHROPIC_SUMMARISE_MODEL")
         == "claude-haiku-4-5-20251001"
     )
+
+
+def test_google_custom_search_backend_symbols_are_absent():
+    source = _read("src/search.py")
+    forbidden = (
+        "GOOGLE_" + "SEARCH_API_KEY",
+        "GOOGLE_" + "SEARCH_ENGINE_ID",
+        "_google_" + "custom_search_items",
+        "google_" + "scholar",
+        "googleapis.com/" + "customsearch",
+    )
+
+    for symbol in forbidden:
+        assert symbol not in source
 
 
 def test_manual_claude_script_is_non_secret_and_not_collected():

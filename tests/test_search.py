@@ -248,15 +248,13 @@ def test_browse_search_all_deduplicates_cards_without_changing_source_counts(mon
     ]
     dedicated_snapshot = [dict(item) for item in dedicated_results]
     whitelist_snapshot = [dict(item) for item in whitelist_results]
+    monkeypatch.setattr(flask_app.search, "SERP_API_KEY", "serp-test-key")
     monkeypatch.setattr(
         flask_app.search,
-        "wikipedia",
-        lambda _query, _num_results, *, user_id: dedicated_results,
-    )
-    monkeypatch.setattr(
-        flask_app.search,
-        "whitelist_search",
-        lambda _query, _num_results, *, user_id: whitelist_results,
+        "browse_serpapi_search",
+        lambda _query, _num_results, source, _filters, *, user_id: (
+            dedicated_results if source == "wikipedia" else whitelist_results
+        ),
     )
 
     with flask_app.app.test_request_context(
@@ -308,26 +306,22 @@ def test_browse_search_all_cleans_duplicate_and_overlapping_source_selections(
 
     calls = []
 
-    def fake_wikipedia(_query, _num_results, *, user_id):
-        calls.append(("wikipedia", user_id))
-        return [{
-            "source_name": "Wikipedia",
-            "source_id": "wiki-1",
-            "source_url": "https://en.wikipedia.org/wiki/Archive",
-            "title": "Wikipedia",
-        }]
-
-    def fake_gbooks(_query, _num_results, _filters, *, user_id):
-        calls.append(("gbooks", user_id))
-        return [{
-            "source_name": "gbooks",
-            "source_id": "book-1",
-            "source_url": "https://books.google.com/books?id=book-1",
-            "title": "Book",
-        }]
-
-    def fake_whitelist(_query, _num_results, domains=None, *, user_id):
-        calls.append(("whitelist", tuple(domains or ()), user_id))
+    def fake_browse(_query, _num_results, source, _filters, *, user_id):
+        calls.append((source, user_id))
+        if source == "wikipedia":
+            return [{
+                "source_name": "Wikipedia",
+                "source_id": "wiki-1",
+                "source_url": "https://en.wikipedia.org/wiki/Archive",
+                "title": "Wikipedia",
+            }]
+        if source == "gbooks":
+            return [{
+                "source_name": "gbooks",
+                "source_id": "book-1",
+                "source_url": "https://books.google.com/books?id=book-1",
+                "title": "Book",
+            }]
         return [{
             "source_name": "Wikipedia",
             "source_id": "wiki-1",
@@ -335,9 +329,8 @@ def test_browse_search_all_cleans_duplicate_and_overlapping_source_selections(
             "title": "Duplicate Wikipedia",
         }]
 
-    monkeypatch.setattr(flask_app.search, "wikipedia", fake_wikipedia)
-    monkeypatch.setattr(flask_app.search, "gbooks", fake_gbooks)
-    monkeypatch.setattr(flask_app.search, "whitelist_search", fake_whitelist)
+    monkeypatch.setattr(flask_app.search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(flask_app.search, "browse_serpapi_search", fake_browse)
 
     with flask_app.app.test_request_context(
         "/api/browse/search-all",
@@ -358,58 +351,67 @@ def test_browse_search_all_cleans_duplicate_and_overlapping_source_selections(
         response = flask_app.browse_search_all()
 
     payload = response.get_json()
-    assert len(calls) == 3
+    assert len(calls) == 2
     assert calls.count(("wikipedia", 9)) == 1
-    assert calls.count(("whitelist", ("en.wikipedia.org",), 9)) == 1
+    assert calls.count(("whitelist_en.wikipedia.org", 9)) == 0
     assert calls.count(("gbooks", 9)) == 1
     assert set(payload["grouped_results"]) == {
         "wikipedia",
-        "whitelist_en.wikipedia.org",
         "gbooks",
     }
     assert [item["title"] for item in payload["results"]] == ["Wikipedia", "Book"]
 
 
-def test_whitelist_search_calls_per_domain(monkeypatch):
+def test_whitelist_search_uses_one_combined_serpapi_scope(monkeypatch):
     recorded = []
 
-    def fake_search_site(query, num_results, domain, *, user_id):
-        recorded.append((query, num_results, domain, user_id))
-        return [{
-            "title": f"Result from {domain}",
-            "description": "Test description",
-            "thumb_url": "",
-            "thumb_mime": "image/jpeg",
-            "thumb_height": 0,
-            "source_url": f"https://{domain}/result",
-            "source_name": domain,
-            "source_id": f"https://{domain}/result"
-        }]
+    def fake_serp(query, num_results, scope, *, user_id):
+        recorded.append((query, num_results, scope, user_id))
+        return []
 
-    monkeypatch.setattr(search, "_search_whitelist_site", fake_search_site)
-    monkeypatch.setattr(whitelist, "get_whitelisted_domains", lambda: ["en.wikipedia.org", "pubmed.ncbi.nlm.nih.gov"])
+    monkeypatch.setattr(search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(search, "_search_serpapi", fake_serp)
+    monkeypatch.setattr(
+        whitelist,
+        "get_whitelist_search_scope",
+        lambda: "site:en.wikipedia.org OR site:pubmed.ncbi.nlm.nih.gov",
+    )
 
-    results = search.whitelist_search("test query", 1, user_id=1)
-
-    assert len(results) == 2
+    assert search.whitelist_search("test query", 10, user_id=1) == []
     assert recorded == [
-        ("test query", 1, "en.wikipedia.org", 1),
-        ("test query", 1, "pubmed.ncbi.nlm.nih.gov", 1)
+        (
+            "test query",
+            10,
+            "site:en.wikipedia.org OR site:pubmed.ncbi.nlm.nih.gov",
+            1,
+        )
     ]
 
 
 def test_whitelist_search_respects_domains_argument(monkeypatch):
-    called = []
+    scopes = []
 
-    def fake_search_site(query, num_results, domain, *, user_id):
-        called.append(domain)
+    def fake_serp(_query, _num_results, scope, *, user_id):
+        assert user_id == 2
+        scopes.append(scope)
         return []
 
-    monkeypatch.setattr(search, "_search_whitelist_site", fake_search_site)
+    monkeypatch.setattr(search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(search, "_search_serpapi", fake_serp)
+    monkeypatch.setattr(
+        whitelist,
+        "get_whitelisted_domains",
+        lambda: ["books.google.com"],
+    )
 
-    search.whitelist_search("example", 1, domains=["books.google.com"], user_id=2)
+    search.whitelist_search(
+        "example",
+        1,
+        domains=["books.google.com", "not-approved.test"],
+        user_id=2,
+    )
 
-    assert called == ["books.google.com"]
+    assert scopes == ["site:books.google.com"]
 
 
 def test_whitelist_search_uses_serpapi_when_key_set(monkeypatch):
@@ -445,6 +447,283 @@ def test_whitelist_search_uses_serpapi_when_key_set(monkeypatch):
 
     assert len(results) == 1
     assert results[0]["source_url"] == "https://en.wikipedia.org/wiki/Test"
+
+
+@pytest.mark.parametrize(
+    ("source", "domain", "source_name"),
+    (
+        ("wikipedia", "en.wikipedia.org", "wikipedia"),
+        ("gbooks", "books.google.com", "gbooks"),
+        ("scholar", "scholar.google.com", "scholar"),
+        ("pubmed", "pubmed.ncbi.nlm.nih.gov", "pubmed"),
+    ),
+)
+def test_browse_serpapi_search_scopes_every_dedicated_source(
+    monkeypatch, source, domain, source_name
+):
+    requests_seen = []
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "search_metadata": {"status": "Success"},
+                "search_parameters": {"engine": "google"},
+                "organic_results": [
+                    {
+                        "position": 1,
+                        "title": "Scoped result",
+                        "link": f"https://{domain}/result",
+                        "displayed_link": f"https://{domain} / result",
+                        "snippet": "Scoped snippet",
+                    }
+                ],
+                "serpapi_pagination": {},
+            }
+
+    def fake_get(url, *, params, headers, timeout):
+        requests_seen.append((url, dict(params), dict(headers), timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr(search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    monkeypatch.setattr(search.whitelist, "is_allowed", lambda _url: True)
+    monkeypatch.setattr(search.db, "get_item_by_source", lambda *_args: None)
+    monkeypatch.setattr(
+        search.db,
+        "create_item",
+        lambda item_data, _user_id, _add_to_recent_search: item_data,
+    )
+
+    results = search.browse_serpapi_search(
+        "archive research",
+        1,
+        source,
+        {
+            "min_date": "2020",
+            "max_date": "2024",
+            "content_type": "review",
+        },
+        user_id=7,
+    )
+
+    assert len(results) == 1
+    assert results[0]["source_name"] == source_name
+    assert results[0]["source_url"] == f"https://{domain}/result"
+    assert requests_seen == [
+        (
+            "https://serpapi.com/search",
+            {
+                "q": (
+                    f'archive research site:{domain} after:2019-12-31 '
+                    'before:2025-01-01 "review"'
+                ),
+                "num": 1,
+                "start": 0,
+                "api_key": "serp-test-key",
+                "engine": "google",
+            },
+            {"User-Agent": search.USER_AGENT},
+            10,
+        )
+    ]
+
+
+def test_browse_serpapi_search_requires_key_before_network_or_database(monkeypatch):
+    monkeypatch.setattr(search, "SERP_API_KEY", "")
+
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("provider and database work must not start")
+
+    monkeypatch.setattr(search.requests, "get", unexpected)
+    monkeypatch.setattr(search.db, "get_item_by_source", unexpected)
+    monkeypatch.setattr(search.db, "create_item", unexpected)
+
+    with pytest.raises(search.SerpApiConfigurationError):
+        search.browse_serpapi_search(
+            "archive",
+            10,
+            "wikipedia",
+            {},
+            user_id=7,
+        )
+
+
+def test_browse_search_all_dispatches_every_source_through_serpapi(monkeypatch):
+    import app as flask_app
+
+    calls = []
+
+    def fake_serp(query, num_results, source, filters, *, user_id):
+        calls.append((query, num_results, source, filters, user_id))
+        return [
+            {
+                "source_name": source,
+                "source_id": f"https://example.test/{source}",
+                "source_url": f"https://example.test/{source}",
+                "title": source,
+            }
+        ]
+
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("Browse called an individual provider API")
+
+    monkeypatch.setattr(flask_app.search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(
+        flask_app.search,
+        "browse_serpapi_search",
+        fake_serp,
+        raising=False,
+    )
+    monkeypatch.setattr(flask_app.search, "wikipedia", unexpected)
+    monkeypatch.setattr(flask_app.search, "gbooks", unexpected)
+    monkeypatch.setattr(flask_app.search, "whitelist_search", unexpected)
+    monkeypatch.setattr(flask_app.pubmed, "search", unexpected)
+
+    with flask_app.app.test_request_context(
+        "/api/browse/search-all",
+        method="POST",
+        json={
+            "query": "archive",
+            "sources": [
+                "wikipedia",
+                "gbooks",
+                "scholar",
+                "pubmed",
+                "whitelist_en.wikipedia.org",
+            ],
+            "num_results": 10,
+            "filters": {"content_type": "review"},
+        },
+    ):
+        flask_app.session["user_id"] = 9
+        response = flask_app.browse_search_all()
+
+    payload = response.get_json()
+    assert payload["status"] is True
+    assert sorted(call[2] for call in calls) == [
+        "gbooks",
+        "pubmed",
+        "scholar",
+        "wikipedia",
+    ]
+    assert all(call[0] == "archive" for call in calls)
+    assert all(call[1] == 10 for call in calls)
+    assert all(call[3] == {"content_type": "review"} for call in calls)
+    assert all(call[4] == 9 for call in calls)
+
+
+def test_browse_routes_return_clear_missing_serpapi_configuration(monkeypatch):
+    import app as flask_app
+
+    monkeypatch.setattr(flask_app.search, "SERP_API_KEY", "")
+    expected_error = (
+        "Browse search is not configured. Add SERP_API_KEY and restart StudyLib."
+    )
+
+    for path, handler, body in (
+        (
+            "/api/browse/search",
+            flask_app.browse_search,
+            {
+                "query": "archive",
+                "source": "wikipedia",
+                "num_results": 10,
+            },
+        ),
+        (
+            "/api/browse/search-all",
+            flask_app.browse_search_all,
+            {
+                "query": "archive",
+                "sources": ["wikipedia"],
+                "num_results": 10,
+            },
+        ),
+    ):
+        with flask_app.app.test_request_context(path, method="POST", json=body):
+            flask_app.session["user_id"] = 4
+            response, status = handler()
+
+        assert status == 503
+        assert response.get_json() == {"status": False, "error": expected_error}
+
+
+def test_browse_search_all_returns_partial_serpapi_results_with_safe_errors(
+    monkeypatch,
+):
+    import app as flask_app
+
+    provider_detail = "private-provider-detail"
+
+    def fake_serp(_query, _num_results, source, _filters, *, user_id):
+        assert user_id == 5
+        if source == "pubmed":
+            raise search.SerpApiProviderError(provider_detail)
+        return [
+            {
+                "source_name": "wikipedia",
+                "source_id": "wiki-1",
+                "source_url": "https://en.wikipedia.org/wiki/Archive",
+                "title": "Archive",
+            }
+        ]
+
+    monkeypatch.setattr(flask_app.search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(flask_app.search, "browse_serpapi_search", fake_serp)
+
+    with flask_app.app.test_request_context(
+        "/api/browse/search-all",
+        method="POST",
+        json={
+            "query": "archive",
+            "sources": ["wikipedia", "pubmed"],
+            "num_results": 10,
+        },
+    ):
+        flask_app.session["user_id"] = 5
+        response = flask_app.browse_search_all()
+
+    payload = response.get_json()
+    assert payload["status"] is True
+    assert [item["title"] for item in payload["results"]] == ["Archive"]
+    assert payload["source_errors"] == {"pubmed": "SerpAPI search failed"}
+    assert provider_detail not in str(payload)
+
+
+def test_browse_search_all_returns_safe_error_when_every_serpapi_source_fails(
+    monkeypatch,
+):
+    import app as flask_app
+
+    monkeypatch.setattr(flask_app.search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(
+        flask_app.search,
+        "browse_serpapi_search",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            search.SerpApiProviderError("private-provider-detail")
+        ),
+    )
+
+    with flask_app.app.test_request_context(
+        "/api/browse/search-all",
+        method="POST",
+        json={
+            "query": "archive",
+            "sources": ["wikipedia", "pubmed"],
+            "num_results": 10,
+        },
+    ):
+        flask_app.session["user_id"] = 6
+        response, status = flask_app.browse_search_all()
+
+    payload = response.get_json()
+    assert status == 502
+    assert payload["status"] is False
+    assert payload["error"] == "Browse search could not reach SerpAPI. Try again shortly."
+    assert "private-provider-detail" not in str(payload)
 
 
 @pytest.mark.parametrize(
@@ -622,190 +901,6 @@ def _custom_search_items(domain, start, count):
     ]
 
 
-def test_google_scholar_paginates_custom_search_to_requested_count(monkeypatch):
-    requests_seen = []
-
-    class FakeResponse:
-        status_code = 200
-
-        def __init__(self, items):
-            self._items = items
-
-        def json(self):
-            return {"items": self._items}
-
-    def fake_get(url, *, params, headers, timeout):
-        requests_seen.append((url, dict(params), dict(headers), timeout))
-        return FakeResponse(
-            _custom_search_items("scholar.google.com", params["start"], params["num"])
-        )
-
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
-    monkeypatch.setattr(search.requests, "get", fake_get)
-    _install_search_result_persistence(monkeypatch)
-
-    results = search.google_scholar("archive", 25, user_id=4)
-
-    assert len(results) == 25
-    assert [request[1]["start"] for request in requests_seen] == [1, 11, 21]
-    assert [request[1]["num"] for request in requests_seen] == [10, 10, 5]
-    assert all(request[0] == "https://www.googleapis.com/customsearch/v1" for request in requests_seen)
-    assert all(request[2] == {"User-Agent": search.USER_AGENT} for request in requests_seen)
-    assert all(request[3] == 10 for request in requests_seen)
-
-
-def test_google_scholar_stops_after_short_custom_search_page(monkeypatch):
-    starts = []
-
-    class FakeResponse:
-        status_code = 200
-
-        def __init__(self, items):
-            self._items = items
-
-        def json(self):
-            return {"items": self._items}
-
-    def fake_get(_url, *, params, headers, timeout):
-        assert headers == {"User-Agent": search.USER_AGENT}
-        assert timeout == 10
-        starts.append(params["start"])
-        count = 10 if params["start"] == 1 else 3
-        return FakeResponse(
-            _custom_search_items("scholar.google.com", params["start"], count)
-        )
-
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
-    monkeypatch.setattr(search.requests, "get", fake_get)
-    _install_search_result_persistence(monkeypatch)
-
-    results = search.google_scholar("archive", 30, user_id=4)
-
-    assert len(results) == 13
-    assert starts == [1, 11]
-
-
-def test_google_scholar_discards_entire_malformed_later_page(monkeypatch):
-    starts = []
-
-    class FakeResponse:
-        status_code = 200
-
-        def __init__(self, items):
-            self._items = items
-
-        def json(self):
-            return {"items": self._items}
-
-    def fake_get(_url, *, params, headers, timeout):
-        assert headers == {"User-Agent": search.USER_AGENT}
-        assert timeout == 10
-        starts.append(params["start"])
-        if params["start"] == 1:
-            items = _custom_search_items("scholar.google.com", 1, 10)
-        else:
-            items = _custom_search_items("scholar.google.com", 11, 9) + [None]
-        return FakeResponse(items)
-
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
-    monkeypatch.setattr(search.requests, "get", fake_get)
-    _install_search_result_persistence(monkeypatch)
-
-    results = search.google_scholar("archive", 20, user_id=4)
-
-    assert len(results) == 10
-    assert [item["source_id"] for item in results] == [
-        f"https://scholar.google.com/result-{index}" for index in range(1, 11)
-    ]
-    assert starts == [1, 11]
-
-
-def test_explicit_whitelist_custom_search_paginates_instead_of_repeating_first_page(
-    monkeypatch,
-):
-    requests_seen = []
-
-    class FakeResponse:
-        status_code = 200
-
-        def __init__(self, items):
-            self._items = items
-
-        def json(self):
-            return {"items": self._items}
-
-    def fake_get(_url, *, params, headers, timeout):
-        requests_seen.append(dict(params))
-        assert headers == {"User-Agent": search.USER_AGENT}
-        assert timeout == 10
-        return FakeResponse(
-            _custom_search_items("en.wikipedia.org", params["start"], params["num"])
-        )
-
-    monkeypatch.setattr(search, "SERP_API_KEY", "")
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
-    monkeypatch.setattr(search.requests, "get", fake_get)
-    _install_search_result_persistence(monkeypatch)
-
-    results = search.whitelist_search(
-        "archive",
-        23,
-        domains=["en.wikipedia.org"],
-        user_id=8,
-    )
-
-    assert len(results) == 23
-    assert [params["start"] for params in requests_seen] == [1, 11, 21]
-    assert [params["num"] for params in requests_seen] == [10, 10, 3]
-    assert all("site:en.wikipedia.org" in params["q"] for params in requests_seen)
-
-
-def test_explicit_whitelist_discards_entire_malformed_later_page(monkeypatch):
-    starts = []
-
-    class FakeResponse:
-        status_code = 200
-
-        def __init__(self, items):
-            self._items = items
-
-        def json(self):
-            return {"items": self._items}
-
-    def fake_get(_url, *, params, headers, timeout):
-        assert headers == {"User-Agent": search.USER_AGENT}
-        assert timeout == 10
-        starts.append(params["start"])
-        if params["start"] == 1:
-            items = _custom_search_items("en.wikipedia.org", 1, 10)
-        else:
-            items = _custom_search_items("en.wikipedia.org", 11, 9) + [False]
-        return FakeResponse(items)
-
-    monkeypatch.setattr(search, "SERP_API_KEY", "")
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
-    monkeypatch.setattr(search.requests, "get", fake_get)
-    _install_search_result_persistence(monkeypatch)
-
-    results = search.whitelist_search(
-        "archive",
-        20,
-        domains=["en.wikipedia.org"],
-        user_id=8,
-    )
-
-    assert len(results) == 10
-    assert [item["source_id"] for item in results] == [
-        f"https://en.wikipedia.org/result-{index}" for index in range(1, 11)
-    ]
-    assert starts == [1, 11]
-
-
 def test_serpapi_whitelist_search_paginates_and_stops_on_empty_page(monkeypatch):
     starts = []
 
@@ -920,35 +1015,3 @@ def test_serpapi_malformed_later_result_list_preserves_accumulated_results(
 
     assert len(results) == 10
     assert starts == [0, 10]
-
-
-def test_google_custom_search_stays_within_final_100_result_boundary(monkeypatch):
-    requests_seen = []
-
-    class FakeResponse:
-        status_code = 200
-
-        def __init__(self, items):
-            self._items = items
-
-        def json(self):
-            return {"items": self._items}
-
-    def fake_get(_url, *, params, headers, timeout):
-        requests_seen.append(dict(params))
-        assert headers == {"User-Agent": search.USER_AGENT}
-        assert timeout == 10
-        return FakeResponse(
-            _custom_search_items("scholar.google.com", params["start"], params["num"])
-        )
-
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_API_KEY", "test-key")
-    monkeypatch.setattr(search, "GOOGLE_SEARCH_ENGINE_ID", "test-cx")
-    monkeypatch.setattr(search.requests, "get", fake_get)
-
-    results = search._google_custom_search_items("archive", 101)
-
-    assert len(results) == 99
-    assert requests_seen[-1]["start"] == 91
-    assert requests_seen[-1]["num"] == 9
-    assert all(params["start"] + params["num"] <= 100 for params in requests_seen)
