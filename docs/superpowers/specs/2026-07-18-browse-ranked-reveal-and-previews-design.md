@@ -65,6 +65,16 @@ Make Browse show one ranked result from every selected source at a time while ke
 - If no tested volume reaches a callback within 60 seconds, treat embedding as blocked in that browser rather than extending the spinner indefinitely.
 - Keep the safe inline metadata fallback and external Google Books link. Never force a popup.
 
+### Phase 4 diagnostic result and production decision
+
+- Live diagnostic ran on 2026-07-18 in the local Chromium browser against four Google Books volumes reported as embeddable: `VpNa9UckT24C`, `mWHcDAAAQBAJ`, `ONIoAwAAQBAJ`, and `u2DcDAAAQBAJ`.
+- Both official Google scripts returned successfully. `DefaultViewer` became available after 0.863 seconds, but the legacy `google.books.setOnLoadCallback` callback did not fire within 60 seconds in this browser.
+- Direct official `DefaultViewer.load` calls then reached the success callback in 3.724, 1.604, 1.753, and 1.513 seconds respectively. No tested volume returned the failure callback.
+- The loader therefore needs a bounded readiness poll as a compatibility backstop; the official callback remains the primary signal when it works.
+- A failed or timed-out API load must clear its cached promise and failed script so a later View action can retry without reloading StudyLib.
+- Production render timeout is 12 seconds. This covers the measured 0.863-second cold API readiness plus the 3.724-second slowest viewer success with more than seven seconds of safety margin, while remaining below the 30-second cap.
+- Timeout wording is derived from the constant rather than hard-coded English, and timeout/failure remains an inline sidebar fallback with an external Google Books link.
+
 ## Security and performance
 
 - API keys remain server-side.
