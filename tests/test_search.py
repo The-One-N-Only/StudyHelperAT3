@@ -517,6 +517,7 @@ def test_browse_serpapi_gbooks_cover_from_query_id_precedes_hostile_metadata(
     assert results[0]["thumb_mime"] == "image/jpeg"
     assert results[0]["thumb_height"] == 0
     assert results[0]["source_id"] == link
+    assert results[0]["google_books_volume_id"] == "zyTCAlFPjgYC"
     assert len(requests_seen) == 1
 
 
@@ -601,6 +602,49 @@ def test_browse_serpapi_gbooks_cover_accepts_bounded_raw_source_id_independently
         "https://books.google.com/books/content?id=VpNa9UckT24C"
         "&printsec=frontcover&img=1&zoom=1"
     )
+
+
+def test_browse_serpapi_preserves_raw_books_id_after_source_id_normalization(
+    monkeypatch,
+):
+    link = "https://books.google.com/books?hl=en"
+    results, _requests_seen = _run_browse_serpapi_image_results(
+        monkeypatch,
+        [{
+            "title": "Previewable book",
+            "link": link,
+            "source_id": "VpNa9UckT24C",
+        }],
+        source="gbooks",
+    )
+
+    assert results[0]["source_id"] == link
+    assert results[0]["google_books_volume_id"] == "VpNa9UckT24C"
+
+
+@pytest.mark.parametrize(
+    "item",
+    (
+        {
+            "link": "https://evil.example/books?hl=en",
+            "source_id": "VpNa9UckT24C",
+        },
+        {
+            "link": "https://books.google.com/books?hl=en",
+            "source_id": "VpNa9UckT24C/extra",
+        },
+        {
+            "link": "https://user@books.google.com/books?hl=en",
+            "source_id": "VpNa9UckT24C",
+        },
+        {
+            "link": "https://books.google.com/books?hl=en",
+            "source_id": "https://evil.example/books?id=VpNa9UckT24C",
+        },
+    ),
+)
+def test_browse_google_books_volume_id_rejects_untrusted_ids_and_hosts(item):
+    assert search._browse_google_books_volume_id(item) == ""
 
 
 @pytest.mark.parametrize(

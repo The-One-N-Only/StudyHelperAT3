@@ -37,7 +37,7 @@ function enhanceResultImage(image) {
     }
     image.addEventListener('error', () => {
         if (image.getAttribute('data-image-kind') === 'fallback') return;
-        if (remoteImage) failedResultImageUrls.add(remoteImage);
+        rememberResultImageFailure(remoteImage);
         switchToResultImageFallback(image, fallbackImage);
     }, { once: true });
 }
@@ -78,12 +78,8 @@ export function createCard(item) {
     const saveButton = card.querySelector('.save-btn');
     const viewButton = card.querySelector('.view-btn');
     const addButton = card.querySelector('.add-btn');
-    const fallbackImage = resultImageFallback(item);
-    const remoteImage = safeRemoteImageUrl(item.thumb_url);
-    const selectedRemoteImage = remoteImage && !failedResultImageUrls.has(remoteImage)
-        ? remoteImage
-        : '';
-    image.src = selectedRemoteImage || fallbackImage;
+    const imageResolution = resolveResultImage(item);
+    image.src = imageResolution.sourceUrl;
     image.alt = '';
     image.loading = 'lazy';
     image.decoding = 'async';
@@ -91,8 +87,8 @@ export function createCard(item) {
     image.setAttribute('loading', 'lazy');
     image.setAttribute('decoding', 'async');
     image.setAttribute('referrerpolicy', 'no-referrer');
-    image.setAttribute('data-fallback-src', fallbackImage);
-    image.setAttribute('data-image-kind', selectedRemoteImage ? 'remote' : 'fallback');
+    image.setAttribute('data-fallback-src', imageResolution.fallbackUrl);
+    image.setAttribute('data-image-kind', imageResolution.kind);
     enhanceResultImage(image);
     card.querySelector('.card-title').textContent = String(item.title ?? '');
     card.querySelector('.card-description').textContent = String(item.description ?? '');
@@ -150,6 +146,25 @@ function safeRemoteImageUrl(value) {
     } catch (_error) {
         return '';
     }
+}
+
+export function rememberResultImageFailure(value) {
+    const remoteImage = safeRemoteImageUrl(value);
+    if (remoteImage) failedResultImageUrls.add(remoteImage);
+}
+
+export function resolveResultImage(item) {
+    const remoteUrl = safeRemoteImageUrl(item?.thumb_url);
+    const fallbackUrl = resultImageFallback(item);
+    const sourceUrl = remoteUrl && !failedResultImageUrls.has(remoteUrl)
+        ? remoteUrl
+        : fallbackUrl;
+    return {
+        remoteUrl,
+        fallbackUrl,
+        sourceUrl,
+        kind: sourceUrl === remoteUrl ? 'remote' : 'fallback',
+    };
 }
 
 if (typeof document !== 'undefined') {

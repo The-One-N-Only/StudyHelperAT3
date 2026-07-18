@@ -131,20 +131,20 @@ def _safe_browse_image_url(value):
     return normalized
 
 
-def _google_books_volume_id(source_url):
+def _safe_google_books_url(source_url):
     if not isinstance(source_url, str) or not source_url:
-        return ""
+        return None
     if (
         source_url != source_url.strip()
         or "\\" in source_url
         or any(char.isspace() for char in source_url)
     ):
-        return ""
+        return None
     try:
         parsed = urlsplit(source_url)
         port = parsed.port
     except (TypeError, ValueError):
-        return ""
+        return None
 
     hostname = (parsed.hostname or "").lower()
     if (
@@ -155,6 +155,13 @@ def _google_books_volume_id(source_url):
         or port not in (None, 443)
         or parsed.fragment
     ):
+        return None
+    return parsed
+
+
+def _google_books_volume_id(source_url):
+    parsed = _safe_google_books_url(source_url)
+    if parsed is None:
         return ""
 
     query_ids = parse_qs(parsed.query, keep_blank_values=True).get("id", [])
@@ -170,6 +177,24 @@ def _google_books_volume_id(source_url):
         ),
         "",
     )
+
+
+def _browse_google_books_volume_id(item):
+    """Return a bounded Books ID only when provider data proves Books origin."""
+    link = item.get("link", "")
+    source_id = item.get("source_id", "")
+    for candidate in (link, source_id):
+        volume_id = _google_books_volume_id(candidate)
+        if volume_id:
+            return volume_id
+
+    if (
+        _safe_google_books_url(link) is not None
+        and isinstance(source_id, str)
+        and GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(source_id)
+    ):
+        return source_id
+    return ""
 
 
 def _google_books_cover_url(source_url):
@@ -269,6 +294,7 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
                 if domain
                 else "Whitelisted Source"
             )
+            google_books_volume_id = _browse_google_books_volume_id(item)
             item_data = {
                 "title": item.get("title", ""),
                 "description": item.get("snippet", ""),
@@ -279,11 +305,14 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
                 "source_name": source_name,
                 "source_id": link,
             }
-            results.append(db.get_or_create_item_by_source_id(
+            stored_item = db.get_or_create_item_by_source_id(
                 item_data,
                 user_id,
                 True,
-            ))
+            )
+            response_item = dict(stored_item)
+            response_item["google_books_volume_id"] = google_books_volume_id
+            results.append(response_item)
             if len(results) >= target:
                 break
 

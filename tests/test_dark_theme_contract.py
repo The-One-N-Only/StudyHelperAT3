@@ -7521,6 +7521,9 @@ VIEWER_IMPORT_REPLACEMENTS = (
         ),
     ),
 )
+VIEWER_CARD_IMAGE_IMPORT = (
+    "import { rememberResultImageFailure, resolveResultImage } from './card.js';"
+)
 
 
 VIEWER_RUNTIME_HARNESS = r"""
@@ -7529,10 +7532,12 @@ function invariant(condition, message) {
 }
 
 const scenario = "__SCENARIO__";
+const producerItem = __PRODUCER_ITEM__;
 const innerHTMLWrites = [];
 const scripts = [];
 const resizeObservers = [];
 const fetchCalls = [];
+const imageSourceSelections = [];
 
 class FakeClassList {
   constructor(owner) {
@@ -7571,7 +7576,7 @@ class FakeElement {
     this.disabled = false;
     this.value = "";
     this.href = "";
-    this.src = "";
+    this._src = "";
     this.srcdoc = "";
     this.target = "";
     this.rel = "";
@@ -7581,6 +7586,13 @@ class FakeElement {
     this.onload = null;
     this.onerror = null;
     this.listeners = new Map();
+  }
+  set src(value) {
+    this._src = String(value ?? "");
+    if (this.tagName === "IMG" && this._src) imageSourceSelections.push(this._src);
+  }
+  get src() {
+    return this._src;
   }
   set innerHTML(value) {
     this._innerHTML = String(value);
@@ -7728,6 +7740,24 @@ globalThis.ResizeObserver = class {
   observe(element) { this.observed = element; }
   disconnect() { this.disconnected = true; }
 };
+const mockResultImageFailures = new Set();
+function mockResultImageFallback(item) {
+  const source = `${String(item?.source_name ?? "")} ${String(item?.source_url ?? "")}`.toLowerCase();
+  if (source.includes("gbooks") || source.includes("google books") || source.includes("books.google.com")) {
+    return "/static/img/illustrations/open-book.svg";
+  }
+  return "/static/img/illustrations/compass-rose.svg";
+}
+function mockRemoteImageUrl(value) {
+  if (typeof value !== "string" || !value || value.length > 255 || value !== value.trim() || /\s/u.test(value) || value.includes("\\")) return "";
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || (parsed.port && parsed.port !== "443") || parsed.hash) return "";
+    return value;
+  } catch (_error) {
+    return "";
+  }
+}
 globalThis.__viewerMocks = {
   showToast() {},
   createWorkspaceSelectElement() {
@@ -7737,6 +7767,18 @@ globalThis.__viewerMocks = {
   },
   getSelectedWorkspaceId(select) { return Number(select?.value) || null; },
   clearWorkspaceCache() {},
+  resolveResultImage(item) {
+    const remoteUrl = mockRemoteImageUrl(item?.thumb_url);
+    const fallbackUrl = mockResultImageFallback(item);
+    const sourceUrl = remoteUrl && !mockResultImageFailures.has(remoteUrl)
+      ? remoteUrl
+      : fallbackUrl;
+    return { remoteUrl, fallbackUrl, sourceUrl, kind: sourceUrl === remoteUrl ? "remote" : "fallback" };
+  },
+  rememberResultImageFailure(value) {
+    const remoteUrl = mockRemoteImageUrl(value);
+    if (remoteUrl) mockResultImageFailures.add(remoteUrl);
+  },
 };
 
 async function flush() {
@@ -8057,6 +8099,148 @@ if (scenario === "google_readiness_poll_success") {
   api.loads[0].success();
   await opening;
   process.stdout.write(JSON.stringify({ identifier: api.loads[0].identifier }));
+} else if (scenario === "card_failed_image_viewer_fallback_reopen") {
+  invariant(globalThis.__frontModules, "frontend composition modules missing");
+  const { enhanceResultCardImages, viewItem } = globalThis.__frontModules;
+  const remoteUrl = "https://books.google.com/books/content?id=failed-cover";
+  const fallbackUrl = "/static/img/illustrations/open-book.svg";
+  const cardCover = new FakeElement("img");
+  cardCover.src = remoteUrl;
+  cardCover.setAttribute("src", remoteUrl);
+  cardCover.setAttribute("data-fallback-src", fallbackUrl);
+  cardCover.setAttribute("data-image-kind", "remote");
+  enhanceResultCardImages({
+    querySelectorAll(selector) {
+      invariant(selector === ".result-card-image[data-fallback-src]", "wrong image enhancement selector");
+      return [cardCover];
+    },
+  });
+  invariant((cardCover.listeners.get("error") || []).length === 1, "card image listener duplicated");
+  cardCover.dispatchEvent({ type: "error" });
+  invariant(cardCover.src === fallbackUrl, "card image did not use local fallback");
+  const remoteSelectionsAfterCard = imageSourceSelections.filter(
+    (source) => source === remoteUrl
+  ).length;
+
+  const item = googleBook("failed-cover", {
+    thumb_url: remoteUrl,
+    accessInfo: {
+      embeddable: false,
+      webReaderLink: "https://books.google.com/books?id=failed-cover",
+      viewability: "NO_PAGES",
+      accessViewStatus: "NONE",
+    },
+  });
+  let opening;
+  globalThis.openViewer = (value) => {
+    opening = openViewer(value);
+    return opening;
+  };
+  viewItem(item);
+  showViewerOffcanvas();
+  await opening;
+  let covers = viewerBody.querySelectorAll("img");
+  invariant(covers.length === 1 && covers[0].src === fallbackUrl,
+    "viewer retried card's failed remote cover");
+  invariant((covers[0].listeners.get("error") || []).length === 1,
+    "viewer fallback image did not own one error listener");
+  covers[0].dispatchEvent({ type: "error" });
+  invariant(viewerBody.querySelectorAll("img").length === 0,
+    "failed local viewer fallback left a broken image");
+
+  viewItem(item);
+  await opening;
+  covers = viewerBody.querySelectorAll("img");
+  invariant(covers.length === 1 && covers[0].src === fallbackUrl,
+    "viewer reopen retried card's failed remote cover");
+  const remoteRetryCount = imageSourceSelections.filter(
+    (source) => source === remoteUrl
+  ).length - remoteSelectionsAfterCard;
+  invariant(remoteRetryCount === 0, "viewer retried failed remote cover");
+
+  const viewerRemoteUrl = "https://books.google.com/books/content?id=viewer-failure";
+  const viewerFailureItem = googleBook("viewer-failure", {
+    thumb_url: viewerRemoteUrl,
+    accessInfo: {
+      embeddable: false,
+      webReaderLink: "https://books.google.com/books?id=viewer-failure",
+      viewability: "NO_PAGES",
+      accessViewStatus: "NONE",
+    },
+  });
+  viewItem(viewerFailureItem);
+  await opening;
+  covers = viewerBody.querySelectorAll("img");
+  invariant(covers.length === 1 && covers[0].src === viewerRemoteUrl,
+    "viewer did not select new safe remote cover");
+  invariant((covers[0].listeners.get("error") || []).length === 1,
+    "viewer remote cover listener duplicated");
+  covers[0].dispatchEvent({ type: "error" });
+  invariant(covers[0].src === fallbackUrl, "viewer remote failure missed local fallback");
+  invariant((covers[0].listeners.get("error") || []).length === 1,
+    "viewer fallback added a duplicate error listener");
+  covers[0].dispatchEvent({ type: "error" });
+  invariant(viewerBody.querySelectorAll("img").length === 0,
+    "viewer fallback failure left a broken image");
+  const viewerRemoteSelections = imageSourceSelections.filter(
+    (source) => source === viewerRemoteUrl
+  ).length;
+  viewItem(viewerFailureItem);
+  await opening;
+  covers = viewerBody.querySelectorAll("img");
+  invariant(covers.length === 1 && covers[0].src === fallbackUrl,
+    "viewer remote failure was retried on reopen");
+  invariant(imageSourceSelections.filter((source) => source === viewerRemoteUrl).length
+    === viewerRemoteSelections, "viewer remote failure memory did not survive reopen");
+  process.stdout.write(JSON.stringify({
+    firstFallback: fallbackUrl,
+    reopenedFallback: covers[0].src,
+    remoteRetryCount,
+    reopenedListenerCount: (covers[0].listeners.get("error") || []).length,
+    viewerFailureFallback: covers[0].src,
+    viewerFailureRemoteSelections: viewerRemoteSelections,
+  }));
+} else if (scenario === "google_producer_volume_id") {
+  invariant(globalThis.__frontModules, "frontend composition modules missing");
+  const { sanitizeBrowseResult, viewItem } = globalThis.__frontModules;
+  const api = installGoogleBooks();
+  const transported = sanitizeBrowseResult(producerItem);
+  let opening;
+  globalThis.openViewer = (value) => {
+    opening = openViewer(value);
+    return opening;
+  };
+  viewItem(transported);
+  showViewerOffcanvas();
+  await flush();
+  invariant(api.loads.length === 1, "producer Books ID did not reach DefaultViewer.load");
+  invariant(api.loads[0].identifier === "VpNa9UckT24C", "wrong preserved Books ID loaded");
+  api.loads[0].success();
+  await opening;
+  process.stdout.write(JSON.stringify({
+    identifier: api.loads[0].identifier,
+    transportedVolumeId: transported.google_books_volume_id,
+    sourceId: transported.source_id,
+  }));
+} else if (scenario === "google_invalid_explicit_volume_id") {
+  invariant(globalThis.__frontModules, "frontend composition modules missing");
+  const { sanitizeBrowseResult, viewItem } = globalThis.__frontModules;
+  const api = installGoogleBooks();
+  const transported = sanitizeBrowseResult(producerItem);
+  let opening;
+  globalThis.openViewer = (value) => {
+    opening = openViewer(value);
+    return opening;
+  };
+  viewItem(transported);
+  showViewerOffcanvas();
+  await opening;
+  invariant(api.loads.length === 0, "invalid explicit Books ID reached DefaultViewer.load");
+  invariant(collectedText(viewerBody).includes("volume ID"), "invalid ID did not use safe fallback");
+  process.stdout.write(JSON.stringify({
+    loadCount: api.loads.length,
+    transportedVolumeId: transported.google_books_volume_id,
+  }));
 } else if (scenario === "google_success_race_resize") {
   globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
   const staleBeforeLoad = openViewer(googleBook("stale-before-load"));
@@ -8162,7 +8346,10 @@ if (scenario === "google_readiness_poll_success") {
   invariant(noIdText.includes(noIdAttack), "hostile metadata was not assigned as text");
   invariant(noIdText.includes("volume ID"), "missing-ID reason absent");
   invariant(viewerBody.querySelectorAll("a").length === 0, "unsafe fallback link survived");
-  invariant(viewerBody.querySelectorAll("img").length === 0, "unsafe cover survived");
+  const safeCovers = viewerBody.querySelectorAll("img");
+  invariant(safeCovers.length === 1, "source fallback cover missing");
+  invariant(safeCovers[0].src === "/static/img/illustrations/open-book.svg",
+    "unsafe cover was not replaced by local Books fallback");
   invariant(!innerHTMLWrites.some((value) => value.includes(noIdAttack)),
     "provider metadata reached innerHTML");
   invariant(scripts.length === 0, "fallback-only openings loaded Google script");
@@ -8288,14 +8475,117 @@ if (scenario === "google_readiness_poll_success") {
 """
 
 
-def viewer_runtime(scenario: str, source: str | None = None) -> dict:
-    harness = VIEWER_RUNTIME_HARNESS.replace("__SCENARIO__", scenario)
+def viewer_import_replacements(source: str) -> tuple[tuple[str, str], ...]:
+    replacements = list(VIEWER_IMPORT_REPLACEMENTS)
+    if VIEWER_CARD_IMAGE_IMPORT in source:
+        replacements.append(
+            (
+                VIEWER_CARD_IMAGE_IMPORT,
+                (
+                    "const { rememberResultImageFailure, resolveResultImage } = "
+                    "globalThis.__viewerMocks;"
+                ),
+            )
+        )
+    return tuple(replacements)
+
+
+def viewer_runtime(
+    scenario: str,
+    source: str | None = None,
+    producer_item: dict | None = None,
+) -> dict:
+    viewer_source = source or read_text("static/js/viewer.js")
+    harness = VIEWER_RUNTIME_HARNESS.replace("__SCENARIO__", scenario).replace(
+        "__PRODUCER_ITEM__",
+        json.dumps(producer_item),
+    )
     return run_task6_module_harness(
-        source or read_text("static/js/viewer.js"),
-        VIEWER_IMPORT_REPLACEMENTS,
+        viewer_source,
+        viewer_import_replacements(viewer_source),
         harness,
         f"viewer {scenario}",
     )
+
+
+def _module_data_url(source: str) -> str:
+    return "data:text/javascript;base64," + base64.b64encode(
+        source.encode("utf-8")
+    ).decode("ascii")
+
+
+def _replace_module_imports(
+    source: str,
+    replacements: tuple[tuple[str, str], ...],
+) -> str:
+    executable = source
+    for original, replacement in replacements:
+        assert executable.count(original) == 1
+        executable = executable.replace(original, replacement, 1)
+    return executable
+
+
+def viewer_frontend_composition_runtime(
+    scenario: str,
+    producer_item: dict,
+) -> dict:
+    card_source = _replace_module_imports(
+        read_text("static/js/card.js"),
+        CARD_IMPORT_REPLACEMENTS,
+    )
+    card_source += "\nexport { viewItem };\n"
+    card_url = _module_data_url(card_source)
+
+    viewer_source = _replace_module_imports(
+        read_text("static/js/viewer.js"),
+        VIEWER_IMPORT_REPLACEMENTS,
+    )
+    if VIEWER_CARD_IMAGE_IMPORT in viewer_source:
+        viewer_source = viewer_source.replace(
+            VIEWER_CARD_IMAGE_IMPORT,
+            (
+                "import { rememberResultImageFailure, resolveResultImage } from "
+                f"{json.dumps(card_url)};"
+            ),
+            1,
+        )
+    viewer_url = _module_data_url(viewer_source)
+
+    browse_source = _replace_module_imports(
+        read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+    )
+    browse_source += "\nexport { sanitizeBrowseResult };\n"
+    browse_url = _module_data_url(browse_source)
+
+    harness = VIEWER_RUNTIME_HARNESS.replace("__SCENARIO__", scenario).replace(
+        "__PRODUCER_ITEM__",
+        json.dumps(producer_item),
+    )
+    module_imports = (
+        f"const {{ openViewer }} = await import({json.dumps(viewer_url)});\n"
+        f"const {{ enhanceResultCardImages, viewItem }} = await import({json.dumps(card_url)});\n"
+        f"const {{ sanitizeBrowseResult }} = await import({json.dumps(browse_url)});\n"
+        "globalThis.__frontModules = { enhanceResultCardImages, sanitizeBrowseResult, viewItem };"
+    )
+    harness = harness.replace(
+        "const { openViewer } = await import(process.argv[1]);",
+        module_imports,
+        1,
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module"],
+        input=harness,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"viewer {scenario} composition failed: {result.stderr.strip()}"
+    )
+    return json.loads(result.stdout)
 
 
 def test_google_books_viewer_loads_volume_once_and_rejects_stale_openings():
@@ -8350,6 +8640,105 @@ def test_google_books_success_cancels_render_timeout_before_fallback():
 
 def test_google_books_viewer_parses_serpapi_result_url_without_access_metadata():
     assert viewer_runtime("google_serp_url_volume_id") == {"identifier": "serp-volume"}
+
+
+def test_card_cover_failure_is_shared_with_viewer_fallback_and_reopen():
+    rendered = viewer_frontend_composition_runtime(
+        "card_failed_image_viewer_fallback_reopen",
+        {},
+    )
+
+    assert rendered == {
+        "firstFallback": "/static/img/illustrations/open-book.svg",
+        "reopenedFallback": "/static/img/illustrations/open-book.svg",
+        "remoteRetryCount": 0,
+        "reopenedListenerCount": 1,
+        "viewerFailureFallback": "/static/img/illustrations/open-book.svg",
+        "viewerFailureRemoteSelections": 1,
+    }
+
+
+def test_raw_serpapi_books_id_reaches_default_viewer_through_frontend(
+    monkeypatch,
+):
+    link = "https://books.google.com/books?hl=en"
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "organic_results": [{
+                    "title": "Previewable book",
+                    "snippet": "Producer-to-viewer regression",
+                    "link": link,
+                    "source_id": "VpNa9UckT24C",
+                }]
+            }
+
+    monkeypatch.setattr(search_api, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(
+        search_api.requests,
+        "get",
+        lambda *_args, **_kwargs: FakeResponse(),
+    )
+    monkeypatch.setattr(
+        search_api.whitelist,
+        "is_allowed",
+        lambda value: value == link or value.startswith("https://books.google.com/books/content"),
+    )
+    monkeypatch.setattr(
+        search_api.db,
+        "get_or_create_item_by_source_id",
+        lambda item, _user_id, _recent: {"id": 41, **item},
+    )
+    produced = search_api.browse_serpapi_search(
+        "archive",
+        1,
+        "gbooks",
+        {},
+        user_id=7,
+    )[0]
+
+    rendered = viewer_frontend_composition_runtime(
+        "google_producer_volume_id",
+        produced,
+    )
+
+    assert rendered == {
+        "identifier": "VpNa9UckT24C",
+        "transportedVolumeId": "VpNa9UckT24C",
+        "sourceId": link,
+    }
+
+
+@pytest.mark.parametrize(
+    "volume_id",
+    (
+        "VpNa9UckT24C/extra",
+        "https://evil.example/books?id=VpNa9UckT24C",
+        " A-leading-space",
+        "A" * 221,
+    ),
+)
+def test_frontend_rejects_invalid_explicit_google_books_volume_ids(volume_id):
+    rendered = viewer_frontend_composition_runtime(
+        "google_invalid_explicit_volume_id",
+        {
+            "id": 42,
+            "title": "Invalid explicit ID",
+            "description": "Must remain inline",
+            "thumb_url": "",
+            "source_name": "gbooks",
+            "source_url": "https://books.google.com/books?hl=en",
+            "source_id": "https://books.google.com/books?hl=en",
+            "google_books_volume_id": volume_id,
+            "accessInfo": {"embeddable": True},
+        },
+    )
+
+    assert rendered == {"loadCount": 0, "transportedVolumeId": ""}
 
 
 def test_google_books_waits_for_visible_offcanvas_before_loading_viewer():

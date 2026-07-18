@@ -162,12 +162,24 @@ function normalizedBrowseThumbnail(value) {
     }
 }
 
+function normalizedGoogleBooksVolumeId(value) {
+    return typeof value === 'string' && /^[A-Za-z0-9_-]{1,220}$/u.test(value)
+        ? value
+        : '';
+}
+
 function sanitizeBrowseResult(item) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
-    return {
+    const sanitized = {
         ...item,
         thumb_url: normalizedBrowseThumbnail(item.thumb_url),
     };
+    if (Object.prototype.hasOwnProperty.call(item, 'google_books_volume_id')) {
+        sanitized.google_books_volume_id = normalizedGoogleBooksVolumeId(
+            item.google_books_volume_id
+        );
+    }
+    return sanitized;
 }
 
 function deduplicateResults(results) {

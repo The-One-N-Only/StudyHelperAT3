@@ -1,6 +1,7 @@
 "use strict";
 
 import { showToast } from './toast.js';
+import { rememberResultImageFailure, resolveResultImage } from './card.js';
 import { createWorkspaceSelectElement, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
 
 const GOOGLE_BOOKS_API_URL = 'https://www.google.com/books/jsapi.js';
@@ -183,8 +184,13 @@ function safeHttpUrl(value) {
 }
 
 function googleBooksVolumeId(item) {
-    const sourceId = textValue(item?.source_id).trim();
-    if (sourceId && !safeHttpUrl(sourceId) && /^[A-Za-z0-9._-]+$/u.test(sourceId)) {
+    const explicitVolumeId = normalizedGoogleBooksVolumeId(
+        item?.google_books_volume_id
+    );
+    if (explicitVolumeId) return explicitVolumeId;
+
+    const sourceId = normalizedGoogleBooksVolumeId(item?.source_id);
+    if (sourceId) {
         return sourceId;
     }
 
@@ -195,20 +201,30 @@ function googleBooksVolumeId(item) {
         const parsed = new URL(safeUrl);
         if (parsed.hostname.toLowerCase() !== 'books.google.com') continue;
 
-        const queryId = (parsed.searchParams.get('id') || '').trim();
+        const queryId = normalizedGoogleBooksVolumeId(
+            parsed.searchParams.get('id')
+        );
         if (queryId) return queryId;
 
         const editionMatch = parsed.pathname.match(/\/books\/edition\/[^/]+\/([^/]+)$/u);
         if (editionMatch?.[1]) {
             try {
-                return decodeURIComponent(editionMatch[1]);
+                return normalizedGoogleBooksVolumeId(
+                    decodeURIComponent(editionMatch[1])
+                );
             } catch (_err) {
-                return editionMatch[1];
+                return normalizedGoogleBooksVolumeId(editionMatch[1]);
             }
         }
     }
 
     return '';
+}
+
+function normalizedGoogleBooksVolumeId(value) {
+    return typeof value === 'string' && /^[A-Za-z0-9_-]{1,220}$/u.test(value)
+        ? value
+        : '';
 }
 
 function loadGoogleBooksApi() {
@@ -326,15 +342,7 @@ function renderGoogleBooksFallback(body, item, reason) {
     const fallback = document.createElement('div');
     fallback.className = 'google-books-fallback';
 
-    const coverUrl = safeHttpUrl(item?.thumb_url);
-    if (coverUrl) {
-        const cover = document.createElement('img');
-        cover.src = coverUrl;
-        cover.alt = textValue(item?.title)
-            ? `Cover of ${textValue(item.title)}`
-            : 'Book cover';
-        fallback.appendChild(cover);
-    }
+    appendGoogleBooksFallbackCover(fallback, item);
 
     const metadata = document.createElement('div');
     metadata.className = 'google-books-fallback-metadata';
@@ -368,6 +376,31 @@ function renderGoogleBooksFallback(body, item, reason) {
     if (link) metadata.appendChild(link);
     fallback.appendChild(metadata);
     body.appendChild(fallback);
+}
+
+function appendGoogleBooksFallbackCover(fallback, item) {
+    const imageResolution = resolveResultImage(item);
+    const cover = document.createElement('img');
+    cover.src = imageResolution.sourceUrl;
+    cover.alt = textValue(item?.title)
+        ? `Cover of ${textValue(item.title)}`
+        : 'Book cover';
+    cover.setAttribute('data-image-kind', imageResolution.kind);
+
+    let imageKind = imageResolution.kind;
+    const onError = () => {
+        if (imageKind === 'remote') {
+            rememberResultImageFailure(imageResolution.remoteUrl);
+            imageKind = 'fallback';
+            cover.setAttribute('data-image-kind', imageKind);
+            cover.src = imageResolution.fallbackUrl;
+            return;
+        }
+        cover.removeEventListener('error', onError);
+        cover.remove();
+    };
+    cover.addEventListener('error', onError);
+    fallback.appendChild(cover);
 }
 
 async function renderGoogleBooksViewer(body, item, generation) {
