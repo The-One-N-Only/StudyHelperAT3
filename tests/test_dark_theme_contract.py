@@ -3721,6 +3721,313 @@ process.stdout.write(JSON.stringify({
 """
 
 
+BROWSE_SOURCE_READINESS_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""
+const controls = new Map();
+function control(selector, value = "") {
+  const element = new FakeElement(selector);
+  element.value = value;
+  controls.set(selector, element);
+  return element;
+}
+
+const search = control("#searchInput");
+const go = control("#goBtn");
+const filters = control("#filtersDropdown");
+const menu = control(".browse-dropdown-menu");
+controls.set("#browseFiltersMenu", menu);
+const master = control("#filterAllSources");
+control("#filterYearFrom");
+control("#filterYearTo");
+control("#filterContentType");
+control("#filterSorting");
+control("#sidebarContainer");
+control("#resultsContainer");
+const whitelistContainer = control("#whitelistCheckboxes");
+
+function source(name, value, checked, className = "form-check-input browse-source-checkbox") {
+  const element = new FakeElement(name, className);
+  element.value = value;
+  element.checked = checked;
+  return element;
+}
+
+const sources = [
+  source("Wikipedia", "wikipedia", true),
+  source("Google Books", "gbooks", true),
+  source("PubMed", "pubmed", false),
+  source("Google Scholar", "scholar", true),
+];
+let whitelistMarkup = "";
+Object.defineProperty(whitelistContainer, "innerHTML", {
+  configurable: true,
+  get() { return this._innerHTML || ""; },
+  set(value) {
+    whitelistMarkup = String(value);
+    this._innerHTML = whitelistMarkup;
+    sources.splice(4);
+    const inputPattern = /<input\s+class="([^"]*)"[^>]*\svalue="([^"]+)"[^>]*>/gu;
+    for (const match of whitelistMarkup.matchAll(inputPattern)) {
+      sources.push(source(match[2], match[2], false, match[1]));
+    }
+  },
+});
+
+function realSources() {
+  return sources.filter((checkbox) => checkbox.classList.contains("browse-source-checkbox"));
+}
+function matchingSources(selector) {
+  if (!selector.includes("browse-source-checkbox")) return [];
+  const matches = realSources();
+  return selector.includes(":checked")
+    ? matches.filter((checkbox) => checkbox.checked)
+    : matches;
+}
+menu.querySelectorAll = matchingSources;
+
+const root = new FakeElement("root");
+root.querySelector = (selector) => controls.get(selector) || null;
+root.querySelectorAll = matchingSources;
+const documentControl = new FakeElement("document");
+globalThis.document = {
+  addEventListener: documentControl.addEventListener.bind(documentControl),
+  createElement() { return new FakeElement("created"); },
+};
+const historyUrls = [];
+globalThis.window = {
+  location: { pathname: "/browse", search: "" },
+  history: { replaceState(state, title, url) { historyUrls.push(url); } },
+};
+globalThis.renderedItems = [];
+globalThis.toastCalls = [];
+
+const restoredState = __RESTORED_STATE__;
+globalThis.localStorage = {
+  getItem() { return restoredState ? JSON.stringify(restoredState) : null; },
+  setItem() {},
+};
+
+function deferredResponse() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+const whitelistResponse = deferredResponse();
+const apiBodies = [];
+globalThis.fetch = async (url, options = {}) => {
+  if (url === "/static/whitelist.json") return whitelistResponse.promise;
+  if (url === "/api/browse/search-all") {
+    apiBodies.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      async json() {
+        return {
+          status: true,
+          results: [],
+          grouped_results: {},
+          source_counts: {},
+        };
+      },
+    };
+  }
+  throw new Error("unexpected fetch: " + url);
+};
+
+const { initBrowse, getBrowseState } = await import(process.argv[1]);
+initBrowse(root);
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+const dynamicBeforeResolution = sources.filter(
+  (checkbox) => checkbox.value.startsWith("whitelist_")
+).length;
+__PRE_READINESS_ACTIONS__
+await new Promise((resolve) => setTimeout(resolve, 0));
+const apiCountBeforeResolution = apiBodies.length;
+
+__WHITELIST_SETTLEMENT__
+for (let index = 0; index < 3; index += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+const dynamicSources = sources.filter((checkbox) => checkbox.value.startsWith("whitelist_"));
+process.stdout.write(JSON.stringify({
+  dynamicBeforeResolution,
+  dynamicAfterResolution: dynamicSources.length,
+  whitelistMarkup,
+  apiCountBeforeResolution,
+  apiBodies,
+  historyUrls,
+  selectedSources: getBrowseState().sources,
+  masterValue: master.value,
+  master: { checked: master.checked, indeterminate: master.indeterminate },
+  toastCalls: globalThis.toastCalls,
+}));
+"""
+
+
+BROWSE_REINIT_READINESS_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""
+function source(name, value, checked, className = "form-check-input browse-source-checkbox") {
+  const element = new FakeElement(name, className);
+  element.value = value;
+  element.checked = checked;
+  return element;
+}
+
+function makePage(name) {
+  const controls = new Map();
+  function control(selector, value = "") {
+    const element = new FakeElement(name + " " + selector);
+    element.value = value;
+    controls.set(selector, element);
+    return element;
+  }
+
+  control("#searchInput");
+  control("#goBtn");
+  control("#filtersDropdown");
+  const menu = control(".browse-dropdown-menu");
+  controls.set("#browseFiltersMenu", menu);
+  control("#filterAllSources");
+  control("#filterYearFrom");
+  control("#filterYearTo");
+  control("#filterContentType");
+  control("#filterSorting");
+  control("#sidebarContainer");
+  control("#resultsContainer");
+  const whitelistContainer = control("#whitelistCheckboxes");
+  const sources = [
+    source(name + " Wikipedia", "wikipedia", true),
+    source(name + " Google Books", "gbooks", true),
+    source(name + " PubMed", "pubmed", false),
+    source(name + " Google Scholar", "scholar", true),
+  ];
+  let whitelistMarkup = "";
+  Object.defineProperty(whitelistContainer, "innerHTML", {
+    configurable: true,
+    get() { return this._innerHTML || ""; },
+    set(value) {
+      whitelistMarkup = String(value);
+      this._innerHTML = whitelistMarkup;
+      sources.splice(4);
+      const inputPattern = /<input\s+class="([^"]*)"[^>]*\svalue="([^"]+)"[^>]*>/gu;
+      for (const match of whitelistMarkup.matchAll(inputPattern)) {
+        sources.push(source(match[2], match[2], false, match[1]));
+      }
+    },
+  });
+  function matchingSources(selector) {
+    if (!selector.includes("browse-source-checkbox")) return [];
+    const matches = sources.filter(
+      (checkbox) => checkbox.classList.contains("browse-source-checkbox")
+    );
+    return selector.includes(":checked")
+      ? matches.filter((checkbox) => checkbox.checked)
+      : matches;
+  }
+  menu.querySelectorAll = matchingSources;
+  const root = new FakeElement(name + " root");
+  root.querySelector = (selector) => controls.get(selector) || null;
+  root.querySelectorAll = matchingSources;
+  return {
+    controls,
+    root,
+    sources,
+    get whitelistMarkup() { return whitelistMarkup; },
+  };
+}
+
+const documentControl = new FakeElement("document");
+globalThis.document = {
+  addEventListener: documentControl.addEventListener.bind(documentControl),
+  createElement() { return new FakeElement("created"); },
+};
+globalThis.window = {
+  location: { pathname: "/browse", search: "" },
+  history: { replaceState() {} },
+};
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.renderedItems = [];
+globalThis.toastCalls = [];
+
+function deferredResponse() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+const oldWhitelist = deferredResponse();
+const newWhitelist = deferredResponse();
+let whitelistCall = 0;
+const apiBodies = [];
+globalThis.fetch = async (url, options = {}) => {
+  if (url === "/static/whitelist.json") {
+    const response = whitelistCall === 0 ? oldWhitelist.promise : newWhitelist.promise;
+    whitelistCall += 1;
+    return response;
+  }
+  if (url === "/api/browse/search-all") {
+    apiBodies.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      async json() {
+        return {
+          status: true,
+          results: [],
+          grouped_results: {},
+          source_counts: {},
+        };
+      },
+    };
+  }
+  throw new Error("unexpected fetch: " + url);
+};
+
+const oldPage = makePage("old");
+const newPage = makePage("new");
+const { initBrowse } = await import(process.argv[1]);
+
+window.location.search = "?q=old";
+initBrowse(oldPage.root);
+window.location.search = "?q=new";
+initBrowse(newPage.root);
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+oldWhitelist.resolve({
+  ok: true,
+  async json() { return { domains: ["old.example"] }; },
+});
+for (let index = 0; index < 3; index += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+const afterOldResolution = {
+  apiQueries: apiBodies.map((body) => body.query),
+  oldMarkup: oldPage.whitelistMarkup,
+  newMarkup: newPage.whitelistMarkup,
+  newQuery: newPage.controls.get("#searchInput").value,
+};
+
+newWhitelist.resolve({
+  ok: true,
+  async json() { return { domains: ["new.example"] }; },
+});
+for (let index = 0; index < 3; index += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+process.stdout.write(JSON.stringify({
+  afterOldResolution,
+  finalApiQueries: apiBodies.map((body) => body.query),
+  finalApiSources: apiBodies.map((body) => body.sources),
+  oldMarkup: oldPage.whitelistMarkup,
+  newMarkup: newPage.whitelistMarkup,
+  newQuery: newPage.controls.get("#searchInput").value,
+}));
+"""
+
+
 BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 globalThis.localStorage = { getItem() { return null; }, setItem() {} };
@@ -3918,6 +4225,7 @@ globalThis.fetch = async (url, options) => {
 const { initBrowse } = await import(process.argv[1]);
 initBrowse(root);
 await go.dispatch("click");
+await flushPromises();
 invariant(requestTimers.length === 1, "Browse request timeout was not scheduled");
 invariant(requestTimers[0].delay === 30000, "Browse timeout duration changed");
 invariant(searchSignal && searchSignal.aborted === false, "Browse request lacked an active abort signal");
@@ -4800,6 +5108,12 @@ await master.dispatch("change");
 sources[0].checked = true;
 await menu.dispatch("change", { target: sources[0] });
 """,
+        "select_all_then_clear_gbooks": """
+master.checked = true;
+await master.dispatch("change");
+sources[1].checked = false;
+await menu.dispatch("change", { target: sources[1] });
+""",
     }
     assert action in actions
     harness = BROWSE_FILTER_RACE_RUNTIME_HARNESS.replace(
@@ -4813,6 +5127,93 @@ await menu.dispatch("change", { target: sources[0] });
         BROWSE_IMPORT_REPLACEMENTS,
         harness,
         f"browse filter {action} race",
+    )
+
+
+def browse_source_readiness_runtime(
+    action: str,
+    outcome: str,
+    *,
+    restored: bool = False,
+    source: str | None = None,
+) -> dict:
+    actions = {
+        "master_latest": """
+master.checked = true;
+await master.dispatch("change");
+search.value = "older";
+await go.dispatch("click");
+search.value = "latest";
+await go.dispatch("click");
+""",
+        "restored": """
+search.value = "restored";
+await go.dispatch("click");
+""",
+        "dedicated": """
+search.value = "dedicated";
+await go.dispatch("click");
+""",
+    }
+    settlements = {
+        "success": """
+whitelistResponse.resolve({
+  ok: true,
+  async json() { return { domains: ["jstor.org"], domain_patterns: ["*.edu"] }; },
+});
+""",
+        "empty": """
+whitelistResponse.resolve({
+  ok: true,
+  async json() { return { domains: [], domain_patterns: [] }; },
+});
+""",
+        "non_ok": """
+whitelistResponse.resolve({ ok: false });
+""",
+        "failure": """
+whitelistResponse.reject(new Error("whitelist unavailable"));
+""",
+    }
+    assert action in actions
+    assert outcome in settlements
+    restored_state = None
+    if restored:
+        restored_state = {
+            "version": 2,
+            "query": "restored",
+            "sources": ["gbooks", "whitelist_jstor.org"],
+            "filters": {
+                "min_date": "",
+                "max_date": "",
+                "content_type": "",
+                "sorting": "",
+            },
+            "results": [],
+            "groupedResults": {},
+            "sourceCounts": {},
+            "groupPage": 1,
+        }
+    harness = BROWSE_SOURCE_READINESS_RUNTIME_HARNESS
+    harness = harness.replace("__RESTORED_STATE__", json.dumps(restored_state))
+    harness = harness.replace("__PRE_READINESS_ACTIONS__", actions[action])
+    harness = harness.replace("__WHITELIST_SETTLEMENT__", settlements[outcome])
+    browse_source = source or read_text("static/js/pages/browse.js")
+    browse_source += "\nexport { getBrowseState };\n"
+    return run_task6_module_harness(
+        browse_source,
+        BROWSE_IMPORT_REPLACEMENTS,
+        harness,
+        f"browse source readiness {action} {outcome}",
+    )
+
+
+def browse_reinit_readiness_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_REINIT_READINESS_RUNTIME_HARNESS,
+        "browse reinit readiness",
     )
 
 
@@ -5303,6 +5704,7 @@ def test_browse_pending_source_intent_wins_deferred_whitelist_restore_race():
     selected = browse_filter_race_runtime("select_all")
     cleared = browse_filter_race_runtime("clear_all")
     individual = browse_filter_race_runtime("select_individual")
+    master_then_individual = browse_filter_race_runtime("select_all_then_clear_gbooks")
     all_sources = [
         "wikipedia",
         "gbooks",
@@ -5312,7 +5714,7 @@ def test_browse_pending_source_intent_wins_deferred_whitelist_restore_race():
         "whitelist_*.edu",
     ]
 
-    for rendered in (selected, cleared, individual):
+    for rendered in (selected, cleared, individual, master_then_individual):
         assert rendered["dynamicBeforeResolution"] == 0
         assert rendered["dynamicAfterResolution"] == 2
         assert all(
@@ -5352,6 +5754,94 @@ def test_browse_pending_source_intent_wins_deferred_whitelist_restore_race():
     assert individual["persistedSources"] == individual["afterSources"]
     assert individual["apiSources"] == individual["afterSources"]
     assert individual["afterMaster"] == {"checked": False, "indeterminate": True}
+
+    assert master_then_individual["beforeResolution"] == {
+        "selected": ["wikipedia", "pubmed", "scholar"],
+        "master": {"checked": False, "indeterminate": True},
+    }
+    assert master_then_individual["afterSources"] == [
+        "wikipedia",
+        "pubmed",
+        "scholar",
+        "whitelist_jstor.org",
+        "whitelist_*.edu",
+    ]
+    assert master_then_individual["persistedSources"] == master_then_individual["afterSources"]
+    assert master_then_individual["apiSources"] == master_then_individual["afterSources"]
+    assert master_then_individual["afterMaster"] == {
+        "checked": False,
+        "indeterminate": True,
+    }
+
+
+def test_browse_search_waits_for_current_whitelist_source_readiness():
+    selected = browse_source_readiness_runtime("master_latest", "success")
+    restored = browse_source_readiness_runtime(
+        "restored",
+        "success",
+        restored=True,
+    )
+    settled_without_dynamic = {
+        outcome: browse_source_readiness_runtime("dedicated", outcome)
+        for outcome in ("empty", "non_ok", "failure")
+    }
+    all_sources = [
+        "wikipedia",
+        "gbooks",
+        "pubmed",
+        "scholar",
+        "whitelist_jstor.org",
+        "whitelist_*.edu",
+    ]
+    dedicated_sources = ["wikipedia", "gbooks", "scholar"]
+
+    assert selected["dynamicBeforeResolution"] == 0
+    assert selected["apiCountBeforeResolution"] == 0
+    assert len(selected["apiBodies"]) == 1
+    assert selected["apiBodies"][0]["query"] == "latest"
+    assert selected["apiBodies"][0]["sources"] == all_sources
+    assert selected["selectedSources"] == all_sources
+    assert selected["historyUrls"] == ["/browse?q=latest"]
+    assert selected["dynamicAfterResolution"] == 2
+    assert selected["masterValue"] == ""
+    assert selected["master"] == {"checked": True, "indeterminate": False}
+
+    assert restored["dynamicBeforeResolution"] == 0
+    assert restored["apiCountBeforeResolution"] == 0
+    assert len(restored["apiBodies"]) == 1
+    assert restored["apiBodies"][0]["query"] == "restored"
+    assert restored["apiBodies"][0]["sources"] == [
+        "gbooks",
+        "whitelist_jstor.org",
+    ]
+    assert restored["selectedSources"] == restored["apiBodies"][0]["sources"]
+    assert restored["dynamicAfterResolution"] == 2
+
+    for outcome, rendered in settled_without_dynamic.items():
+        assert rendered["dynamicBeforeResolution"] == 0, outcome
+        assert rendered["apiCountBeforeResolution"] == 0, outcome
+        assert len(rendered["apiBodies"]) == 1, outcome
+        assert rendered["apiBodies"][0]["query"] == "dedicated", outcome
+        assert rendered["apiBodies"][0]["sources"] == dedicated_sources, outcome
+        assert rendered["selectedSources"] == dedicated_sources, outcome
+        assert rendered["dynamicAfterResolution"] == 0, outcome
+
+
+def test_browse_reinit_ignores_older_whitelist_readiness_and_search_continuation():
+    rendered = browse_reinit_readiness_runtime()
+
+    assert rendered["afterOldResolution"] == {
+        "apiQueries": [],
+        "oldMarkup": "",
+        "newMarkup": "",
+        "newQuery": "new",
+    }
+    assert rendered["finalApiQueries"] == ["new"]
+    assert rendered["finalApiSources"] == [["wikipedia", "gbooks", "scholar"]]
+    assert rendered["oldMarkup"] == ""
+    assert 'value="whitelist_new.example"' in rendered["newMarkup"]
+    assert "whitelist_old.example" not in rendered["newMarkup"]
+    assert rendered["newQuery"] == "new"
 
 
 def test_browse_grouped_paging_reveals_each_cached_rank_without_refetching():
@@ -5541,7 +6031,7 @@ def test_task6_runtime_guards_catch_go_listener_and_unsaved_label_mutations():
     browse = read_text("static/js/pages/browse.js")
     listener = (
         "    goBtn.addEventListener('click', () => {\n"
-        "        performSearch();\n"
+        "        performSearch({ initGeneration });\n"
         "    });\n"
     )
     assert browse.count(listener) == 1

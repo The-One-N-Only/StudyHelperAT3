@@ -28,6 +28,8 @@ let pendingMasterSourceSelection = null;
 let pendingSourceSelectionOverrides = new Map();
 let isLoadingMore = false;
 let searchGeneration = 0;
+let browseInitGeneration = 0;
+let browseSourceReadiness = Promise.resolve();
 let isInitialSearchPending = false;
 
 function normalizeIdentityText(value) {
@@ -254,15 +256,15 @@ function mergeUniqueResults(existing, incoming) {
 async function loadWhitelistDomains() {
     try {
         const response = await fetch('/static/whitelist.json');
-        if (response.ok) {
-            const whitelist = await response.json();
-            whitelistDomains = [
-                ...(whitelist.domains || []),
-                ...(whitelist.domain_patterns || []),
-            ];
-        }
+        if (!response.ok) return [];
+        const whitelist = await response.json();
+        return [
+            ...(whitelist.domains || []),
+            ...(whitelist.domain_patterns || []),
+        ];
     } catch (err) {
         console.warn('Unable to load whitelist domains', err);
+        return [];
     }
 }
 
@@ -362,7 +364,10 @@ function showPartialSourceWarning(result) {
 }
 
 export function initBrowse(root) {
+    const initGeneration = ++browseInitGeneration;
+    searchGeneration += 1;
     pageRoot = root;
+    whitelistDomains = [];
     whitelistSourcesRendered = false;
     pendingMasterSourceSelection = null;
     pendingSourceSelectionOverrides = new Map();
@@ -457,21 +462,25 @@ export function initBrowse(root) {
 
     const initialQuery = getInitialBrowseQuery();
 
-    registerEvents();
+    registerEvents(initGeneration);
     renderSidebar();
     restoreBrowseState();
 
-    loadWhitelistDomains().then(() => {
+    browseSourceReadiness = loadWhitelistDomains().then((domains) => {
+        if (initGeneration !== browseInitGeneration) return false;
+        whitelistDomains = domains;
         renderWhitelistCheckboxes();
-        if (initialQuery) {
-            const searchInput = pageRoot.querySelector('#searchInput');
-            if (searchInput) searchInput.value = initialQuery;
-            performSearch({ updateUrl: false });
-        }
+        return true;
     });
+
+    if (initialQuery) {
+        const searchInput = pageRoot.querySelector('#searchInput');
+        if (searchInput) searchInput.value = initialQuery;
+        performSearch({ updateUrl: false, initGeneration });
+    }
 }
 
-function registerEvents() {
+function registerEvents(initGeneration) {
     const searchInput = pageRoot.querySelector('#searchInput');
     const goBtn = pageRoot.querySelector('#goBtn');
     const filtersDropdown = pageRoot.querySelector('#filtersDropdown');
@@ -480,11 +489,11 @@ function registerEvents() {
     const sourceMasterCheckbox = pageRoot.querySelector('#filterAllSources');
 
     goBtn.addEventListener('click', () => {
-        performSearch();
+        performSearch({ initGeneration });
     });
     searchInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
-            performSearch();
+            performSearch({ initGeneration });
         }
     });
 
@@ -1012,8 +1021,17 @@ function sortResults(results, sortingCriteria) {
 }
 
 async function performSearch(options = {}) {
+    const initGeneration = options.initGeneration ?? browseInitGeneration;
+    if (initGeneration !== browseInitGeneration) return;
+
     const query = pageRoot.querySelector('#searchInput').value.trim();
     if (!query) return;
+
+    const filters = buildFilters();
+    const generation = ++searchGeneration;
+    const sourceReadiness = browseSourceReadiness;
+    await sourceReadiness;
+    if (initGeneration !== browseInitGeneration || generation !== searchGeneration) return;
 
     const sources = getSelectedSources();
     if (sources.length === 0) {
@@ -1023,8 +1041,6 @@ async function performSearch(options = {}) {
 
     if (options.updateUrl !== false) updateBrowseUrl(query);
 
-    const generation = ++searchGeneration;
-    const filters = buildFilters();
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
 
     // Keep query/source ownership stable while cached ranks are revealed.
