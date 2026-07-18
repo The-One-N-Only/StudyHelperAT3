@@ -111,6 +111,11 @@ def test_env_example_and_model_defaults_match_hosted_contract():
         "ANTHROPIC_API_KEY=\n"
         "ANTHROPIC_MODEL=claude-sonnet-4-6\n"
         "ANTHROPIC_SUMMARISE_MODEL=claude-haiku-4-5-20251001\n"
+        "SERP_API_KEY=\n"
+        "GOOGLE_BOOKS_API_KEY=\n"
+        "GOOGLE_SEARCH_API_KEY=\n"
+        "GOOGLE_SEARCH_ENGINE_ID=\n"
+        "PUBMED_API_KEY=\n"
     )
     assert _read(".env.example") == expected
     assert _env_default("src/answer.py", "ANTHROPIC_MODEL") == "claude-sonnet-4-6"

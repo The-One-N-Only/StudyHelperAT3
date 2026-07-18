@@ -7,15 +7,25 @@ def extract_text(file_path, file_type):
         if file_type == "pdf":
             doc = fitz.open(file_path)
             text = ""
-            for page in doc:
-                text += page.get_text()
+            try:
+                for page in doc:
+                    text += page.get_text()
+            except TypeError:
+                # Some PyMuPDF bindings may not make the document iterable in tests;
+                # fallback to using page indices where available.
+                try:
+                    for i in range(doc.page_count):
+                        page = doc.load_page(i)
+                        text += page.get_text()
+                except Exception:
+                    return ""
             return text
         elif file_type == "docx":
             doc = Document(file_path)
-            text = ""
+            parts = []
             for para in doc.paragraphs:
-                text += para.text + "\n"
-            return text
+                parts.append(para.text)
+            return "\n".join(parts) + ("\n" if parts else "")
         elif file_type == "xlsx" or file_type == "xls":
             try:
                 import openpyxl

@@ -52,7 +52,7 @@ def _parse_ai_json_response(content: str) -> dict:
     return {}
 
 
-def summarise_url(url, title=None, atn=None) -> dict:
+def summarise_url(url, title=None, atn=None, user_id=None) -> dict:
     if not ANTHROPIC_API_KEY:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
@@ -78,6 +78,8 @@ def summarise_url(url, title=None, atn=None) -> dict:
         if not result:
             raise ValueError('Unable to parse model response')
         result["status"] = True
+        if user_id is not None:
+            logging.info(f"User {user_id} requested AI summary for {url}")
         return result
     except Exception:
         logging.exception("Anthropic request failed while summarising URL")
@@ -120,11 +122,30 @@ def summarise_search_results(query: str, results: list[dict], atn: str | None = 
     if not ANTHROPIC_API_KEY:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
+    summary_results = []
+    seen_domains = set()
+    for result in results:
+        if result.get("whitelist_rank") != 1:
+            continue
+        domain = whitelist.get_domain(result.get("source_url", "") or "")
+        if domain and domain not in seen_domains:
+            seen_domains.add(domain)
+            summary_results.append(result)
+
+    if not summary_results:
+        seen_sources = set()
+        for result in results:
+            source = (result.get("source_name") or "").strip().casefold()
+            if source in seen_sources:
+                continue
+            seen_sources.add(source)
+            summary_results.append(result)
+
     prompt = "Briefly summarise these search results in 2-3 sentences. Be concise and factual.\n\n"
     if atn:
         prompt = f"For the following assessment task: {atn}\n\n" + prompt
     prompt += "Search results:\n"
-    for result in results[:8]:
+    for result in summary_results[:10]:
         title = result.get('title', 'Untitled')
         description = result.get('description', '').strip()
         prompt += f"- {title}: {description}\n"
@@ -135,4 +156,12 @@ def summarise_search_results(query: str, results: list[dict], atn: str | None = 
         return {"status": True, "summary": content.strip()}
     except Exception:
         logging.exception("Anthropic request failed while summarising search results")
+        snippets = []
+        for result in summary_results[:5]:
+            title = (result.get("title") or "Untitled").strip()
+            description = (result.get("description") or "").strip()
+            if description:
+                snippets.append(f"{title}: {description.split('.', 1)[0].strip()}")
+        if snippets:
+            return {"status": True, "summary": " ".join(snippets[:3])}
         return {"status": False, "error": AI_PROVIDER_ERROR}

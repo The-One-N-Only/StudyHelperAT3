@@ -4,6 +4,7 @@ import { showToast } from './toast.js';
 import { createWorkspaceSelectElement, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
 
 const GOOGLE_BOOKS_API_URL = 'https://www.google.com/books/jsapi.js';
+const GOOGLE_BOOKS_RENDER_TIMEOUT_MS = 8000;
 const PROXY_IFRAME_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox';
 
 let viewerOffcanvas;
@@ -21,6 +22,24 @@ function ensureViewerOffcanvas() {
         viewerOffcanvas = new bootstrap.Offcanvas(offcanvasElement);
     }
     return viewerOffcanvas;
+}
+
+function waitForOffcanvasShown(element) {
+    if (element.classList.contains('show')) {
+        return { promise: Promise.resolve(), cancel() {} };
+    }
+
+    let onShown;
+    const promise = new Promise((resolve) => {
+        onShown = () => resolve();
+        element.addEventListener('shown.bs.offcanvas', onShown, { once: true });
+    });
+    return {
+        promise,
+        cancel() {
+            element.removeEventListener('shown.bs.offcanvas', onShown);
+        },
+    };
 }
 
 function textValue(value) {
@@ -356,6 +375,33 @@ async function renderGoogleBooksViewer(body, item, generation) {
     });
 }
 
+async function renderGoogleBooksViewerWithTimeout(body, item, generation) {
+    let timeoutId;
+    const timeout = new Promise((resolve) => {
+        timeoutId = setTimeout(() => {
+            if (generation === viewerRequestGeneration) {
+                viewerRequestGeneration += 1;
+                resetGoogleBooksViewerState();
+                renderGoogleBooksFallback(
+                    body,
+                    item,
+                    'The embedded Google Books preview timed out after eight seconds.',
+                );
+            }
+            resolve();
+        }, GOOGLE_BOOKS_RENDER_TIMEOUT_MS);
+    });
+
+    try {
+        await Promise.race([
+            renderGoogleBooksViewer(body, item, generation),
+            timeout,
+        ]);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 function renderProxyContent(body, result) {
     body.replaceChildren();
     const mode = result.mode || 'iframe';
@@ -390,15 +436,24 @@ export async function openViewer(item) {
     addBtn.onclick = () => addToWorkspaceFromViewer(item, workspaceSelect);
     renderLoading(body);
 
+    const isGoogleBooks = isGoogleBooksResult(item);
+    const offcanvasElement = document.getElementById('viewerOffcanvas');
+    const shown = isGoogleBooks
+        ? waitForOffcanvasShown(offcanvasElement)
+        : { promise: Promise.resolve(), cancel() {} };
+
     try {
         ensureViewerOffcanvas().show();
     } catch {
+        shown.cancel();
         showToast('Failed to open viewer', 'danger');
         return;
     }
 
-    if (isGoogleBooksResult(item)) {
-        await renderGoogleBooksViewer(body, item, generation);
+    if (isGoogleBooks) {
+        await shown.promise;
+        if (generation !== viewerRequestGeneration) return;
+        await renderGoogleBooksViewerWithTimeout(body, item, generation);
         return;
     }
 

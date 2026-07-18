@@ -281,14 +281,14 @@ def browse_search_all():
     data = request.json
     query = data['query']
     num_results = data.get('num_results', 20)
-    sources = data.get('sources', ['wikipedia', 'gbooks', 'pubmed'])
+    sources = data.get('sources', ['wikipedia', 'gbooks', 'scholar'])
     filters = data.get('filters', {})
     user_id = session.get('user_id')
 
     if not query or not sources:
         return jsonify({'status': False, 'error': 'Query and sources required'}), 400
 
-    # Define search tasks
+    # Define per-source search tasks.
     search_tasks = {
         'wikipedia': (search.wikipedia, (query, num_results)),
         'gbooks': (search.gbooks, (query, num_results, filters)),
@@ -297,15 +297,27 @@ def browse_search_all():
         'whitelist': (search.whitelist_search, (query, num_results,))
     }
 
-    # Execute searches in parallel
-    all_results = []
+    requested_sources = []
+    seen_sources = set()
+    for source in sources:
+        if source in seen_sources:
+            continue
+        seen_sources.add(source)
+        requested_sources.append(source)
+
+    # An explicit domain is more precise than the generic whitelist fan-out.
+    if any(source.startswith('whitelist_') for source in requested_sources):
+        requested_sources = [
+            source for source in requested_sources if source != 'whitelist'
+        ]
+
+    grouped_results = {}
     source_counts = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
         futures = {}
 
-        # Submit each selected source as a separate task
-        for source in sources:
+        for source in requested_sources:
             if source in search_tasks:
                 func, args = search_tasks[source]
                 futures[source] = executor.submit(func, *args, user_id=user_id)
@@ -313,28 +325,46 @@ def browse_search_all():
                 domain = source.split('_', 1)[1]
                 futures[source] = executor.submit(search.whitelist_search, query, num_results, domains=[domain], user_id=user_id)
 
-        # Collect results as they complete (or timeout)
         for source in futures:
             try:
-                source_results = futures[source].result(timeout=15)
-                all_results.extend(source_results or [])
-                source_counts[source] = len(source_results) if source_results else 0
+                source_results = futures[source].result(timeout=15) or []
+                grouped_results[source] = source_results
+                source_counts[source] = len(source_results)
             except concurrent.futures.TimeoutError:
                 logging.warning(f"Search timeout for source: {source}")
+                grouped_results[source] = []
                 source_counts[source] = 0
             except Exception as e:
                 logging.error(f"Search failed for {source}: {str(e)}")
+                grouped_results[source] = []
                 source_counts[source] = 0
 
-    logging.info(f"User {user_id} performed multi-source search for '{query}' across {len(sources)} sources")
-    all_results = search.deduplicate_results(all_results)
-    all_results = [
-        search.with_response_dedupe_metadata(item) for item in all_results
+    flattened = [
+        (source, item)
+        for source, items in grouped_results.items()
+        for item in items
     ]
+    unique_items = iter(search.deduplicate_results([item for _, item in flattened]))
+    next_unique = next(unique_items, None)
+    deduplicated_groups = {source: [] for source in grouped_results}
+    all_results = []
+    for source, item in flattened:
+        if item is not next_unique:
+            continue
+        response_item = search.with_response_dedupe_metadata(item)
+        deduplicated_groups[source].append(response_item)
+        all_results.append(response_item)
+        next_unique = next(unique_items, None)
+
+    logging.info(
+        f"User {user_id} performed multi-source search for '{query}' "
+        f"across {len(futures)} sources"
+    )
 
     return jsonify({
         'status': True,
         'results': all_results,
+        'grouped_results': deduplicated_groups,
         'source_counts': source_counts
     })
 

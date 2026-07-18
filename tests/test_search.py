@@ -288,10 +288,86 @@ def test_browse_search_all_deduplicates_cards_without_changing_source_counts(mon
         "https://example.test/unique",
     ]
     assert payload["source_counts"] == {"wikipedia": 2, "whitelist": 3}
+    assert {
+        source: [item["title"] for item in items]
+        for source, items in payload["grouped_results"].items()
+    } == {
+        "wikipedia": ["First provider copy", "Dedicated result"],
+        "whitelist": ["Unique whitelist result"],
+    }
     assert dedicated_results == dedicated_snapshot
     assert whitelist_results == whitelist_snapshot
     assert all("_dedupe_identity" not in item for item in dedicated_results)
     assert all("_dedupe_identity" not in item for item in whitelist_results)
+
+
+def test_browse_search_all_cleans_duplicate_and_overlapping_source_selections(
+    monkeypatch,
+):
+    import app as flask_app
+
+    calls = []
+
+    def fake_wikipedia(_query, _num_results, *, user_id):
+        calls.append(("wikipedia", user_id))
+        return [{
+            "source_name": "Wikipedia",
+            "source_id": "wiki-1",
+            "source_url": "https://en.wikipedia.org/wiki/Archive",
+            "title": "Wikipedia",
+        }]
+
+    def fake_gbooks(_query, _num_results, _filters, *, user_id):
+        calls.append(("gbooks", user_id))
+        return [{
+            "source_name": "gbooks",
+            "source_id": "book-1",
+            "source_url": "https://books.google.com/books?id=book-1",
+            "title": "Book",
+        }]
+
+    def fake_whitelist(_query, _num_results, domains=None, *, user_id):
+        calls.append(("whitelist", tuple(domains or ()), user_id))
+        return [{
+            "source_name": "Wikipedia",
+            "source_id": "wiki-1",
+            "source_url": "https://en.wikipedia.org/wiki/Archive",
+            "title": "Duplicate Wikipedia",
+        }]
+
+    monkeypatch.setattr(flask_app.search, "wikipedia", fake_wikipedia)
+    monkeypatch.setattr(flask_app.search, "gbooks", fake_gbooks)
+    monkeypatch.setattr(flask_app.search, "whitelist_search", fake_whitelist)
+
+    with flask_app.app.test_request_context(
+        "/api/browse/search-all",
+        method="POST",
+        json={
+            "query": "archive",
+            "sources": [
+                "wikipedia",
+                "wikipedia",
+                "whitelist",
+                "whitelist_en.wikipedia.org",
+                "gbooks",
+            ],
+            "num_results": 10,
+        },
+    ):
+        flask_app.session["user_id"] = 9
+        response = flask_app.browse_search_all()
+
+    payload = response.get_json()
+    assert len(calls) == 3
+    assert calls.count(("wikipedia", 9)) == 1
+    assert calls.count(("whitelist", ("en.wikipedia.org",), 9)) == 1
+    assert calls.count(("gbooks", 9)) == 1
+    assert set(payload["grouped_results"]) == {
+        "wikipedia",
+        "whitelist_en.wikipedia.org",
+        "gbooks",
+    }
+    assert [item["title"] for item in payload["results"]] == ["Wikipedia", "Book"]
 
 
 def test_whitelist_search_calls_per_domain(monkeypatch):

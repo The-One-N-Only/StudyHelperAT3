@@ -740,6 +740,7 @@ class FakeElement {
 
   querySelector(selector) {
     if (selector === "#workspaceSearch") return searchInput;
+    if (selector === "#homeSearchBtn") return searchButton;
     if (selector === ".card") {
       const hasCardClass = [...this._innerHTML.matchAll(/\bclass=(["'])([^"']*)\1/g)]
         .some(([, , classes]) => classes.split(/\s+/).includes("card"));
@@ -758,6 +759,7 @@ class FakeElement {
 
 const root = new FakeElement("root");
 const searchInput = new FakeElement("workspaceSearch");
+const searchButton = new FakeElement("homeSearchBtn");
 const workspaceCards = new FakeElement("workspaceCards");
 const fetchCalls = [];
 const promptResponses = [null, null, "New Workspace"];
@@ -817,7 +819,8 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 invariant(fetchCalls.length === 1, "initial load did not issue one request");
 invariant(fetchCalls[0].url === "/api/workspaces", "initial API URL changed");
 invariant(fetchCalls[0].options === undefined, "initial request options changed");
-invariant(searchInput.listeners.get("input")?.length === 1, "search listener missing");
+invariant(searchInput.listeners.get("keydown")?.length === 1, "search Enter listener missing");
+invariant(searchButton.listeners.get("click")?.length === 1, "search button listener missing");
 invariant(workspaceCards.children.length === 2, "initial cards did not render");
 
 let addCard = workspaceCards.children[0];
@@ -849,16 +852,16 @@ invariant(
   "workspace link name missing or unsafe",
 );
 
-await searchInput.dispatch("input", { target: { value: "missing" } });
-invariant(workspaceCards.children.length === 2, "filtered empty state shape changed");
-invariant(
-  workspaceCards.children[1].innerHTML.includes("No workspaces match your search"),
-  "filtered empty state missing",
-);
-
-await searchInput.dispatch("input", { target: { value: "  UNSAFE  " } });
-invariant(workspaceCards.children.length === 2, "search trim/lowercase behavior changed");
-await searchInput.dispatch("input", { target: { value: "" } });
+searchInput.value = "   ";
+await searchInput.dispatch("keydown", { key: "Enter" });
+invariant(window.location.href === "", "blank academic search navigated");
+searchInput.value = "quantum mechanics";
+await searchInput.dispatch("keydown", { key: "Enter" });
+invariant(window.location.href === "/browse?q=quantum%20mechanics", "Enter search did not open Browse");
+window.location.href = "";
+searchInput.value = "archives";
+await searchButton.dispatch("click");
+invariant(window.location.href === "/browse?q=archives", "search button did not open Browse");
 
 addCard = workspaceCards.children[0];
 addCardTarget = addCard.querySelector(".card");
@@ -2980,6 +2983,11 @@ def test_dashboard_shell_has_accessible_archive_structure():
     assert search is not None
     assert search.get("type") == "search"
     assert search.get("autocomplete") == "off"
+    assert search.get("placeholder") == "Search academic sources..."
+    button = search_group.select_one("button#homeSearchBtn")
+    assert button is not None
+    assert button.get("type") == "button"
+    assert button.get_text(strip=True) == "Search"
 
     cards = content.select_one("#workspaceCards")
     assert cards is not None
@@ -3031,7 +3039,7 @@ def test_dashboard_card_markup_preserves_light_and_accessible_semantics():
     )
 
 
-def test_dashboard_runtime_preserves_search_render_create_and_open_flow():
+def test_dashboard_runtime_preserves_academic_search_create_and_open_flow():
     assert_home_runtime_contract(read_text("static/js/pages/home.js"))
 
 
@@ -3499,7 +3507,12 @@ const responses = [
 globalThis.fetch = async (url, options) => {
   fetchCalls.push({ url, options });
   if (url === "/static/whitelist.json") {
-    return { ok: true, async json() { return { domains: ["en.wikipedia.org"] }; } };
+    return {
+      ok: true,
+      async json() {
+        return { domains: ["en.wikipedia.org"], domain_patterns: ["*.edu"] };
+      },
+    };
   }
   const response = responses.shift();
   invariant(response, "unexpected extra search request");
@@ -3540,6 +3553,93 @@ process.stdout.write(JSON.stringify({
   retryState,
   loadMoreDisabled: controls.get("#loadMoreBtn").disabled,
   loadMoreText: controls.get("#loadMoreText").textContent,
+}));
+"""
+
+
+GROUPED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+whitelistWikipedia.checked = true;
+
+const wiki = {
+  source_name: "Wikipedia",
+  source_id: "wiki-1",
+  source_url: "https://en.wikipedia.org/wiki/Archive",
+  title: "Wikipedia result",
+};
+const archiveOne = {
+  source_name: "Open Archive",
+  source_id: "archive-1",
+  source_url: "https://en.wikipedia.org/archive-1",
+  title: "Archive one",
+};
+const archiveTwo = {
+  source_name: "Open Archive",
+  source_id: "archive-2",
+  source_url: "https://en.wikipedia.org/archive-2",
+  title: "Archive two",
+};
+const archiveThree = {
+  source_name: "Open Archive",
+  source_id: "archive-3",
+  source_url: "https://en.wikipedia.org/archive-3",
+  title: "Archive three",
+};
+
+const grouped = (archiveItems) => ({
+  status: true,
+  results: [wiki, ...archiveItems],
+  grouped_results: {
+    wikipedia: [wiki],
+    "whitelist_en.wikipedia.org": archiveItems,
+  },
+  source_counts: {
+    wikipedia: 1,
+    "whitelist_en.wikipedia.org": archiveItems.length,
+  },
+});
+const responses = [
+  grouped([archiveOne, archiveTwo]),
+  grouped([archiveOne, archiveTwo, archiveThree]),
+  grouped([archiveOne, archiveTwo, archiveThree]),
+];
+const fetchCalls = [];
+globalThis.fetch = async (url, options) => {
+  fetchCalls.push({ url, options });
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: ["en.wikipedia.org"] }; } };
+  }
+  const payload = responses.shift();
+  invariant(payload, "unexpected grouped search request");
+  return { ok: true, async json() { return payload; } };
+};
+globalThis.toastCalls = [];
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+const initialTitles = globalThis.renderedItems.map((item) => item.title);
+
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+const bufferedTitles = globalThis.renderedItems.map((item) => item.title);
+const callsAfterBufferedPage = fetchCalls.filter(
+  (call) => call.url === "/api/browse/search-all",
+).length;
+
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+const fetchedTitles = globalThis.renderedItems.map((item) => item.title);
+const searchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
+
+process.stdout.write(JSON.stringify({
+  initialTitles,
+  bufferedTitles,
+  fetchedTitles,
+  callsAfterBufferedPage,
+  requestSizes: searchCalls.map((call) => JSON.parse(call.options.body).num_results),
 }));
 """
 
@@ -4146,6 +4246,15 @@ def browse_runtime(source: str | None = None) -> dict:
     )
 
 
+def grouped_browse_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        GROUPED_BROWSE_RUNTIME_HARNESS,
+        "grouped browse",
+    )
+
+
 def restored_browse_runtime(source: str | None = None) -> dict:
     harness = RESTORED_BROWSE_RUNTIME_HARNESS.replace(
         "__SERVER_METADATA_RECORDS__",
@@ -4475,13 +4584,14 @@ def test_browse_defaults_only_dedicated_sources_and_leaves_dynamic_whitelist_opt
     app_source = read_text("app.py")
     rendered = browse_runtime()
 
-    assert "const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed'];" in browse
-    assert "data.get('sources', ['wikipedia', 'gbooks', 'pubmed'])" in app_source
+    assert "const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'scholar'];" in browse
+    assert "data.get('sources', ['wikipedia', 'gbooks', 'scholar'])" in app_source
     assert 'value="wikipedia" checked' in browse
     assert 'value="gbooks" checked' in browse
-    assert 'value="pubmed" checked' in browse
-    assert 'value="scholar" checked' not in browse
+    assert 'value="scholar" checked' in browse
+    assert 'value="pubmed" checked' not in browse
     assert 'value="whitelist_en.wikipedia.org"' in rendered["whitelistMarkup"]
+    assert 'value="whitelist_*.edu"' in rendered["whitelistMarkup"]
     assert " checked" not in rendered["whitelistMarkup"]
 
 
@@ -4504,6 +4614,25 @@ def test_task2_browse_pagination_merges_cumulative_windows_until_exhausted():
     }
     assert rendered["loadMoreDisabled"] is True
     assert rendered["loadMoreText"] == "No more results."
+
+
+def test_browse_grouped_paging_reveals_buffer_before_fetching_more():
+    rendered = grouped_browse_runtime()
+
+    assert rendered["initialTitles"] == ["Wikipedia result", "Archive one"]
+    assert rendered["bufferedTitles"] == [
+        "Wikipedia result",
+        "Archive one",
+        "Archive two",
+    ]
+    assert rendered["callsAfterBufferedPage"] == 1
+    assert rendered["fetchedTitles"] == [
+        "Wikipedia result",
+        "Archive one",
+        "Archive two",
+        "Archive three",
+    ]
+    assert rendered["requestSizes"] == [10, 20]
 
 
 def test_task2_browse_runtime_ignores_stale_initial_and_load_more_responses():
@@ -4635,6 +4764,18 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
                 "title": "Legacy result",
             }
         ],
+        "groupedResults": {
+            "wikipedia": [
+                {
+                    "source_name": "Wikipedia",
+                    "source_id": "legacy-1",
+                    "source_url": "https://en.wikipedia.org/wiki/Archive",
+                    "title": "Legacy result",
+                }
+            ]
+        },
+        "sourceCounts": {},
+        "groupPage": 1,
         "resultWindow": 20,
         "searchExhausted": False,
     }
@@ -5064,6 +5205,7 @@ class FakeElement {
     this._textContent = "";
     this.onload = null;
     this.onerror = null;
+    this.listeners = new Map();
   }
   set innerHTML(value) {
     this._innerHTML = String(value);
@@ -5137,6 +5279,22 @@ class FakeElement {
     }
     return null;
   }
+  addEventListener(type, callback, options = {}) {
+    const listeners = this.listeners.get(type) || [];
+    listeners.push({ callback, once: options?.once === true });
+    this.listeners.set(type, listeners);
+  }
+  removeEventListener(type, callback) {
+    const listeners = this.listeners.get(type) || [];
+    this.listeners.set(type, listeners.filter((listener) => listener.callback !== callback));
+  }
+  dispatchEvent(event) {
+    const listeners = [...(this.listeners.get(event.type) || [])];
+    listeners.forEach((listener) => {
+      listener.callback.call(this, event);
+      if (listener.once) this.removeEventListener(event.type, listener.callback);
+    });
+  }
 }
 
 function contains(root, target) {
@@ -5205,6 +5363,11 @@ async function flush() {
   for (let index = 0; index < 6; index += 1) await Promise.resolve();
 }
 
+function showViewerOffcanvas() {
+  offcanvas.classList.add("show");
+  offcanvas.dispatchEvent({ type: "shown.bs.offcanvas" });
+}
+
 function googleBook(id, overrides = {}) {
   return {
     id: 1,
@@ -5257,10 +5420,57 @@ function installGoogleBooks() {
 
 const { openViewer } = await import(process.argv[1]);
 
-if (scenario === "google_success_race_resize") {
+if (scenario === "google_waits_for_offcanvas") {
+  globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
+  const opening = openViewer(googleBook("wait-for-sidebar"));
+  invariant(scripts.length === 0, "Google Books started before offcanvas shown");
+  showViewerOffcanvas();
+  await flush();
+  invariant(scripts.length === 1, "Google Books did not start after offcanvas shown");
+  scripts[0].onerror({ secret: "expected-test-stop" });
+  await opening;
+  process.stdout.write(JSON.stringify({ scriptCount: scripts.length }));
+} else if (scenario === "google_timeout_fallback") {
+  const timers = [];
+  const clearedTimers = [];
+  let openedTabs = 0;
+  globalThis.setTimeout = (callback, delay) => {
+    const timer = { id: timers.length + 1, callback, delay };
+    timers.push(timer);
+    return timer.id;
+  };
+  globalThis.clearTimeout = (timerId) => { clearedTimers.push(timerId); };
+  globalThis.open = () => { openedTabs += 1; };
+  globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
+
+  const item = googleBook("timeout-volume");
+  const opening = openViewer(item);
+  showViewerOffcanvas();
+  await flush();
+  invariant(scripts.length === 1, "timeout path did not start native loader");
+  invariant(timers.length === 1, "Google Books timeout was not scheduled");
+  invariant(timers[0].delay === 8000, "Google Books timeout was not eight seconds");
+  timers[0].callback();
+  await opening;
+
+  const text = collectedText(viewerBody);
+  const links = viewerBody.querySelectorAll("a");
+  invariant(text.includes(item.title), "timeout fallback lost book metadata");
+  invariant(text.includes("timed out"), "timeout fallback reason missing");
+  invariant(links.length === 1, "timeout fallback link missing");
+  invariant(openedTabs === 0, "timeout forcibly opened a new tab");
+  process.stdout.write(JSON.stringify({
+    delay: timers[0].delay,
+    fallback: links[0].href,
+    openedTabs,
+    clearedTimers,
+  }));
+} else if (scenario === "google_success_race_resize") {
   globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
   const staleBeforeLoad = openViewer(googleBook("stale-before-load"));
   const firstOpen = openViewer(googleBook("volume-one"));
+  showViewerOffcanvas();
+  await flush();
   invariant(scripts.length === 1, "first opening did not append one loader script");
   invariant(scripts[0].src === "https://www.google.com/books/jsapi.js", "wrong loader URL");
 
@@ -5315,7 +5525,9 @@ if (scenario === "google_success_race_resize") {
       accessViewStatus: "NONE",
     },
   });
-  await openViewer(unavailable);
+  const unavailableOpening = openViewer(unavailable);
+  showViewerOffcanvas();
+  await unavailableOpening;
   const unavailableText = collectedText(viewerBody);
   const unavailableLinks = viewerBody.querySelectorAll("a");
   invariant(unavailableText.includes(unavailable.title), "fallback title missing");
@@ -5367,6 +5579,8 @@ if (scenario === "google_success_race_resize") {
   globalThis.fetch = async () => { throw new Error("Google Books must not proxy"); };
   const item = googleBook("script-error");
   const opening = openViewer(item);
+  showViewerOffcanvas();
+  await flush();
   invariant(scripts.length === 1, "script-error path did not append loader");
   scripts[0].onerror({ secret: "raw-script-exception" });
   await opening;
@@ -5379,6 +5593,8 @@ if (scenario === "google_success_race_resize") {
   globalThis.fetch = async () => { throw new Error("Google Books must not proxy"); };
   const item = googleBook("load-error");
   const opening = openViewer(item);
+  showViewerOffcanvas();
+  await flush();
   const api = installGoogleBooks();
   scripts[0].onload();
   api.apiCallback();
@@ -5498,6 +5714,20 @@ def test_google_books_viewer_loads_volume_once_and_rejects_stale_openings():
         "scriptCount": 1,
         "activeObservers": 1,
     }
+
+
+def test_google_books_waits_for_visible_offcanvas_before_loading_viewer():
+    rendered = viewer_runtime("google_waits_for_offcanvas")
+
+    assert rendered == {"scriptCount": 1}
+
+
+def test_google_books_timeout_uses_safe_sidebar_fallback_without_forced_popup():
+    rendered = viewer_runtime("google_timeout_fallback")
+
+    assert rendered["delay"] == 8000
+    assert rendered["fallback"].startswith("https://books.google.com/")
+    assert rendered["openedTabs"] == 0
 
 
 def test_google_books_fallback_renders_metadata_without_unsafe_links():

@@ -3,9 +3,10 @@
 import { showToast } from '../toast.js';
 import { createCard } from '../card.js';
 
-const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'pubmed'];
+const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'scholar'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 const BROWSE_STATE_VERSION = 1;
+const WHITELIST_GROUP_PAGE_SIZE = 1;
 const DEDUPE_IDENTITY_PROPERTY = '_dedupe_identity';
 const CANONICAL_SOURCE_URL_PROPERTY = '_canonical_source_url';
 const RESPONSE_METADATA_PROPERTIES = new Set([
@@ -14,6 +15,8 @@ const RESPONSE_METADATA_PROPERTIES = new Set([
 ]);
 let pageRoot = null;
 let currentSearchResults = [];
+let currentGroupedResults = {};
+let currentGroupPage = 1;
 let currentSourceCounts = {};
 let whitelistDomains = [];
 let lastSearchQuery = null;
@@ -242,7 +245,10 @@ async function loadWhitelistDomains() {
         const response = await fetch('/static/whitelist.json');
         if (response.ok) {
             const whitelist = await response.json();
-            whitelistDomains = whitelist.domains || [];
+            whitelistDomains = [
+                ...(whitelist.domains || []),
+                ...(whitelist.domain_patterns || []),
+            ];
         }
     } catch (err) {
         console.warn('Unable to load whitelist domains', err);
@@ -279,11 +285,11 @@ export function initBrowse(root) {
                                         <label class="form-check-label" for="filterGBooks">Google Books</label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="filterPubMed" value="pubmed" checked>
+                                        <input class="form-check-input" type="checkbox" id="filterPubMed" value="pubmed">
                                         <label class="form-check-label" for="filterPubMed">PubMed</label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="filterScholar" value="scholar">
+                                        <input class="form-check-input" type="checkbox" id="filterScholar" value="scholar" checked>
                                         <label class="form-check-label" for="filterScholar">Google Scholar</label>
                                     </div>
                                     <div id="whitelistCheckboxes" class="ps-2 border-start mt-2"></div>
@@ -408,7 +414,7 @@ function registerEvents() {
 
     sortingSelect?.addEventListener('change', () => {
         if (!isInitialSearchPending && currentSearchResults.length > 0) {
-            const sortedResults = sortResults(currentSearchResults, sortingSelect.value);
+            const sortedResults = sortResults(getVisibleResults(), sortingSelect.value);
             renderResults(sortedResults);
         }
     });
@@ -421,7 +427,7 @@ function getDisplayNameForSource(source) {
     if (source === 'scholar') return 'Google Scholar';
     if (source === 'whitelist') return 'Whitelisted Sources';
     if (source.startsWith('whitelist_')) {
-        const domain = source.split('_', 2)[1];
+        const domain = source.slice('whitelist_'.length);
         return getDisplayNameForDomain(domain) || domain;
     }
     return source.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
@@ -446,8 +452,16 @@ function itemMatchesSource(item, source) {
         return !['wikipedia', 'pubmed', 'gbooks', 'scholar'].includes(sourceName);
     }
     if (source.startsWith('whitelist_')) {
-        const domain = source.split('_', 2)[1];
-        return item.source_url && item.source_url.includes(domain);
+        const domain = source.slice('whitelist_'.length);
+        try {
+            const hostname = new URL(item.source_url).hostname;
+            if (domain.startsWith('*.')) {
+                return hostname.endsWith(domain.slice(1));
+            }
+            return hostname === domain || hostname.endsWith(`.${domain}`);
+        } catch (_err) {
+            return false;
+        }
     }
     return sourceName.includes(source.toLowerCase());
 }
@@ -499,6 +513,115 @@ function renderSidebar(sourceCounts = {}, results = []) {
     sidebar.innerHTML = html;
 }
 
+function groupResultsBySource(results) {
+    const grouped = {};
+    const selectedSources = lastSearchSources || [];
+    deduplicateResults(results).forEach((item) => {
+        let source = selectedSources.find((candidate) => itemMatchesSource(item, candidate));
+        if (!source && selectedSources.length > 0) {
+            source = selectedSources[0];
+        }
+        if (!source) {
+            const sourceName = normalizeIdentityText(item?.source_name);
+            if (sourceName === 'wikipedia') source = 'wikipedia';
+            else if (sourceName === 'gbooks' || sourceName === 'google books') source = 'gbooks';
+            else if (sourceName === 'pubmed') source = 'pubmed';
+            else if (sourceName === 'scholar' || sourceName === 'google scholar') source = 'scholar';
+            else {
+                try {
+                    source = `whitelist_${new URL(item.source_url).hostname}`;
+                } catch (_err) {
+                    source = sourceName || 'unknown';
+                }
+            }
+        }
+        grouped[source] ||= [];
+        grouped[source].push(item);
+    });
+    return grouped;
+}
+
+function deduplicateGroupedResults(groupedResults) {
+    const safeGroups = groupedResults && typeof groupedResults === 'object'
+        && !Array.isArray(groupedResults)
+        ? groupedResults
+        : {};
+    const entries = Object.entries(safeGroups).flatMap(([source, items]) => (
+        Array.isArray(items) ? items.map((item) => ({ source, item })) : []
+    ));
+    const uniqueItems = deduplicateResults(entries.map(({ item }) => item));
+    const deduplicated = Object.fromEntries(
+        Object.keys(safeGroups).map((source) => [source, []]),
+    );
+    let uniqueIndex = 0;
+    entries.forEach(({ source, item }) => {
+        if (item !== uniqueItems[uniqueIndex]) return;
+        deduplicated[source].push(item);
+        uniqueIndex += 1;
+    });
+    return deduplicated;
+}
+
+function normalizedGroupedResults(groupedResults, fallbackResults) {
+    const hasGroups = groupedResults && typeof groupedResults === 'object'
+        && !Array.isArray(groupedResults)
+        && Object.keys(groupedResults).length > 0;
+    return deduplicateGroupedResults(
+        hasGroups ? groupedResults : groupResultsBySource(fallbackResults),
+    );
+}
+
+function sourcesToDisplay() {
+    const sources = [];
+    (lastSearchSources || []).forEach((source) => {
+        if (source === 'whitelist') {
+            Object.keys(currentGroupedResults).forEach((group) => {
+                if (group.startsWith('whitelist_') && !sources.includes(group)) {
+                    sources.push(group);
+                }
+            });
+        } else if (!sources.includes(source)) {
+            sources.push(source);
+        }
+    });
+    return sources;
+}
+
+function getVisibleResults() {
+    const visible = [];
+    sourcesToDisplay().forEach((source) => {
+        const items = currentGroupedResults[source] || [];
+        if (source.startsWith('whitelist_')) {
+            visible.push(...items.slice(0, WHITELIST_GROUP_PAGE_SIZE * currentGroupPage));
+        } else {
+            visible.push(...items);
+        }
+    });
+    return deduplicateResults(visible);
+}
+
+function hasBufferedGroupedResults() {
+    return sourcesToDisplay().some((source) => (
+        source.startsWith('whitelist_')
+        && (currentGroupedResults[source] || []).length
+            > WHITELIST_GROUP_PAGE_SIZE * currentGroupPage
+    ));
+}
+
+function mergeGroupedResults(existingGroups, incomingGroups) {
+    const merged = { ...existingGroups };
+    Object.entries(incomingGroups).forEach(([source, items]) => {
+        merged[source] = mergeUniqueResults(merged[source] || [], items || []).results;
+    });
+    return deduplicateGroupedResults(merged);
+}
+
+function renderCurrentResults() {
+    const sorting = pageRoot.querySelector('#filterSorting')?.value || '';
+    renderResults(sortResults(getVisibleResults(), sorting));
+    renderSidebar(currentSourceCounts, currentSearchResults);
+}
+
 function getDisplayNameForDomain(domain) {
     const domainNames = {
         'en.wikipedia.org': 'Wikipedia',
@@ -519,6 +642,9 @@ function getDisplayNameForDomain(domain) {
     
     if (domainNames[domain]) {
         return domainNames[domain];
+    }
+    if (domain.startsWith('*.')) {
+        return `All ${domain.slice(2)} sites`;
     }
     
     return domain.replace('www.', '').replace('.com', '').replace('.org', '').replace('.net', '').replace('.edu', '');
@@ -608,6 +734,9 @@ function getBrowseState() {
             sorting: pageRoot.querySelector('#filterSorting').value
         },
         results: currentSearchResults,
+        groupedResults: currentGroupedResults,
+        sourceCounts: currentSourceCounts,
+        groupPage: currentGroupPage,
         resultWindow,
         searchExhausted
     };
@@ -679,12 +808,25 @@ function restoreBrowseState() {
             ? state.resultWindow
             : 10;
         searchExhausted = state.searchExhausted === true;
+        currentGroupPage = Number.isInteger(state.groupPage) && state.groupPage >= 1
+            ? state.groupPage
+            : 1;
         applySelectedSources(restoredSources);
 
-        currentSearchResults = deduplicateResults(state.results);
+        currentGroupedResults = normalizedGroupedResults(
+            state.groupedResults,
+            state.results,
+        );
+        currentSearchResults = deduplicateResults(
+            Object.values(currentGroupedResults).flat(),
+        );
+        currentSourceCounts = state.sourceCounts
+            && typeof state.sourceCounts === 'object'
+            && !Array.isArray(state.sourceCounts)
+            ? state.sourceCounts
+            : {};
         if (currentSearchResults.length > 0) {
-            renderResults(sortResults(currentSearchResults, restoredFilters.sorting));
-            renderSidebar(currentSourceCounts, currentSearchResults);
+            renderCurrentResults();
         }
         if (!isCurrentState) {
             saveBrowseState();
@@ -749,6 +891,8 @@ function performSearch() {
     searchExhausted = false;
     isInitialSearchPending = true;
     currentSearchResults = [];
+    currentGroupedResults = {};
+    currentGroupPage = 1;
     currentSourceCounts = {};
 
     const sortingSelect = pageRoot.querySelector('#filterSorting');
@@ -769,11 +913,16 @@ function performSearch() {
         .then((result) => {
             if (generation !== searchGeneration || !result) return;
             if (result.status) {
-                currentSearchResults = deduplicateResults(result.results);
+                currentGroupedResults = normalizedGroupedResults(
+                    result.grouped_results,
+                    result.results,
+                );
+                currentSearchResults = deduplicateResults(
+                    Object.values(currentGroupedResults).flat(),
+                );
                 currentSourceCounts = result.source_counts || {};
                 saveBrowseState();
-                renderResults(currentSearchResults);
-                renderSidebar(currentSourceCounts, currentSearchResults);
+                renderCurrentResults();
             } else {
                 showNoResults();
             }
@@ -812,11 +961,12 @@ function renderResults(results) {
 
     // Add "Load More" button if there are results
     if (results.length > 0) {
+        const loadMoreUnavailable = searchExhausted && !hasBufferedGroupedResults();
         const buttonContainer = document.createElement('div');
         buttonContainer.className = 'text-center mt-4 mb-3';
         buttonContainer.innerHTML = `
-            <button class="btn btn-outline-primary btn-secondary-wood" id="loadMoreBtn" type="button"${searchExhausted ? ' disabled' : ''}>
-                <span id="loadMoreText">${searchExhausted ? 'No more results.' : 'Load More Results'}</span>
+            <button class="btn btn-outline-primary btn-secondary-wood" id="loadMoreBtn" type="button"${loadMoreUnavailable ? ' disabled' : ''}>
+                <span id="loadMoreText">${loadMoreUnavailable ? 'No more results.' : 'Load More Results'}</span>
                 <span id="loadMoreSpinner" class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true" style="display: none;"></span>
             </button>
         `;
@@ -833,10 +983,17 @@ function loadMoreResults() {
     if (
         isInitialSearchPending
         || isLoadingMore
-        || searchExhausted
+        || (searchExhausted && !hasBufferedGroupedResults())
         || !lastSearchQuery
         || !lastSearchSources
     ) {
+        return;
+    }
+
+    if (hasBufferedGroupedResults()) {
+        currentGroupPage += 1;
+        saveBrowseState();
+        renderCurrentResults();
         return;
     }
 
@@ -875,16 +1032,29 @@ function loadMoreResults() {
         .then((result) => {
             if (generation !== searchGeneration || !result) return;
             if (result.status) {
-                const merged = mergeUniqueResults(currentSearchResults, result.results);
-                currentSearchResults = merged.results;
+                const incomingGroups = normalizedGroupedResults(
+                    result.grouped_results,
+                    result.results,
+                );
+                const previousCount = currentSearchResults.length;
+                currentGroupedResults = mergeGroupedResults(
+                    currentGroupedResults,
+                    incomingGroups,
+                );
+                currentSearchResults = deduplicateResults(
+                    Object.values(currentGroupedResults).flat(),
+                );
+                const addedCount = currentSearchResults.length - previousCount;
                 resultWindow = nextWindow;
-                searchExhausted = merged.addedCount === 0;
+                searchExhausted = addedCount === 0;
                 if (result.source_counts) {
                     currentSourceCounts = result.source_counts;
                 }
+                if (addedCount > 0 && hasBufferedGroupedResults()) {
+                    currentGroupPage += 1;
+                }
                 saveBrowseState();
-                renderResults(currentSearchResults);
-                renderSidebar(currentSourceCounts, currentSearchResults);
+                renderCurrentResults();
             } else {
                 showToast('Failed to load more results', 'danger');
             }
@@ -899,11 +1069,12 @@ function loadMoreResults() {
             const currentLoadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
             const currentLoadMoreText = pageRoot.querySelector('#loadMoreText');
             const currentLoadMoreSpinner = pageRoot.querySelector('#loadMoreSpinner');
+            const loadMoreUnavailable = searchExhausted && !hasBufferedGroupedResults();
             if (currentLoadMoreBtn) {
-                currentLoadMoreBtn.disabled = searchExhausted;
+                currentLoadMoreBtn.disabled = loadMoreUnavailable;
             }
             if (currentLoadMoreText) {
-                currentLoadMoreText.textContent = searchExhausted
+                currentLoadMoreText.textContent = loadMoreUnavailable
                     ? 'No more results.'
                     : 'Load More Results';
             }
