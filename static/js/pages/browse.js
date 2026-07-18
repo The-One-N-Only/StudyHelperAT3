@@ -7,7 +7,7 @@ const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'scholar'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 const BROWSE_STATE_VERSION = 2;
 const BROWSE_REQUEST_TIMEOUT_MS = 30000;
-const WHITELIST_GROUP_PAGE_SIZE = 1;
+const RESULTS_PER_SOURCE_PER_RANK = 1;
 const DEDUPE_IDENTITY_PROPERTY = '_dedupe_identity';
 const CANONICAL_SOURCE_URL_PROPERTY = '_canonical_source_url';
 const RESPONSE_METADATA_PROPERTIES = new Set([
@@ -22,10 +22,7 @@ let currentSourceCounts = {};
 let whitelistDomains = [];
 let lastSearchQuery = null;
 let lastSearchSources = null;
-let lastSearchFilters = null;
 let isLoadingMore = false;
-let resultWindow = 10;
-let searchExhausted = false;
 let searchGeneration = 0;
 let isInitialSearchPending = false;
 
@@ -675,31 +672,18 @@ function sourcesToDisplay() {
 
 function getVisibleResults() {
     const visible = [];
+    const visibleCount = RESULTS_PER_SOURCE_PER_RANK * currentGroupPage;
     sourcesToDisplay().forEach((source) => {
-        const items = currentGroupedResults[source] || [];
-        if (source.startsWith('whitelist_')) {
-            visible.push(...items.slice(0, WHITELIST_GROUP_PAGE_SIZE * currentGroupPage));
-        } else {
-            visible.push(...items);
-        }
+        visible.push(...(currentGroupedResults[source] || []).slice(0, visibleCount));
     });
     return deduplicateResults(visible);
 }
 
 function hasBufferedGroupedResults() {
+    const visibleCount = RESULTS_PER_SOURCE_PER_RANK * currentGroupPage;
     return sourcesToDisplay().some((source) => (
-        source.startsWith('whitelist_')
-        && (currentGroupedResults[source] || []).length
-            > WHITELIST_GROUP_PAGE_SIZE * currentGroupPage
+        (currentGroupedResults[source] || []).length > visibleCount
     ));
-}
-
-function mergeGroupedResults(existingGroups, incomingGroups) {
-    const merged = { ...existingGroups };
-    Object.entries(incomingGroups).forEach(([source, items]) => {
-        merged[source] = mergeUniqueResults(merged[source] || [], items || []).results;
-    });
-    return deduplicateGroupedResults(merged);
 }
 
 function renderCurrentResults() {
@@ -823,8 +807,8 @@ function getBrowseState() {
         groupedResults: currentGroupedResults,
         sourceCounts: currentSourceCounts,
         groupPage: currentGroupPage,
-        resultWindow,
-        searchExhausted
+        resultWindow: 10,
+        searchExhausted: false
     };
 }
 
@@ -888,13 +872,6 @@ function restoreBrowseState() {
 
         lastSearchQuery = restoredQuery || null;
         lastSearchSources = restoredSources;
-        lastSearchFilters = restoredFilters;
-        resultWindow = Number.isInteger(state.resultWindow)
-            && state.resultWindow >= 10
-            && state.resultWindow % 10 === 0
-            ? state.resultWindow
-            : 10;
-        searchExhausted = state.searchExhausted === true;
         currentGroupPage = Number.isInteger(state.groupPage) && state.groupPage >= 1
             ? state.groupPage
             : 1;
@@ -971,13 +948,10 @@ async function performSearch(options = {}) {
     const filters = buildFilters();
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
 
-    // Save search parameters for "load more" functionality
+    // Keep query/source ownership stable while cached ranks are revealed.
     lastSearchQuery = query;
     lastSearchSources = sources;
-    lastSearchFilters = filters;
     isLoadingMore = false;
-    resultWindow = 10;
-    searchExhausted = false;
     isInitialSearchPending = true;
     currentSearchResults = [];
     currentGroupedResults = {};
@@ -1042,7 +1016,7 @@ function renderResults(results) {
 
     // Add "Load More" button if there are results
     if (results.length > 0) {
-        const loadMoreUnavailable = searchExhausted && !hasBufferedGroupedResults();
+        const loadMoreUnavailable = !hasBufferedGroupedResults();
         const buttonContainer = document.createElement('div');
         buttonContainer.className = 'text-center mt-4 mb-3';
         buttonContainer.innerHTML = `
@@ -1055,6 +1029,7 @@ function renderResults(results) {
 
         const loadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
         if (loadMoreBtn) {
+            if (loadMoreUnavailable) loadMoreBtn.disabled = true;
             loadMoreBtn.addEventListener('click', () => {
                 loadMoreResults();
             });
@@ -1066,92 +1041,16 @@ async function loadMoreResults() {
     if (
         isInitialSearchPending
         || isLoadingMore
-        || (searchExhausted && !hasBufferedGroupedResults())
         || !lastSearchQuery
         || !lastSearchSources
+        || !hasBufferedGroupedResults()
     ) {
         return;
     }
 
-    if (hasBufferedGroupedResults()) {
-        currentGroupPage += 1;
-        saveBrowseState();
-        renderCurrentResults();
-        return;
-    }
-
-    const generation = searchGeneration;
-    isLoadingMore = true;
-    const nextWindow = resultWindow + 10;
-    const loadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
-    const loadMoreText = pageRoot.querySelector('#loadMoreText');
-    const loadMoreSpinner = pageRoot.querySelector('#loadMoreSpinner');
-
-    if (loadMoreBtn) {
-        loadMoreBtn.disabled = true;
-    }
-    if (loadMoreText) {
-        loadMoreText.textContent = 'Loading...';
-    }
-    if (loadMoreSpinner) {
-        loadMoreSpinner.style.display = 'inline-block';
-    }
-
-    try {
-        const result = await fetchBrowseResults({
-            query: lastSearchQuery,
-            sources: lastSearchSources,
-            num_results: nextWindow,
-            filters: lastSearchFilters || {},
-        });
-        if (generation !== searchGeneration) return;
-
-        const incomingGroups = normalizedGroupedResults(
-            result.grouped_results,
-            result.results,
-        );
-        const previousCount = currentSearchResults.length;
-        currentGroupedResults = mergeGroupedResults(
-            currentGroupedResults,
-            incomingGroups,
-        );
-        currentSearchResults = deduplicateResults(
-            Object.values(currentGroupedResults).flat(),
-        );
-        const addedCount = currentSearchResults.length - previousCount;
-        resultWindow = nextWindow;
-        searchExhausted = addedCount === 0 && sourceErrorCount(result) === 0;
-        if (result.source_counts) {
-            currentSourceCounts = result.source_counts;
-        }
-        if (addedCount > 0 && hasBufferedGroupedResults()) {
-            currentGroupPage += 1;
-        }
-        saveBrowseState();
-        renderCurrentResults();
-        showPartialSourceWarning(result);
-    } catch (error) {
-        if (generation !== searchGeneration) return;
-        showToast(error.message || 'Failed to load more results', 'danger');
-    } finally {
-        if (generation !== searchGeneration) return;
-        isLoadingMore = false;
-        const currentLoadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
-        const currentLoadMoreText = pageRoot.querySelector('#loadMoreText');
-        const currentLoadMoreSpinner = pageRoot.querySelector('#loadMoreSpinner');
-        const loadMoreUnavailable = searchExhausted && !hasBufferedGroupedResults();
-        if (currentLoadMoreBtn) {
-            currentLoadMoreBtn.disabled = loadMoreUnavailable;
-        }
-        if (currentLoadMoreText) {
-            currentLoadMoreText.textContent = loadMoreUnavailable
-                ? 'No more results.'
-                : 'Load More Results';
-        }
-        if (currentLoadMoreSpinner) {
-            currentLoadMoreSpinner.style.display = 'none';
-        }
-    }
+    currentGroupPage += 1;
+    saveBrowseState();
+    renderCurrentResults();
 }
 
 function showNoResults() {

@@ -3454,62 +3454,6 @@ const first = {
   source_url: "https://EXAMPLE.test/first#intro",
   title: "First",
 };
-const second = {
-  source_name: "PubMed",
-  source_id: "pubmed-2",
-  source_url: "https://example.test/second",
-  title: "Second",
-};
-const third = {
-  source_name: "Open Archive",
-  source_id: "archive-3",
-  source_url: "https://example.test/third",
-  title: "Third",
-};
-const malformed = {
-  title: "Malformed",
-  description: "Opaque provider record",
-  metadata: { z: 1, a: 2 },
-};
-const malformedReordered = {
-  metadata: { a: 2, z: 1 },
-  description: "Opaque provider record",
-  title: "Malformed",
-};
-const responses = [
-  {
-    ok: true,
-    payload: {
-      status: true,
-      results: [
-        first,
-        { ...first, source_name: " wikipedia ", source_url: "https://example.test/id-copy", title: "Repeated ID" },
-        second,
-        { source_name: "JSTOR", source_id: "jstor-4", source_url: "https://example.test/first#copy", title: "Repeated URL" },
-        malformed,
-        malformedReordered,
-      ],
-      source_counts: { wikipedia: 2, pubmed: 2 },
-    },
-  },
-  { ok: false, payload: { status: false } },
-  {
-    ok: true,
-    payload: {
-      status: true,
-      results: [first, second, malformedReordered, malformed, third],
-      source_counts: { wikipedia: 1, pubmed: 1 },
-    },
-  },
-  {
-    ok: true,
-    payload: {
-      status: true,
-      results: [first, second, malformedReordered, malformed, third],
-      source_counts: { wikipedia: 1, pubmed: 1 },
-    },
-  },
-];
 globalThis.fetch = async (url, options) => {
   fetchCalls.push({ url, options });
   if (url === "/static/whitelist.json") {
@@ -3520,9 +3464,18 @@ globalThis.fetch = async (url, options) => {
       },
     };
   }
-  const response = responses.shift();
-  invariant(response, "unexpected extra search request");
-  return { ok: response.ok, async json() { return response.payload; } };
+  invariant(url === "/api/browse/search-all", "unexpected Browse endpoint");
+  return {
+    ok: true,
+    async json() {
+      return {
+        status: true,
+        results: [first],
+        grouped_results: { wikipedia: [first] },
+        source_counts: { wikipedia: 1 },
+      };
+    },
+  };
 };
 globalThis.toastCalls = [];
 
@@ -3530,20 +3483,9 @@ const { initBrowse } = await import(process.argv[1]);
 initBrowse(root);
 await go.dispatch("click");
 await flushPromises();
-await controls.get("#loadMoreBtn").dispatch("click");
-await flushPromises();
-const retryState = {
-  disabled: controls.get("#loadMoreBtn").disabled,
-  text: controls.get("#loadMoreText").textContent,
-  spinner: controls.get("#loadMoreSpinner").style.display,
-};
-await controls.get("#loadMoreBtn").dispatch("click");
-await flushPromises();
-await controls.get("#loadMoreBtn").dispatch("click");
-await flushPromises();
 
 const searchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
-invariant(searchCalls.length === 4, "search did not retry and issue three successful windows");
+invariant(searchCalls.length === 1, "Browse issued an extra search request");
 invariant(searchCalls[0].options.method === "POST", "search method changed");
 const body = JSON.parse(searchCalls[0].options.body);
 invariant(body.query === "archive", "search query changed");
@@ -3556,7 +3498,6 @@ process.stdout.write(JSON.stringify({
   body,
   requestSizes: searchCalls.map((call) => JSON.parse(call.options.body).num_results),
   renderedTitles: globalThis.renderedItems.map((item) => item.title),
-  retryState,
   loadMoreDisabled: controls.get("#loadMoreBtn").disabled,
   loadMoreText: controls.get("#loadMoreText").textContent,
 }));
@@ -3773,121 +3714,49 @@ process.stdout.write(JSON.stringify({
 """
 
 
-BROWSE_PARTIAL_LOAD_MORE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
-globalThis.renderedItems = [];
-globalThis.localStorage = { getItem() { return null; }, setItem() {} };
-globalThis.toastCalls = [];
-const item = {
-  source_name: "Wikipedia",
-  source_id: "wiki-1",
-  source_url: "https://en.wikipedia.org/wiki/Archive",
-  title: "Only available result",
-};
-const responses = [
-  {
-    status: true,
-    results: [item],
-    source_counts: { wikipedia: 1, pubmed: 0 },
-    source_errors: {},
-  },
-  {
-    status: true,
-    results: [item],
-    source_counts: { wikipedia: 1, pubmed: 0 },
-    source_errors: { pubmed: "SerpAPI search failed" },
-  },
-];
-const requestSizes = [];
-globalThis.fetch = async (url, options) => {
-  if (url === "/static/whitelist.json") {
-    return { ok: true, async json() { return { domains: [] }; } };
-  }
-  requestSizes.push(JSON.parse(options.body).num_results);
-  const payload = responses.shift();
-  invariant(payload, "unexpected partial Load More request");
-  return { ok: true, async json() { return payload; } };
-};
-
-const { initBrowse } = await import(process.argv[1]);
-initBrowse(root);
-await go.dispatch("click");
-await flushPromises();
-await flushPromises();
-await controls.get("#loadMoreBtn").dispatch("click");
-await flushPromises();
-await flushPromises();
-
-invariant(requestSizes.join(",") === "10,20", "partial Load More windows changed");
-invariant(controls.get("#loadMoreBtn").disabled === false,
-  "partial Load More failure permanently disabled retry");
-invariant(controls.get("#loadMoreText").textContent === "Load More Results",
-  "partial Load More failure changed retry label");
-invariant(globalThis.toastCalls.length === 1 && globalThis.toastCalls[0][1] === "warning",
-  "partial Load More warning missing");
-
-process.stdout.write(JSON.stringify({
-  requestSizes,
-  disabled: controls.get("#loadMoreBtn").disabled,
-  text: controls.get("#loadMoreText").textContent,
-}));
-"""
-
-
 GROUPED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+const gbooks = new FakeElement("gbooks");
+gbooks.value = "gbooks";
+gbooks.checked = true;
+sourceCheckboxes.splice(1, 0, gbooks);
+whitelistWikipedia.value = "whitelist_www.jstor.org";
 whitelistWikipedia.checked = true;
 
-const wiki = {
-  source_name: "Wikipedia",
-  source_id: "wiki-1",
-  source_url: "https://en.wikipedia.org/wiki/Archive",
-  title: "Wikipedia result",
-};
-const archiveOne = {
-  source_name: "Open Archive",
-  source_id: "archive-1",
-  source_url: "https://en.wikipedia.org/archive-1",
-  title: "Archive one",
-};
-const archiveTwo = {
-  source_name: "Open Archive",
-  source_id: "archive-2",
-  source_url: "https://en.wikipedia.org/archive-2",
-  title: "Archive two",
-};
-const archiveThree = {
-  source_name: "Open Archive",
-  source_id: "archive-3",
-  source_url: "https://en.wikipedia.org/archive-3",
-  title: "Archive three",
-};
-
-const grouped = (archiveItems) => ({
+const makeItems = (prefix, sourceName, baseUrl) => Array.from(
+  { length: 10 },
+  (_, index) => ({
+    source_name: sourceName,
+    source_id: `${prefix}-${index + 1}`,
+    source_url: `${baseUrl}/${index + 1}`,
+    title: `${prefix}-${index + 1}`,
+  }),
+);
+const wikiItems = makeItems("wiki", "Wikipedia", "https://en.wikipedia.org/wiki/archive");
+const bookItems = makeItems("book", "Google Books", "https://books.google.com/books");
+const jstorItems = makeItems("jstor", "JSTOR", "https://www.jstor.org/stable");
+const payload = {
   status: true,
-  results: [wiki, ...archiveItems],
+  results: [...wikiItems, ...bookItems, ...jstorItems],
   grouped_results: {
-    wikipedia: [wiki],
-    "whitelist_en.wikipedia.org": archiveItems,
+    wikipedia: wikiItems,
+    gbooks: bookItems,
+    "whitelist_www.jstor.org": jstorItems,
   },
   source_counts: {
-    wikipedia: 1,
-    "whitelist_en.wikipedia.org": archiveItems.length,
+    wikipedia: 10,
+    gbooks: 10,
+    "whitelist_www.jstor.org": 10,
   },
-});
-const responses = [
-  grouped([archiveOne, archiveTwo]),
-  grouped([archiveOne, archiveTwo, archiveThree]),
-  grouped([archiveOne, archiveTwo, archiveThree]),
-];
+};
 const fetchCalls = [];
 globalThis.fetch = async (url, options) => {
   fetchCalls.push({ url, options });
   if (url === "/static/whitelist.json") {
-    return { ok: true, async json() { return { domains: ["en.wikipedia.org"] }; } };
+    return { ok: true, async json() { return { domains: ["www.jstor.org"] }; } };
   }
-  const payload = responses.shift();
-  invariant(payload, "unexpected grouped search request");
+  invariant(url === "/api/browse/search-all", "unexpected grouped search endpoint");
   return { ok: true, async json() { return payload; } };
 };
 globalThis.toastCalls = [];
@@ -3900,22 +3769,83 @@ const initialTitles = globalThis.renderedItems.map((item) => item.title);
 
 await controls.get("#loadMoreBtn").dispatch("click");
 await flushPromises();
-const bufferedTitles = globalThis.renderedItems.map((item) => item.title);
-const callsAfterBufferedPage = fetchCalls.filter(
-  (call) => call.url === "/api/browse/search-all",
-).length;
+const afterFirstLoadTitles = globalThis.renderedItems.map((item) => item.title);
 
-await controls.get("#loadMoreBtn").dispatch("click");
-await flushPromises();
-const fetchedTitles = globalThis.renderedItems.map((item) => item.title);
+for (let rank = 3; rank <= 10; rank += 1) {
+  await controls.get("#loadMoreBtn").dispatch("click");
+  await flushPromises();
+}
+const afterNinthLoadCounts = globalThis.renderedItems.reduce((counts, item) => {
+  const source = item.source_id.startsWith("wiki-")
+    ? "wikipedia"
+    : item.source_id.startsWith("book-")
+      ? "gbooks"
+      : "whitelist_www.jstor.org";
+  counts[source] = (counts[source] || 0) + 1;
+  return counts;
+}, {});
 const searchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
 
 process.stdout.write(JSON.stringify({
   initialTitles,
-  bufferedTitles,
-  fetchedTitles,
-  callsAfterBufferedPage,
+  afterFirstLoadTitles,
+  afterNinthLoadCounts,
   requestSizes: searchCalls.map((call) => JSON.parse(call.options.body).num_results),
+  loadMoreDisabled: controls.get("#loadMoreBtn").disabled,
+  loadMoreText: controls.get("#loadMoreText").textContent,
+}));
+"""
+
+
+UNEVEN_GROUPED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+const gbooks = new FakeElement("gbooks");
+gbooks.value = "gbooks";
+gbooks.checked = true;
+sourceCheckboxes.splice(1, 0, gbooks);
+const wikiItems = Array.from({ length: 3 }, (_, index) => ({
+  source_name: "Wikipedia",
+  source_id: `wiki-${index + 1}`,
+  source_url: `https://en.wikipedia.org/wiki/archive-${index + 1}`,
+  title: `wiki-${index + 1}`,
+}));
+const bookItems = [{
+  source_name: "Google Books",
+  source_id: "book-1",
+  source_url: "https://books.google.com/books/1",
+  title: "book-1",
+}];
+globalThis.fetch = async (url) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  invariant(url === "/api/browse/search-all", "unexpected uneven search endpoint");
+  return {
+    ok: true,
+    async json() {
+      return {
+        status: true,
+        results: [...wikiItems, ...bookItems],
+        grouped_results: { wikipedia: wikiItems, gbooks: bookItems },
+        source_counts: { wikipedia: 3, gbooks: 1 },
+      };
+    },
+  };
+};
+globalThis.toastCalls = [];
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+
+process.stdout.write(JSON.stringify({
+  unevenAfterSecondLoadTitles: globalThis.renderedItems.map((item) => item.title),
 }));
 """
 
@@ -3980,10 +3910,11 @@ const { initBrowse } = await import(process.argv[1]);
 initBrowse(root);
 await flushPromises();
 const initialButtonDisabled = controls.get("#loadMoreBtn").disabled;
+const initialTitles = globalThis.renderedItems.map((item) => item.title);
 await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
 
-const searchCall = fetchCalls.find((call) => call.url === "/api/browse/search-all");
-const loadBody = searchCall ? JSON.parse(searchCall.options.body) : null;
+const searchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
 const upgradedState = restoredStorageWrites.length > 0
   ? JSON.parse(restoredStorageWrites[restoredStorageWrites.length - 1].value)
   : null;
@@ -3996,6 +3927,7 @@ process.stdout.write(JSON.stringify({
     sorting: sorting.value,
   },
   checkedSources: sourceCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value),
+  initialTitles,
   renderedTitles: globalThis.renderedItems.map((item) => item.title),
   renderedThumbnails: globalThis.renderedItems.map((item) => item.thumb_url || ""),
   storageWrites: restoredStorageWrites.length,
@@ -4003,8 +3935,11 @@ process.stdout.write(JSON.stringify({
   storedThumbnails: Object.values(upgradedState?.groupedResults || {})
     .flat()
     .map((item) => item.thumb_url || ""),
+  storedTitles: Object.values(upgradedState?.groupedResults || {})
+    .flat()
+    .map((item) => item.title),
   initialButtonDisabled,
-  loadBody,
+  searchRequestCount: searchCalls.length,
 }));
 """
 
@@ -4117,9 +4052,7 @@ function response(results) {
 }
 
 const oldInitial = deferredResponse();
-const staleLoad = deferredResponse();
 const newestInitial = deferredResponse();
-const newestLoad = deferredResponse();
 const fresh = {
   source_name: "Wikipedia",
   source_id: "fresh-1",
@@ -4132,12 +4065,6 @@ const newest = {
   source_url: "https://example.test/newest",
   title: "Newest",
 };
-const newestExtra = {
-  source_name: "Wikipedia",
-  source_id: "newest-2",
-  source_url: "https://example.test/newest-extra",
-  title: "Newest extra",
-};
 
 globalThis.fetch = async (url, options) => {
   fetchCalls.push({ url, options });
@@ -4148,9 +4075,7 @@ globalThis.fetch = async (url, options) => {
   const body = JSON.parse(options.body);
   if (body.query === "archive" && body.num_results === 10) return oldInitial.promise;
   if (body.query === "fresh" && body.num_results === 10) return response([fresh]);
-  if (body.query === "fresh" && body.num_results === 20) return staleLoad.promise;
   if (body.query === "newest" && body.num_results === 10) return newestInitial.promise;
-  if (body.query === "newest" && body.num_results === 20) return newestLoad.promise;
   throw new Error("unexpected search request: " + JSON.stringify(body));
 };
 
@@ -4162,28 +4087,17 @@ await flushPromises();
 search.value = "fresh";
 await go.dispatch("click");
 await flushPromises();
-const detachedFreshLoadMore = controls.get("#loadMoreBtn");
-await detachedFreshLoadMore.dispatch("click");
-await flushPromises();
 search.value = "newest";
 await go.dispatch("click");
 await flushPromises();
 sorting.value = "recent";
 await sorting.dispatch("change");
-await detachedFreshLoadMore.dispatch("click");
-await flushPromises();
 
 oldInitial.resolve(response([{
   source_name: "Wikipedia",
   source_id: "old-initial",
   source_url: "https://example.test/old-initial",
   title: "Old initial",
-}]));
-staleLoad.resolve(response([{
-  source_name: "Wikipedia",
-  source_id: "stale-load",
-  source_url: "https://example.test/stale-load",
-  title: "Stale load",
 }]));
 await flushPromises();
 const pendingSearchBodies = fetchCalls
@@ -4202,18 +4116,6 @@ newestInitial.resolve(response([newest]));
 await flushPromises();
 const afterInitialRace = globalThis.renderedItems.map((item) => item.title);
 const initialSortingReleased = sorting.disabled;
-await controls.get("#loadMoreBtn").dispatch("click");
-await flushPromises();
-
-const duringNewestLoad = {
-  titles: globalThis.renderedItems.map((item) => item.title),
-  disabled: controls.get("#loadMoreBtn").disabled,
-  text: controls.get("#loadMoreText").textContent,
-  spinner: controls.get("#loadMoreSpinner").style.display,
-};
-
-newestLoad.resolve(response([newest, newestExtra]));
-await flushPromises();
 const searchBodies = fetchCalls
   .filter((call) => call.url === "/api/browse/search-all")
   .map((call) => JSON.parse(call.options.body));
@@ -4221,8 +4123,6 @@ process.stdout.write(JSON.stringify({
   afterInitialRace,
   duringNewestInitial,
   initialSortingReleased,
-  duringNewestLoad,
-  finalTitles: globalThis.renderedItems.map((item) => item.title),
   requestQueries: searchBodies.map((body) => body.query),
   requestSizes: searchBodies.map((body) => body.num_results),
 }));
@@ -4569,21 +4469,21 @@ def browse_partial_runtime(source: str | None = None) -> dict:
     )
 
 
-def browse_partial_load_more_runtime(source: str | None = None) -> dict:
-    return run_task6_module_harness(
-        source or read_text("static/js/pages/browse.js"),
-        BROWSE_IMPORT_REPLACEMENTS,
-        BROWSE_PARTIAL_LOAD_MORE_RUNTIME_HARNESS,
-        "partial Load More Browse",
-    )
-
-
 def grouped_browse_runtime(source: str | None = None) -> dict:
     return run_task6_module_harness(
         source or read_text("static/js/pages/browse.js"),
         BROWSE_IMPORT_REPLACEMENTS,
         GROUPED_BROWSE_RUNTIME_HARNESS,
         "grouped browse",
+    )
+
+
+def uneven_grouped_browse_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        UNEVEN_GROUPED_BROWSE_RUNTIME_HARNESS,
+        "uneven grouped browse",
     )
 
 
@@ -4950,14 +4850,6 @@ def test_browse_partial_failure_renders_results_with_one_safe_warning():
     ]
 
 
-def test_partial_load_more_failure_keeps_retry_available():
-    assert browse_partial_load_more_runtime() == {
-        "requestSizes": [10, 20],
-        "disabled": False,
-        "text": "Load More Results",
-    }
-
-
 def test_browse_defaults_only_dedicated_sources_and_leaves_dynamic_whitelist_opt_in():
     browse = read_text("static/js/pages/browse.js")
     app_source = read_text("app.py")
@@ -4974,47 +4866,46 @@ def test_browse_defaults_only_dedicated_sources_and_leaves_dynamic_whitelist_opt
     assert " checked" not in rendered["whitelistMarkup"]
 
 
-def test_task2_browse_pagination_merges_cumulative_windows_until_exhausted():
-    rendered = browse_runtime()
+def test_browse_grouped_paging_reveals_each_cached_rank_without_refetching():
+    rendered = grouped_browse_runtime()
 
-    assert rendered["renderedTitles"] == [
-        "First",
-        "Second",
-        "Malformed",
-        "Malformed",
-        "Third",
+    assert rendered["initialTitles"] == ["wiki-1", "book-1", "jstor-1"]
+    assert rendered["afterFirstLoadTitles"] == [
+        "wiki-1",
+        "wiki-2",
+        "book-1",
+        "book-2",
+        "jstor-1",
+        "jstor-2",
     ]
-    assert rendered["requestSizes"] == [10, 20, 20, 30]
-    assert rendered["requestSizes"][1:] == [20, 20, 30]
-    assert rendered["retryState"] == {
-        "disabled": False,
-        "text": "Load More Results",
-        "spinner": "none",
+    assert rendered["requestSizes"] == [10]
+
+
+def test_browse_grouped_paging_disables_after_all_cached_ranks_are_visible():
+    rendered = grouped_browse_runtime()
+
+    assert rendered["afterNinthLoadCounts"] == {
+        "wikipedia": 10,
+        "gbooks": 10,
+        "whitelist_www.jstor.org": 10,
     }
+    assert rendered["requestSizes"] == [10]
     assert rendered["loadMoreDisabled"] is True
     assert rendered["loadMoreText"] == "No more results."
 
 
-def test_browse_grouped_paging_reveals_buffer_before_fetching_more():
-    rendered = grouped_browse_runtime()
+def test_browse_grouped_paging_keeps_revealing_longer_groups():
+    rendered = uneven_grouped_browse_runtime()
 
-    assert rendered["initialTitles"] == ["Wikipedia result", "Archive one"]
-    assert rendered["bufferedTitles"] == [
-        "Wikipedia result",
-        "Archive one",
-        "Archive two",
+    assert rendered["unevenAfterSecondLoadTitles"] == [
+        "wiki-1",
+        "wiki-2",
+        "wiki-3",
+        "book-1",
     ]
-    assert rendered["callsAfterBufferedPage"] == 1
-    assert rendered["fetchedTitles"] == [
-        "Wikipedia result",
-        "Archive one",
-        "Archive two",
-        "Archive three",
-    ]
-    assert rendered["requestSizes"] == [10, 20]
 
 
-def test_task2_browse_runtime_ignores_stale_initial_and_load_more_responses():
+def test_task2_browse_runtime_ignores_stale_initial_responses():
     rendered = deferred_browse_runtime()
 
     assert rendered["afterInitialRace"] == ["Newest"]
@@ -5023,25 +4914,12 @@ def test_task2_browse_runtime_ignores_stale_initial_and_load_more_responses():
         "sortingDisabled": True,
         "loadMorePresent": False,
         "sidebarReset": True,
-        "requestQueries": ["archive", "fresh", "fresh", "newest"],
-        "requestSizes": [10, 10, 20, 10],
+        "requestQueries": ["archive", "fresh", "newest"],
+        "requestSizes": [10, 10, 10],
     }
     assert rendered["initialSortingReleased"] is False
-    assert rendered["duringNewestLoad"] == {
-        "titles": ["Newest"],
-        "disabled": True,
-        "text": "Loading...",
-        "spinner": "inline-block",
-    }
-    assert rendered["finalTitles"] == ["Newest", "Newest extra"]
-    assert rendered["requestQueries"] == [
-        "archive",
-        "fresh",
-        "fresh",
-        "newest",
-        "newest",
-    ]
-    assert rendered["requestSizes"] == [10, 10, 20, 10, 20]
+    assert rendered["requestQueries"] == ["archive", "fresh", "newest"]
+    assert rendered["requestSizes"] == [10, 10, 10]
 
 
 def test_task2_browse_runtime_uses_server_identity_metadata_across_batches():
@@ -5096,29 +4974,21 @@ def test_task2_restored_browse_deduplicates_legacy_and_server_metadata_state():
         "wikipedia",
         "whitelist_en.wikipedia.org",
     ]
-    assert rendered["renderedTitles"] == [
+    assert rendered["storedTitles"] == [
         "Restored first",
         "Restored second",
         "ﬀ",
         "Exponent numeric",
         "Port 080",
     ]
-    assert rendered["renderedThumbnails"] == ["", "", "", "", ""]
-    assert rendered["storageWrites"] == 1
+    assert rendered["initialTitles"] == ["Restored first"]
+    assert rendered["renderedTitles"] == ["Restored first", "Restored second"]
+    assert rendered["renderedThumbnails"] == ["", ""]
+    assert rendered["storageWrites"] == 2
     assert rendered["upgradedVersion"] == 2
     assert rendered["storedThumbnails"] == ["", "", "", "", ""]
     assert rendered["initialButtonDisabled"] is False
-    assert rendered["loadBody"] == {
-        "query": "restored archive",
-        "sources": ["wikipedia", "whitelist_en.wikipedia.org"],
-        "num_results": 20,
-        "filters": {
-            "min_date": "1990",
-            "max_date": "2020",
-            "content_type": "review",
-            "sorting": "recent",
-        },
-    }
+    assert rendered["searchRequestCount"] == 0
 
 
 def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
@@ -5161,7 +5031,7 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
         },
         "sourceCounts": {},
         "groupPage": 1,
-        "resultWindow": 20,
+        "resultWindow": 10,
         "searchExhausted": False,
     }
     assert 'value="whitelist_en.wikipedia.org"' in rendered["whitelistMarkup"]
@@ -5239,8 +5109,8 @@ def test_task6_browse_structure_preserves_light_output_and_supports_mobile_stack
     assert expected_ids.issubset({tag.get("id") for tag in soup.select("[id]")})
 
     assert browse.count("fetch('/api/browse/search-all'") == 1
-    assert browse.count("await fetchBrowseResults({") == 2
-    assert "const nextWindow = resultWindow + 10;" in browse
+    assert browse.count("await fetchBrowseResults({") == 1
+    assert "const nextWindow = resultWindow + 10;" not in browse
     assert "localStorage.setItem(BROWSE_STORAGE_KEY" in browse
     assert "localStorage.getItem(BROWSE_STORAGE_KEY" in browse
     assert "loadMoreBtn.addEventListener('click', () =>" in browse
