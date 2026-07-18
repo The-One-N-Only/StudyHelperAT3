@@ -23,6 +23,9 @@ let currentSourceCounts = {};
 let whitelistDomains = [];
 let lastSearchQuery = null;
 let lastSearchSources = null;
+let whitelistSourcesRendered = false;
+let pendingMasterSourceSelection = null;
+let pendingSourceSelectionOverrides = new Map();
 let isLoadingMore = false;
 let searchGeneration = 0;
 let isInitialSearchPending = false;
@@ -360,6 +363,9 @@ function showPartialSourceWarning(result) {
 
 export function initBrowse(root) {
     pageRoot = root;
+    whitelistSourcesRendered = false;
+    pendingMasterSourceSelection = null;
+    pendingSourceSelectionOverrides = new Map();
     pageRoot.innerHTML = `
         <div class="archive-page archive-page-browse">
             <span class="archive-illustration illustration-books" aria-hidden="true"></span>
@@ -495,11 +501,21 @@ function registerEvents() {
 
     sourceMasterCheckbox?.addEventListener('change', () => {
         setAllSourcesSelected(sourceMasterCheckbox.checked);
+        if (!whitelistSourcesRendered) {
+            pendingMasterSourceSelection = sourceMasterCheckbox.checked;
+            pendingSourceSelectionOverrides.clear();
+        }
     });
 
     dropdownMenu?.addEventListener('change', (event) => {
         if (event.target?.classList?.contains('browse-source-checkbox')) {
             syncMasterSourceCheckbox();
+            if (!whitelistSourcesRendered) {
+                pendingSourceSelectionOverrides.set(
+                    event.target.value,
+                    event.target.checked,
+                );
+            }
         }
     });
 
@@ -768,7 +784,14 @@ function setAllSourcesSelected(selected) {
 
 function renderWhitelistCheckboxes() {
     const container = pageRoot.querySelector('#whitelistCheckboxes');
-    if (!container || !whitelistDomains || whitelistDomains.length === 0) return;
+    if (!container) return;
+    if (!whitelistDomains || whitelistDomains.length === 0) {
+        whitelistSourcesRendered = true;
+        pendingMasterSourceSelection = null;
+        pendingSourceSelectionOverrides.clear();
+        syncMasterSourceCheckbox();
+        return;
+    }
     
     let html = '<label class="form-label mb-2 small">Whitelisted Sites</label>';
 
@@ -785,11 +808,28 @@ function renderWhitelistCheckboxes() {
     });
     
     container.innerHTML = html;
-    if (lastSearchSources !== null) {
+    if (pendingMasterSourceSelection !== null) {
+        setAllSourcesSelected(pendingMasterSourceSelection);
+    } else if (lastSearchSources !== null) {
         applySelectedSources(lastSearchSources);
     } else {
         syncMasterSourceCheckbox();
     }
+
+    if (pendingSourceSelectionOverrides.size > 0) {
+        const sourceCheckboxes = new Map(
+            getSourceCheckboxes().map((checkbox) => [checkbox.value, checkbox])
+        );
+        pendingSourceSelectionOverrides.forEach((checked, source) => {
+            const checkbox = sourceCheckboxes.get(source);
+            if (checkbox) checkbox.checked = checked;
+        });
+        syncMasterSourceCheckbox();
+    }
+
+    whitelistSourcesRendered = true;
+    pendingMasterSourceSelection = null;
+    pendingSourceSelectionOverrides.clear();
 }
 
 function appendQueryTerm(term) {

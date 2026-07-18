@@ -3524,6 +3524,7 @@ const initial = { checked: master.checked, indeterminate: master.indeterminate }
 master.checked = true;
 await master.dispatch("change");
 const selectedAll = sources.map((checkbox) => checkbox.checked);
+const selectedAllMaster = { checked: master.checked, indeterminate: master.indeterminate };
 const savedAll = getBrowseState().sources;
 
 applySelectedSources(["gbooks", "whitelist_jstor.org"]);
@@ -3542,12 +3543,180 @@ const clearedMaster = { checked: master.checked, indeterminate: master.indetermi
 process.stdout.write(JSON.stringify({
   initial,
   selectedAll,
+  selectedAllMaster,
   savedAll,
   restored,
   restoredMaster,
   oneSelectedMaster,
   cleared,
   clearedMaster,
+}));
+"""
+
+
+BROWSE_FILTER_RACE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""
+const controls = new Map();
+function control(selector, value = "") {
+  const element = new FakeElement(selector);
+  element.value = value;
+  controls.set(selector, element);
+  return element;
+}
+
+const search = control("#searchInput");
+const go = control("#goBtn");
+const filters = control("#filtersDropdown");
+const menu = control(".browse-dropdown-menu");
+controls.set("#browseFiltersMenu", menu);
+const master = control("#filterAllSources");
+control("#filterYearFrom");
+control("#filterYearTo");
+control("#filterContentType");
+control("#filterSorting");
+control("#sidebarContainer");
+control("#resultsContainer");
+const whitelistContainer = control("#whitelistCheckboxes");
+
+function source(name, value, checked, className = "form-check-input browse-source-checkbox") {
+  const element = new FakeElement(name, className);
+  element.value = value;
+  element.checked = checked;
+  return element;
+}
+
+const sources = [
+  source("Wikipedia", "wikipedia", true),
+  source("Google Books", "gbooks", true),
+  source("PubMed", "pubmed", false),
+  source("Google Scholar", "scholar", true),
+];
+let whitelistMarkup = "";
+
+Object.defineProperty(whitelistContainer, "innerHTML", {
+  configurable: true,
+  get() { return this._innerHTML || ""; },
+  set(value) {
+    whitelistMarkup = String(value);
+    this._innerHTML = whitelistMarkup;
+    const inputPattern = /<input\s+class="([^"]*)"[^>]*\svalue="([^"]+)"[^>]*>/gu;
+    for (const match of whitelistMarkup.matchAll(inputPattern)) {
+      sources.push(source(match[2], match[2], false, match[1]));
+    }
+  },
+});
+
+function realSources() {
+  return sources.filter((checkbox) => checkbox.classList.contains("browse-source-checkbox"));
+}
+function matchingSources(selector) {
+  if (!selector.includes("browse-source-checkbox")) return [];
+  const matches = realSources();
+  return selector.includes(":checked")
+    ? matches.filter((checkbox) => checkbox.checked)
+    : matches;
+}
+
+menu.querySelectorAll = matchingSources;
+const root = new FakeElement("root");
+root.querySelector = (selector) => controls.get(selector) || null;
+root.querySelectorAll = matchingSources;
+
+const documentControl = new FakeElement("document");
+globalThis.document = {
+  addEventListener: documentControl.addEventListener.bind(documentControl),
+  createElement() { return new FakeElement("created"); },
+};
+globalThis.window = {
+  location: { pathname: "/browse", search: "" },
+  history: { replaceState() {} },
+};
+globalThis.renderedItems = [];
+globalThis.toastCalls = [];
+
+const restoredState = {
+  version: 2,
+  query: "archive",
+  sources: ["gbooks", "whitelist_jstor.org"],
+  filters: { min_date: "", max_date: "", content_type: "", sorting: "" },
+  results: [],
+  groupedResults: {},
+  sourceCounts: {},
+  groupPage: 1,
+};
+const storageWrites = [];
+globalThis.localStorage = {
+  getItem() { return JSON.stringify(restoredState); },
+  setItem(key, value) { storageWrites.push({ key, value: JSON.parse(value) }); },
+};
+
+function deferredResponse() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+const whitelistResponse = deferredResponse();
+const apiBodies = [];
+globalThis.fetch = async (url, options = {}) => {
+  if (url === "/static/whitelist.json") return whitelistResponse.promise;
+  if (url === "/api/browse/search-all") {
+    apiBodies.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      async json() {
+        return {
+          status: true,
+          results: [],
+          grouped_results: {},
+          source_counts: {},
+        };
+      },
+    };
+  }
+  throw new Error("unexpected fetch: " + url);
+};
+
+const { initBrowse, getBrowseState } = await import(process.argv[1]);
+initBrowse(root);
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+const dynamicBeforeResolution = sources.filter(
+  (checkbox) => checkbox.value.startsWith("whitelist_")
+).length;
+__PENDING_SOURCE_ACTION__
+const beforeResolution = {
+  selected: realSources().filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value),
+  master: { checked: master.checked, indeterminate: master.indeterminate },
+};
+
+whitelistResponse.resolve({
+  ok: true,
+  async json() { return { domains: ["jstor.org"], domain_patterns: ["*.edu"] }; },
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+const dynamicSources = sources.filter((checkbox) => checkbox.value.startsWith("whitelist_"));
+const afterSources = realSources()
+  .filter((checkbox) => checkbox.checked)
+  .map((checkbox) => checkbox.value);
+const persistedSources = getBrowseState().sources;
+const afterMaster = { checked: master.checked, indeterminate: master.indeterminate };
+
+await go.dispatch("click");
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+process.stdout.write(JSON.stringify({
+  dynamicBeforeResolution,
+  dynamicAfterResolution: dynamicSources.length,
+  dynamicClasses: dynamicSources.map((checkbox) => checkbox.className),
+  whitelistMarkup,
+  beforeResolution,
+  afterSources,
+  persistedSources,
+  apiSources: apiBodies.length > 0 ? apiBodies.at(-1).sources : null,
+  afterMaster,
+  toastCalls: globalThis.toastCalls,
+  storageWrites,
 }));
 """
 
@@ -4617,6 +4786,36 @@ def browse_filter_runtime(source: str | None = None) -> dict:
     )
 
 
+def browse_filter_race_runtime(action: str, source: str | None = None) -> dict:
+    actions = {
+        "select_all": """
+master.checked = true;
+await master.dispatch("change");
+""",
+        "clear_all": """
+master.checked = false;
+await master.dispatch("change");
+""",
+        "select_individual": """
+sources[0].checked = true;
+await menu.dispatch("change", { target: sources[0] });
+""",
+    }
+    assert action in actions
+    harness = BROWSE_FILTER_RACE_RUNTIME_HARNESS.replace(
+        "__PENDING_SOURCE_ACTION__",
+        actions[action],
+    )
+    browse_source = source or read_text("static/js/pages/browse.js")
+    browse_source += "\nexport { getBrowseState };\n"
+    return run_task6_module_harness(
+        browse_source,
+        BROWSE_IMPORT_REPLACEMENTS,
+        harness,
+        f"browse filter {action} race",
+    )
+
+
 def url_query_browse_runtime(source: str | None = None) -> dict:
     return run_task6_module_harness(
         source or read_text("static/js/pages/browse.js"),
@@ -5059,6 +5258,14 @@ def test_browse_defaults_only_dedicated_sources_and_leaves_dynamic_whitelist_opt
     assert 'value="whitelist_en.wikipedia.org"' in rendered["whitelistMarkup"]
     assert 'value="whitelist_*.edu"' in rendered["whitelistMarkup"]
     assert " checked" not in rendered["whitelistMarkup"]
+    dynamic_sources = BeautifulSoup(rendered["whitelistMarkup"], "html.parser").select(
+        'input[value^="whitelist_"]'
+    )
+    assert len(dynamic_sources) == 2
+    assert all(
+        "browse-source-checkbox" in checkbox.get("class", ())
+        for checkbox in dynamic_sources
+    )
 
 
 def test_browse_filters_menu_is_viewport_bounded_and_scrollable():
@@ -5076,6 +5283,7 @@ def test_browse_master_source_checkbox_controls_all_sources_and_restores_state()
 
     assert rendered["initial"] == {"checked": False, "indeterminate": True}
     assert rendered["selectedAll"] == [True, True, True, True, True, True]
+    assert rendered["selectedAllMaster"] == {"checked": True, "indeterminate": False}
     assert rendered["savedAll"] == [
         "wikipedia",
         "gbooks",
@@ -5089,6 +5297,61 @@ def test_browse_master_source_checkbox_controls_all_sources_and_restores_state()
     assert rendered["oneSelectedMaster"] == {"checked": False, "indeterminate": True}
     assert rendered["cleared"] == [False, False, False, False, False, False]
     assert rendered["clearedMaster"] == {"checked": False, "indeterminate": False}
+
+
+def test_browse_pending_source_intent_wins_deferred_whitelist_restore_race():
+    selected = browse_filter_race_runtime("select_all")
+    cleared = browse_filter_race_runtime("clear_all")
+    individual = browse_filter_race_runtime("select_individual")
+    all_sources = [
+        "wikipedia",
+        "gbooks",
+        "pubmed",
+        "scholar",
+        "whitelist_jstor.org",
+        "whitelist_*.edu",
+    ]
+
+    for rendered in (selected, cleared, individual):
+        assert rendered["dynamicBeforeResolution"] == 0
+        assert rendered["dynamicAfterResolution"] == 2
+        assert all(
+            "browse-source-checkbox" in class_name
+            for class_name in rendered["dynamicClasses"]
+        )
+        assert rendered["whitelistMarkup"].count("browse-source-checkbox") == 2
+
+    assert selected["beforeResolution"] == {
+        "selected": ["wikipedia", "gbooks", "pubmed", "scholar"],
+        "master": {"checked": True, "indeterminate": False},
+    }
+    assert selected["afterSources"] == all_sources
+    assert selected["persistedSources"] == all_sources
+    assert selected["apiSources"] == all_sources
+    assert selected["afterMaster"] == {"checked": True, "indeterminate": False}
+
+    assert cleared["beforeResolution"] == {
+        "selected": [],
+        "master": {"checked": False, "indeterminate": False},
+    }
+    assert cleared["afterSources"] == []
+    assert cleared["persistedSources"] == []
+    assert cleared["apiSources"] is None
+    assert cleared["afterMaster"] == {"checked": False, "indeterminate": False}
+    assert cleared["toastCalls"] == [["Please select at least one source", "warning"]]
+
+    assert individual["beforeResolution"] == {
+        "selected": ["wikipedia", "gbooks"],
+        "master": {"checked": False, "indeterminate": True},
+    }
+    assert individual["afterSources"] == [
+        "wikipedia",
+        "gbooks",
+        "whitelist_jstor.org",
+    ]
+    assert individual["persistedSources"] == individual["afterSources"]
+    assert individual["apiSources"] == individual["afterSources"]
+    assert individual["afterMaster"] == {"checked": False, "indeterminate": True}
 
 
 def test_browse_grouped_paging_reveals_each_cached_rank_without_refetching():
