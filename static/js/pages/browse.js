@@ -5,7 +5,7 @@ import { createCard } from '../card.js';
 
 const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'scholar'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
-const BROWSE_STATE_VERSION = 1;
+const BROWSE_STATE_VERSION = 2;
 const BROWSE_REQUEST_TIMEOUT_MS = 30000;
 const WHITELIST_GROUP_PAGE_SIZE = 1;
 const DEDUPE_IDENTITY_PROPERTY = '_dedupe_identity';
@@ -132,6 +132,15 @@ function resultCanonicalSourceUrl(item) {
         return typeof sourceUrl === 'string' ? sourceUrl : '';
     }
     return canonicalSourceUrl(item.source_url);
+}
+
+function sanitizeBrowseResult(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+    return {
+        ...item,
+        // Browse results come from SerpAPI; never load its untrusted image hosts.
+        thumb_url: '',
+    };
 }
 
 function deduplicateResults(results) {
@@ -611,7 +620,9 @@ function deduplicateGroupedResults(groupedResults) {
         ? groupedResults
         : {};
     const entries = Object.entries(safeGroups).flatMap(([source, items]) => (
-        Array.isArray(items) ? items.map((item) => ({ source, item })) : []
+        Array.isArray(items)
+            ? items.map((item) => ({ source, item: sanitizeBrowseResult(item) }))
+            : []
     ));
     const uniqueItems = deduplicateResults(entries.map(({ item }) => item));
     const deduplicated = Object.fromEntries(
@@ -822,6 +833,7 @@ function restoreBrowseState() {
         const state = JSON.parse(stateString);
         if (!state || typeof state !== 'object') return;
         const isCurrentState = state.version === BROWSE_STATE_VERSION;
+        const preservesExplicitSources = isCurrentState || state.version === 1;
 
         const searchInput = pageRoot.querySelector('#searchInput');
         const yearFromEl = pageRoot.querySelector('#filterYearFrom');
@@ -837,7 +849,7 @@ function restoreBrowseState() {
                 .filter(Boolean)
             : [];
         const restoredSources = Array.from(new Set(
-            isCurrentState
+            preservesExplicitSources
                 ? storedSources
                 : storedSources.filter(
                     (source) => !source.toLowerCase().startsWith('whitelist_')

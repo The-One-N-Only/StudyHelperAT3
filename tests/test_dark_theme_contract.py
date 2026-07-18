@@ -3939,6 +3939,7 @@ const restoredState = {
       source_id: "wiki-1",
       source_url: "https://example.test/first",
       title: "Restored first",
+      thumb_url: "https://tracking.invalid/restored.jpg",
     },
     {
       source_name: " wikipedia ",
@@ -3955,12 +3956,13 @@ const restoredState = {
     ...__SERVER_METADATA_RECORDS__,
   ],
 };
+const restoredStorageWrites = [];
 globalThis.localStorage = {
   getItem(key) {
     invariant(key === "studyhelper_browse_state", "wrong restore key");
     return JSON.stringify(restoredState);
   },
-  setItem() {},
+  setItem(key, value) { restoredStorageWrites.push({ key, value }); },
 };
 const fetchCalls = [];
 globalThis.fetch = async (url, options) => {
@@ -3983,6 +3985,9 @@ await controls.get("#loadMoreBtn").dispatch("click");
 
 const searchCall = fetchCalls.find((call) => call.url === "/api/browse/search-all");
 const loadBody = searchCall ? JSON.parse(searchCall.options.body) : null;
+const upgradedState = restoredStorageWrites.length > 0
+  ? JSON.parse(restoredStorageWrites[restoredStorageWrites.length - 1].value)
+  : null;
 process.stdout.write(JSON.stringify({
   query: search.value,
   filters: {
@@ -3993,6 +3998,12 @@ process.stdout.write(JSON.stringify({
   },
   checkedSources: sourceCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value),
   renderedTitles: globalThis.renderedItems.map((item) => item.title),
+  renderedThumbnails: globalThis.renderedItems.map((item) => item.thumb_url || ""),
+  storageWrites: restoredStorageWrites.length,
+  upgradedVersion: upgradedState?.version ?? null,
+  storedThumbnails: Object.values(upgradedState?.groupedResults || {})
+    .flat()
+    .map((item) => item.thumb_url || ""),
   initialButtonDisabled,
   loadBody,
 }));
@@ -5093,6 +5104,10 @@ def test_task2_restored_browse_deduplicates_legacy_and_server_metadata_state():
         "Exponent numeric",
         "Port 080",
     ]
+    assert rendered["renderedThumbnails"] == ["", "", "", "", ""]
+    assert rendered["storageWrites"] == 1
+    assert rendered["upgradedVersion"] == 2
+    assert rendered["storedThumbnails"] == ["", "", "", "", ""]
     assert rendered["initialButtonDisabled"] is False
     assert rendered["loadBody"] == {
         "query": "restored archive",
@@ -5111,12 +5126,12 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
     browse = read_text("static/js/pages/browse.js")
     rendered = legacy_browse_runtime()
 
-    assert "const BROWSE_STATE_VERSION = 1;" in browse
+    assert "const BROWSE_STATE_VERSION = 2;" in browse
     assert rendered["checkedSources"] == ["wikipedia", "gbooks", "pubmed"]
     assert rendered["renderedTitles"] == ["Legacy result"]
     assert rendered["storageWrites"] == 1
     assert rendered["upgradedState"] == {
-        "version": 1,
+        "version": 2,
         "query": "legacy archive",
         "sources": ["wikipedia", "gbooks", "pubmed"],
         "filters": {
@@ -5131,6 +5146,7 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
                 "source_id": "legacy-1",
                 "source_url": "https://en.wikipedia.org/wiki/Archive",
                 "title": "Legacy result",
+                "thumb_url": "",
             }
         ],
         "groupedResults": {
@@ -5140,6 +5156,7 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
                     "source_id": "legacy-1",
                     "source_url": "https://en.wikipedia.org/wiki/Archive",
                     "title": "Legacy result",
+                    "thumb_url": "",
                 }
             ]
         },

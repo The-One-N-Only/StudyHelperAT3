@@ -374,7 +374,7 @@ def test_url_item_upsert_reuses_legacy_source_name_row(isolated_workspace_db):
         legacy = db.Item(
             title="Legacy title",
             description="Legacy description",
-            thumb_url="",
+            thumb_url="https://tracking.invalid/pixel.jpg",
             thumb_mime="image/jpeg",
             thumb_height=0,
             source_url=source_url,
@@ -402,8 +402,56 @@ def test_url_item_upsert_reuses_legacy_source_name_row(isolated_workspace_db):
 
     assert result["id"] == legacy_id
     assert result["source_name"] == "Wikipedia"
+    assert result["thumb_url"] == ""
     with ids["session"]() as session:
-        assert session.query(db.Item).filter_by(source_id=source_url).count() == 1
+        stored = session.query(db.Item).filter_by(source_id=source_url).all()
+        assert len(stored) == 1
+        assert stored[0].thumb_url == ""
+
+
+def test_url_item_upsert_sanitizes_concurrent_race_winner(
+    isolated_workspace_db,
+    monkeypatch,
+):
+    ids = isolated_workspace_db
+    source_url = "https://books.google.com/books?id=race"
+
+    def insert_race_winner_then_fail(_item_data, _user_id, _add_to_recent_search):
+        with ids["session"]() as session:
+            session.add(db.Item(
+                title="Race winner",
+                description="Inserted by another source worker",
+                thumb_url="https://tracking.invalid/race.jpg",
+                thumb_mime="image/jpeg",
+                thumb_height=200,
+                source_url=source_url,
+                source_name="Google Books",
+                source_id=source_url,
+            ))
+            session.commit()
+        raise db.IntegrityError("INSERT", {}, RuntimeError("duplicate URL"))
+
+    monkeypatch.setattr(db, "create_item", insert_race_winner_then_fail)
+    result = db.get_or_create_item_by_source_id(
+        {
+            "title": "Fresh title",
+            "description": "Fresh description",
+            "thumb_url": "",
+            "thumb_mime": "image/jpeg",
+            "thumb_height": 0,
+            "source_url": source_url,
+            "source_name": "gbooks",
+            "source_id": source_url,
+        },
+        ids["first_user"],
+        False,
+    )
+
+    assert result["thumb_url"] == ""
+    with ids["session"]() as session:
+        stored = session.query(db.Item).filter_by(source_id=source_url).one()
+        assert stored.thumb_url == ""
+        assert stored.thumb_height == 0
 
 
 def test_workspace_chat_get_requires_login_and_owned_workspace(monkeypatch):

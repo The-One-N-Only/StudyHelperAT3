@@ -323,10 +323,34 @@ def create_item(item_data, user_id, add_to_recent_search):
             append_to_recently_searched(user_id, new_item.id)
         return _item_to_dict(new_item)
 
+def _get_and_sync_item_by_source_id(item_data, user_id, add_to_recent_search):
+    """Return an existing URL row after applying security-sensitive fields."""
+    with SessionLocal() as session:
+        item = session.query(Item).filter_by(source_id=item_data["source_id"]).first()
+        if not item:
+            return None
+
+        expected_thumb_url = item_data.get("thumb_url")
+        if expected_thumb_url is not None and item.thumb_url != expected_thumb_url:
+            item.thumb_url = expected_thumb_url
+            item.thumb_mime = item_data.get("thumb_mime", item.thumb_mime)
+            item.thumb_height = item_data.get("thumb_height", item.thumb_height)
+            session.commit()
+            session.refresh(item)
+
+        result = _item_to_dict(item)
+
+    if add_to_recent_search:
+        append_to_recently_searched(user_id, result["id"])
+    return result
+
 def get_or_create_item_by_source_id(item_data, user_id, add_to_recent_search):
     """Reuse URL-backed rows and recover cleanly from concurrent insert races."""
-    source_id = item_data["source_id"]
-    existing = get_item_by_source_id(source_id, user_id, add_to_recent_search)
+    existing = _get_and_sync_item_by_source_id(
+        item_data,
+        user_id,
+        add_to_recent_search,
+    )
     if existing:
         return existing
 
@@ -334,7 +358,11 @@ def get_or_create_item_by_source_id(item_data, user_id, add_to_recent_search):
         return create_item(item_data, user_id, add_to_recent_search)
     except IntegrityError:
         # Another source worker may have inserted the same Serp URL first.
-        existing = get_item_by_source_id(source_id, user_id, add_to_recent_search)
+        existing = _get_and_sync_item_by_source_id(
+            item_data,
+            user_id,
+            add_to_recent_search,
+        )
         if existing:
             return existing
         raise
