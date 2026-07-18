@@ -3434,7 +3434,6 @@ globalThis.window = {
   location: { pathname: "/browse", search: "" },
   history: { replaceState() {} },
 };
-globalThis.escapeHtml = (value) => String(value);
 const nativeSetTimeout = globalThis.setTimeout;
 globalThis.setTimeout = (callback, delay, ...args) => {
   const timer = nativeSetTimeout(callback, delay, ...args);
@@ -4902,7 +4901,7 @@ def test_task6_card_templates_keep_shared_structure_and_equal_wood_cascade():
             assert applied[-1] == wood
 
 
-def test_task6_browse_runtime_keeps_go_search_listener_and_payload():
+def test_task6_browse_runtime_starts_search_without_legacy_globals():
     rendered = browse_runtime()
     assert rendered["body"] == {
         "query": "archive",
