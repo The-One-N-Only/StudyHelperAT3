@@ -379,20 +379,24 @@ export function initBrowse(root) {
                             <div class="browse-dropdown-menu archive-dropdown-menu p-3" id="browseFiltersMenu" aria-labelledby="filtersDropdown" style="min-width: 320px;">
                                 <div class="mb-3">
                                     <label class="form-label mb-2">Sources</label>
+                                    <div class="form-check mb-2 pb-2 border-bottom">
+                                        <input class="form-check-input" type="checkbox" id="filterAllSources">
+                                        <label class="form-check-label" for="filterAllSources">All sources</label>
+                                    </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="filterWikipedia" value="wikipedia" checked>
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterWikipedia" value="wikipedia" checked>
                                         <label class="form-check-label" for="filterWikipedia">Wikipedia</label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="filterGBooks" value="gbooks" checked>
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterGBooks" value="gbooks" checked>
                                         <label class="form-check-label" for="filterGBooks">Google Books</label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="filterPubMed" value="pubmed">
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterPubMed" value="pubmed">
                                         <label class="form-check-label" for="filterPubMed">PubMed</label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="filterScholar" value="scholar" checked>
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterScholar" value="scholar" checked>
                                         <label class="form-check-label" for="filterScholar">Google Scholar</label>
                                     </div>
                                     <div id="whitelistCheckboxes" class="ps-2 border-start mt-2"></div>
@@ -467,6 +471,7 @@ function registerEvents() {
     const filtersDropdown = pageRoot.querySelector('#filtersDropdown');
     const dropdownMenu = pageRoot.querySelector('.browse-dropdown-menu');
     const sortingSelect = pageRoot.querySelector('#filterSorting');
+    const sourceMasterCheckbox = pageRoot.querySelector('#filterAllSources');
 
     goBtn.addEventListener('click', () => {
         performSearch();
@@ -488,6 +493,16 @@ function registerEvents() {
         event.stopPropagation();
     });
 
+    sourceMasterCheckbox?.addEventListener('change', () => {
+        setAllSourcesSelected(sourceMasterCheckbox.checked);
+    });
+
+    dropdownMenu?.addEventListener('change', (event) => {
+        if (event.target?.classList?.contains('browse-source-checkbox')) {
+            syncMasterSourceCheckbox();
+        }
+    });
+
     document.addEventListener('click', () => {
         if (!dropdownMenu) return;
         dropdownMenu.classList.remove('show');
@@ -500,6 +515,8 @@ function registerEvents() {
             renderResults(sortedResults);
         }
     });
+
+    syncMasterSourceCheckbox();
 }
 
 function getDisplayNameForSource(source) {
@@ -723,6 +740,32 @@ function getDisplayNameForDomain(domain) {
     return domain.replace('www.', '').replace('.com', '').replace('.org', '').replace('.net', '').replace('.edu', '');
 }
 
+function getSourceCheckboxes() {
+    const filtersMenu = pageRoot?.querySelector('.browse-dropdown-menu');
+    return filtersMenu
+        ? Array.from(filtersMenu.querySelectorAll('.browse-source-checkbox'))
+        : [];
+}
+
+function syncMasterSourceCheckbox() {
+    const masterCheckbox = pageRoot?.querySelector('#filterAllSources');
+    if (!masterCheckbox) return;
+
+    const sourceCheckboxes = getSourceCheckboxes();
+    const checkedCount = sourceCheckboxes.filter((checkbox) => checkbox.checked).length;
+    masterCheckbox.checked = sourceCheckboxes.length > 0
+        && checkedCount === sourceCheckboxes.length;
+    masterCheckbox.indeterminate = checkedCount > 0
+        && checkedCount < sourceCheckboxes.length;
+}
+
+function setAllSourcesSelected(selected) {
+    getSourceCheckboxes().forEach((checkbox) => {
+        checkbox.checked = selected;
+    });
+    syncMasterSourceCheckbox();
+}
+
 function renderWhitelistCheckboxes() {
     const container = pageRoot.querySelector('#whitelistCheckboxes');
     if (!container || !whitelistDomains || whitelistDomains.length === 0) return;
@@ -735,7 +778,7 @@ function renderWhitelistCheckboxes() {
         const checkId = `filterWhitelist_${idx}`;
         html += `
             <div class="form-check">
-                <input class="form-check-input whitelist-domain-checkbox" type="checkbox" id="${checkId}" value="whitelist_${domain}">
+                <input class="form-check-input browse-source-checkbox whitelist-domain-checkbox" type="checkbox" id="${checkId}" value="whitelist_${domain}">
                 <label class="form-check-label" for="${checkId}">${displayName}</label>
             </div>
         `;
@@ -744,6 +787,8 @@ function renderWhitelistCheckboxes() {
     container.innerHTML = html;
     if (lastSearchSources !== null) {
         applySelectedSources(lastSearchSources);
+    } else {
+        syncMasterSourceCheckbox();
     }
 }
 
@@ -755,30 +800,20 @@ function appendQueryTerm(term) {
 }
 
 function getSelectedSources() {
-    const browseDropdownMenu = pageRoot.querySelector('.browse-dropdown-menu');
-    const checkedInputs = browseDropdownMenu
-        ? browseDropdownMenu.querySelectorAll('input[type="checkbox"]:checked')
-        : pageRoot.querySelectorAll('input[type="checkbox"]:checked');
-    
-    const sources = new Set();
-    Array.from(checkedInputs).forEach((checkbox) => {
-        const value = checkbox.value;
-        if (value.startsWith('whitelist_')) {
-            sources.add(value);
-        } else {
-            sources.add(value);
-        }
-    });
-    
-    return Array.from(sources);
+    return Array.from(new Set(
+        getSourceCheckboxes()
+            .filter((checkbox) => checkbox.checked)
+            .map((checkbox) => checkbox.value)
+    ));
 }
 
 function applySelectedSources(sources) {
     if (!Array.isArray(sources)) return;
     const selectedSources = new Set(sources);
-    pageRoot.querySelectorAll('input[type="checkbox"][value]').forEach((checkbox) => {
+    getSourceCheckboxes().forEach((checkbox) => {
         checkbox.checked = selectedSources.has(checkbox.value);
     });
+    syncMasterSourceCheckbox();
 }
 
 function buildFilters() {

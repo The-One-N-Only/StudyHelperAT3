@@ -3444,6 +3444,114 @@ const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 """
 
 
+BROWSE_FILTER_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""
+const controls = new Map();
+function control(selector, value = "") {
+  const element = new FakeElement(selector);
+  element.value = value;
+  controls.set(selector, element);
+  return element;
+}
+
+const search = control("#searchInput");
+const go = control("#goBtn");
+const filters = control("#filtersDropdown");
+const menu = control(".browse-dropdown-menu");
+controls.set("#browseFiltersMenu", menu);
+const master = control("#filterAllSources");
+control("#filterYearFrom");
+control("#filterYearTo");
+control("#filterContentType");
+control("#filterSorting");
+control("#sidebarContainer");
+control("#resultsContainer");
+control("#whitelistCheckboxes");
+
+function source(name, value, checked) {
+  const element = new FakeElement(name, "form-check-input browse-source-checkbox");
+  element.value = value;
+  element.checked = checked;
+  return element;
+}
+
+const sources = [
+  source("Wikipedia", "wikipedia", true),
+  source("Google Books", "gbooks", true),
+  source("PubMed", "pubmed", false),
+  source("Google Scholar", "scholar", true),
+  source("JSTOR", "whitelist_jstor.org", false),
+  source("Education sites", "whitelist_*.edu", false),
+];
+
+function matchingSources(selector) {
+  if (!selector.includes("browse-source-checkbox")) return [];
+  return selector.includes(":checked")
+    ? sources.filter((checkbox) => checkbox.checked)
+    : sources;
+}
+
+menu.querySelectorAll = matchingSources;
+const root = new FakeElement("root");
+root.querySelector = (selector) => controls.get(selector) || null;
+root.querySelectorAll = matchingSources;
+
+const documentControl = new FakeElement("document");
+globalThis.document = {
+  addEventListener: documentControl.addEventListener.bind(documentControl),
+  createElement() { return new FakeElement("created"); },
+};
+globalThis.window = {
+  location: { pathname: "/browse", search: "" },
+  history: { replaceState() {} },
+};
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.fetch = async (url) => {
+  if (url === "/static/whitelist.json") {
+    return {
+      ok: true,
+      async json() { return { domains: ["jstor.org"], domain_patterns: ["*.edu"] }; },
+    };
+  }
+  throw new Error("unexpected fetch: " + url);
+};
+
+const { initBrowse, getBrowseState, applySelectedSources } = await import(process.argv[1]);
+initBrowse(root);
+await new Promise((resolve) => setTimeout(resolve, 0));
+
+const initial = { checked: master.checked, indeterminate: master.indeterminate };
+
+master.checked = true;
+await master.dispatch("change");
+const selectedAll = sources.map((checkbox) => checkbox.checked);
+const savedAll = getBrowseState().sources;
+
+applySelectedSources(["gbooks", "whitelist_jstor.org"]);
+const restored = sources.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
+const restoredMaster = { checked: master.checked, indeterminate: master.indeterminate };
+
+sources[1].checked = false;
+await menu.dispatch("change", { target: sources[1] });
+const oneSelectedMaster = { checked: master.checked, indeterminate: master.indeterminate };
+
+master.checked = false;
+await master.dispatch("change");
+const cleared = sources.map((checkbox) => checkbox.checked);
+const clearedMaster = { checked: master.checked, indeterminate: master.indeterminate };
+
+process.stdout.write(JSON.stringify({
+  initial,
+  selectedAll,
+  savedAll,
+  restored,
+  restoredMaster,
+  oneSelectedMaster,
+  cleared,
+  clearedMaster,
+}));
+"""
+
+
 BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 globalThis.localStorage = { getItem() { return null; }, setItem() {} };
@@ -4498,6 +4606,17 @@ def browse_runtime(source: str | None = None) -> dict:
     )
 
 
+def browse_filter_runtime(source: str | None = None) -> dict:
+    browse_source = source or read_text("static/js/pages/browse.js")
+    browse_source += "\nexport { getBrowseState, applySelectedSources };\n"
+    return run_task6_module_harness(
+        browse_source,
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_FILTER_RUNTIME_HARNESS,
+        "browse filters",
+    )
+
+
 def url_query_browse_runtime(source: str | None = None) -> dict:
     return run_task6_module_harness(
         source or read_text("static/js/pages/browse.js"),
@@ -4942,6 +5061,36 @@ def test_browse_defaults_only_dedicated_sources_and_leaves_dynamic_whitelist_opt
     assert " checked" not in rendered["whitelistMarkup"]
 
 
+def test_browse_filters_menu_is_viewport_bounded_and_scrollable():
+    declarations = css_rule_group_declarations(
+        read_text("static/css/custom.css"),
+        (".browse-dropdown-menu",),
+    )
+
+    assert declarations["max-height"] == "min(32rem, calc(100vh - 8rem))"
+    assert declarations["overflow-y"] == "auto"
+
+
+def test_browse_master_source_checkbox_controls_all_sources_and_restores_state():
+    rendered = browse_filter_runtime()
+
+    assert rendered["initial"] == {"checked": False, "indeterminate": True}
+    assert rendered["selectedAll"] == [True, True, True, True, True, True]
+    assert rendered["savedAll"] == [
+        "wikipedia",
+        "gbooks",
+        "pubmed",
+        "scholar",
+        "whitelist_jstor.org",
+        "whitelist_*.edu",
+    ]
+    assert rendered["restored"] == ["gbooks", "whitelist_jstor.org"]
+    assert rendered["restoredMaster"] == {"checked": False, "indeterminate": True}
+    assert rendered["oneSelectedMaster"] == {"checked": False, "indeterminate": True}
+    assert rendered["cleared"] == [False, False, False, False, False, False]
+    assert rendered["clearedMaster"] == {"checked": False, "indeterminate": False}
+
+
 def test_browse_grouped_paging_reveals_each_cached_rank_without_refetching():
     rendered = grouped_browse_runtime()
 
@@ -5168,6 +5317,22 @@ def test_task6_browse_structure_preserves_light_output_and_supports_mobile_stack
         "false",
         "browseFiltersMenu",
     )
+    filters_menu = search_shell.select_one("#browseFiltersMenu")
+    assert filters_menu is not None
+
+    source_master = search_shell.select_one("#filterAllSources")
+    assert source_master is not None
+    assert source_master.get("type") == "checkbox"
+    source_master_label = search_shell.select_one('label[for="filterAllSources"]')
+    assert source_master_label is not None
+    assert source_master_label.get_text(" ", strip=True) == "All sources"
+
+    dedicated_sources = search_shell.select(
+        "#filterWikipedia, #filterGBooks, #filterPubMed, #filterScholar"
+    )
+    assert len(dedicated_sources) == 4
+    assert all("browse-source-checkbox" in node.get("class", ()) for node in dedicated_sources)
+    assert "browse-source-checkbox" not in source_master.get("class", ())
 
     layout = page.select_one(".browse-results-layout.d-flex")
     sidebar = layout.select_one("#sidebarContainer.browse-sidebar")
@@ -5183,6 +5348,7 @@ def test_task6_browse_structure_preserves_light_output_and_supports_mobile_stack
         "goBtn",
         "filtersDropdown",
         "browseFiltersMenu",
+        "filterAllSources",
         "filterWikipedia",
         "filterGBooks",
         "filterPubMed",

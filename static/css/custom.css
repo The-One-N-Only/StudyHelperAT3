@@ -63,6 +63,8 @@ button, .btn, a, input, select, textarea {
     top: calc(100% + 0.25rem);
     right: 0;
     display: none;
+    max-height: min(32rem, calc(100vh - 8rem));
+    overflow-y: auto;
     z-index: 1200;
     background-color: var(--bs-body-bg);
     border: 1px solid var(--bs-border-color);
