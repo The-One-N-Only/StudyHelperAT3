@@ -1,5 +1,6 @@
 import json
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON, func, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 import time
 
@@ -28,6 +29,7 @@ class User(Base):
     workspace_items = relationship("WorkspaceItem", back_populates="user")
     uploaded_files = relationship("UploadedFile", back_populates="user")
     notes = relationship("Note", back_populates="user")
+    workspace_chat_messages = relationship("WorkspaceChatMessage", back_populates="user")
 
 class Item(Base):
     __tablename__ = "items"
@@ -40,7 +42,7 @@ class Item(Base):
     thumb_height: Mapped[int] = mapped_column(nullable=False)
     source_url: Mapped[str] = mapped_column(String(1023), nullable=False)
     source_name: Mapped[str] = mapped_column(String(64), nullable=False)
-    source_id: Mapped[str] = mapped_column(String(16), nullable=False, unique=True)
+    source_id: Mapped[str] = mapped_column(String(1023), nullable=False, unique=True)
     # PubMed and academic metadata
     abstract: Mapped[str] = mapped_column(Text, nullable=True)
     authors: Mapped[str] = mapped_column(Text, nullable=True)
@@ -97,6 +99,21 @@ class Workspace(Base):
     user = relationship("User", back_populates="workspaces")
     items = relationship("WorkspaceItem", back_populates="workspace")
     notes = relationship("Note", back_populates="workspace")
+    chat_messages = relationship("WorkspaceChatMessage", back_populates="workspace")
+
+
+class WorkspaceChatMessage(Base):
+    __tablename__ = "workspace_chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    time_created: Mapped[int] = mapped_column(nullable=False)
+
+    user = relationship("User", back_populates="workspace_chat_messages")
+    workspace = relationship("Workspace", back_populates="chat_messages")
 
 class WorkspaceItem(Base):
     __tablename__ = "workspace_items"
@@ -257,31 +274,44 @@ def create_local_user(email, username, password_hash, name=None):
         }
 
 
+def _item_to_dict(item):
+    return {
+        "id": item.id,
+        "title": item.title,
+        "description": item.description,
+        "thumb_url": item.thumb_url,
+        "thumb_mime": item.thumb_mime,
+        "thumb_height": item.thumb_height,
+        "source_url": item.source_url,
+        "source_name": item.source_name,
+        "source_id": item.source_id,
+        "abstract": item.abstract,
+        "authors": item.authors,
+        "journal": item.journal,
+        "year": item.year,
+        "volume": item.volume,
+        "issue": item.issue,
+        "doi": item.doi,
+    }
+
 def get_item_by_source(source_name, source_id, user_id, add_to_recent_search):
     with SessionLocal() as session:
         item = session.query(Item).filter_by(source_name=source_name, source_id=source_id).first()
         if item:
             if add_to_recent_search:
                 append_to_recently_searched(user_id, item.id)
-            return {
-                "id": item.id,
-                "title": item.title,
-                "description": item.description,
-                "thumb_url": item.thumb_url,
-                "thumb_mime": item.thumb_mime,
-                "thumb_height": item.thumb_height,
-                "source_url": item.source_url,
-                "source_name": item.source_name,
-                "source_id": item.source_id,
-                "abstract": item.abstract,
-                "authors": item.authors,
-                "journal": item.journal,
-                "year": item.year,
-                "volume": item.volume,
-                "issue": item.issue,
-                "doi": item.doi
-            }
+            return _item_to_dict(item)
         return None
+
+def get_item_by_source_id(source_id, user_id, add_to_recent_search):
+    """Find URL-backed items regardless of historical display-name casing."""
+    with SessionLocal() as session:
+        item = session.query(Item).filter_by(source_id=source_id).first()
+        if not item:
+            return None
+        if add_to_recent_search:
+            append_to_recently_searched(user_id, item.id)
+        return _item_to_dict(item)
 
 def create_item(item_data, user_id, add_to_recent_search):
     with SessionLocal() as session:
@@ -291,24 +321,51 @@ def create_item(item_data, user_id, add_to_recent_search):
         session.refresh(new_item)
         if add_to_recent_search:
             append_to_recently_searched(user_id, new_item.id)
-        return {
-            "id": new_item.id,
-            "title": new_item.title,
-            "description": new_item.description,
-            "thumb_url": new_item.thumb_url,
-            "thumb_mime": new_item.thumb_mime,
-            "thumb_height": new_item.thumb_height,
-            "source_url": new_item.source_url,
-            "source_name": new_item.source_name,
-            "source_id": new_item.source_id,
-            "abstract": new_item.abstract,
-            "authors": new_item.authors,
-            "journal": new_item.journal,
-            "year": new_item.year,
-            "volume": new_item.volume,
-            "issue": new_item.issue,
-            "doi": new_item.doi
-        }
+        return _item_to_dict(new_item)
+
+def _get_and_sync_item_by_source_id(item_data, user_id, add_to_recent_search):
+    """Return an existing URL row after applying security-sensitive fields."""
+    with SessionLocal() as session:
+        item = session.query(Item).filter_by(source_id=item_data["source_id"]).first()
+        if not item:
+            return None
+
+        expected_thumb_url = item_data.get("thumb_url")
+        if expected_thumb_url is not None and item.thumb_url != expected_thumb_url:
+            item.thumb_url = expected_thumb_url
+            item.thumb_mime = item_data.get("thumb_mime", item.thumb_mime)
+            item.thumb_height = item_data.get("thumb_height", item.thumb_height)
+            session.commit()
+            session.refresh(item)
+
+        result = _item_to_dict(item)
+
+    if add_to_recent_search:
+        append_to_recently_searched(user_id, result["id"])
+    return result
+
+def get_or_create_item_by_source_id(item_data, user_id, add_to_recent_search):
+    """Reuse URL-backed rows and recover cleanly from concurrent insert races."""
+    existing = _get_and_sync_item_by_source_id(
+        item_data,
+        user_id,
+        add_to_recent_search,
+    )
+    if existing:
+        return existing
+
+    try:
+        return create_item(item_data, user_id, add_to_recent_search)
+    except IntegrityError:
+        # Another source worker may have inserted the same Serp URL first.
+        existing = _get_and_sync_item_by_source_id(
+            item_data,
+            user_id,
+            add_to_recent_search,
+        )
+        if existing:
+            return existing
+        raise
 
 def get_saved_items(user_id):
     with SessionLocal() as session:
@@ -680,6 +737,65 @@ def get_workspace(user_id, workspace_id):
             "note_count": len(workspace.notes) if workspace.notes else 0
         }
 
+def get_workspace_chat_messages(workspace_id: int, user_id: int) -> list[dict]:
+    """Return oldest-first chat messages for a workspace owned by the user."""
+    with SessionLocal() as session:
+        workspace_exists = session.query(Workspace.id).filter_by(
+            id=workspace_id,
+            user_id=user_id,
+        ).first()
+        if not workspace_exists:
+            return []
+
+        messages = session.query(WorkspaceChatMessage).filter_by(
+            workspace_id=workspace_id,
+            user_id=user_id,
+        ).order_by(
+            WorkspaceChatMessage.time_created.asc(),
+            WorkspaceChatMessage.id.asc(),
+        ).all()
+        return [{
+            "id": message.id,
+            "role": message.role,
+            "content": message.content,
+            "time_created": message.time_created,
+        } for message in messages]
+
+def append_workspace_chat_turn(
+    user_id: int,
+    workspace_id: int,
+    user_content: str,
+    assistant_content: str,
+) -> bool:
+    """Atomically persist one user/assistant turn for an owned workspace."""
+    with SessionLocal() as session:
+        workspace_exists = session.query(Workspace.id).filter_by(
+            id=workspace_id,
+            user_id=user_id,
+        ).first()
+        if not workspace_exists:
+            return False
+
+        created_at = int(time.time())
+        session.add_all([
+            WorkspaceChatMessage(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                role="user",
+                content=user_content,
+                time_created=created_at,
+            ),
+            WorkspaceChatMessage(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                role="assistant",
+                content=assistant_content,
+                time_created=created_at,
+            ),
+        ])
+        session.commit()
+        return True
+
 def create_workspace(user_id, name):
     """Create a new workspace"""
     with SessionLocal() as session:
@@ -712,13 +828,14 @@ def rename_workspace(workspace_id, user_id, new_name):
         }
 
 def delete_workspace(workspace_id, user_id):
-    """Delete a workspace and all its items/notes"""
+    """Delete a workspace and its owned items, notes, and chat history."""
     with SessionLocal() as session:
         workspace = session.query(Workspace).filter_by(id=workspace_id, user_id=user_id).first()
         if not workspace:
             return False
         session.query(WorkspaceItem).filter_by(workspace_id=workspace_id).delete()
         session.query(Note).filter_by(workspace_id=workspace_id).delete()
+        session.query(WorkspaceChatMessage).filter_by(workspace_id=workspace_id).delete()
         session.delete(workspace)
         session.commit()
         return True

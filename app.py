@@ -45,6 +45,7 @@ Session(app)
 db.setup_db()
 
 LOGIN_EXEMPT = {'login', 'register', 'static', 'not_found', 'internal_error', 'handle_exception'}
+BROWSE_SERVER_TIMEOUT_SECONDS = 25
 
 @app.before_request
 def require_login():
@@ -229,49 +230,30 @@ def browse_search():
     filters = data.get('filters', {})
     user_id = session.get('user_id')
 
-    # If specific source provided (backward compatible)
-    if source:
-        if source == 'wikipedia':
-            results = search.wikipedia(query, num_results, user_id=user_id)
-        elif source == 'gbooks':
-            results = search.gbooks(query, num_results, filters, user_id=user_id)
-        elif source == 'pubmed':
-            mesh_terms = filters.get('mesh_terms', [])
-            min_date = filters.get('min_date', None)
-            max_date = filters.get('max_date', None)
-            results = pubmed.search(query, num_results, mesh_terms=mesh_terms, min_date=min_date, max_date=max_date, user_id=user_id)
-        elif source == 'whitelist':
-            results = search.whitelist_search(query, num_results, user_id=user_id)
-        elif source.startswith('whitelist_'):
-            domain = source.split('_', 1)[1]
-            results = search.whitelist_search(query, num_results, domains=[domain], user_id=user_id)
-        else:
-            results = []
-        logging.info(f"User {user_id} searched for '{query}' on {source}")
+    if not search.SERP_API_KEY:
+        return jsonify({
+            'status': False,
+            'error': 'Browse search is not configured. Add SERP_API_KEY and restart StudyLib.'
+        }), 503
 
-    # If multiple sources provided (new: filter-based search)
-    elif sources:
-        results = []
-        for source in sources:
-            source_results = []
-            try:
-                if source == 'wikipedia':
-                    source_results = search.wikipedia(query, num_results, user_id=user_id)
-                elif source == 'gbooks':
-                    source_results = search.gbooks(query, num_results, filters, user_id=user_id)
-                elif source == 'pubmed':
-                    mesh_terms = filters.get('mesh_terms', [])
-                    min_date = filters.get('min_date', None)
-                    max_date = filters.get('max_date', None)
-                    source_results = pubmed.search(query, num_results, mesh_terms=mesh_terms, min_date=min_date, max_date=max_date, user_id=user_id)
-                results.extend(source_results or [])
-            except Exception as e:
-                logging.error(f"Failed to search {source}: {str(e)}")
+    requested_sources = [source] if source else list(dict.fromkeys(sources or []))
+    results = []
+    try:
+        for requested_source in requested_sources:
+            results.extend(search.browse_serpapi_search(
+                query,
+                num_results,
+                requested_source,
+                filters,
+                user_id=user_id,
+            ))
+    except search.SerpApiProviderError:
+        return jsonify({
+            'status': False,
+            'error': 'Browse search could not reach SerpAPI. Try again shortly.'
+        }), 502
 
-        logging.info(f"User {user_id} searched for '{query}' on sources: {sources}")
-
-    else:
-        results = []
+    logging.info(f"User {user_id} searched for '{query}' on sources: {requested_sources}")
 
     return jsonify({'status': True, 'results': results})
 
@@ -288,14 +270,11 @@ def browse_search_all():
     if not query or not sources:
         return jsonify({'status': False, 'error': 'Query and sources required'}), 400
 
-    # Define per-source search tasks.
-    search_tasks = {
-        'wikipedia': (search.wikipedia, (query, num_results)),
-        'gbooks': (search.gbooks, (query, num_results, filters)),
-        'pubmed': (pubmed.search, (query, num_results, filters.get('mesh_terms', []), filters.get('min_date'), filters.get('max_date'))),
-        'scholar': (search.google_scholar, (query, num_results,)),
-        'whitelist': (search.whitelist_search, (query, num_results,))
-    }
+    if not search.SERP_API_KEY:
+        return jsonify({
+            'status': False,
+            'error': 'Browse search is not configured. Add SERP_API_KEY and restart StudyLib.'
+        }), 503
 
     requested_sources = []
     seen_sources = set()
@@ -311,33 +290,72 @@ def browse_search_all():
             source for source in requested_sources if source != 'whitelist'
         ]
 
+    selected_sources = set(requested_sources)
+    dedicated_source_by_domain = {
+        domain: source
+        for source, (domain, _source_name) in search.BROWSE_SOURCE_DOMAINS.items()
+    }
+    requested_sources = [
+        source
+        for source in requested_sources
+        if not (
+            source.startswith('whitelist_')
+            and dedicated_source_by_domain.get(source.split('_', 1)[1])
+            in selected_sources
+        )
+    ]
+
     grouped_results = {}
     source_counts = {}
+    source_errors = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
-        futures = {}
-
-        for source in requested_sources:
-            if source in search_tasks:
-                func, args = search_tasks[source]
-                futures[source] = executor.submit(func, *args, user_id=user_id)
-            elif source.startswith('whitelist_'):
-                domain = source.split('_', 1)[1]
-                futures[source] = executor.submit(search.whitelist_search, query, num_results, domains=[domain], user_id=user_id)
-
-        for source in futures:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+    futures = {
+        source: executor.submit(
+            search.browse_serpapi_search,
+            query,
+            num_results,
+            source,
+            filters,
+            user_id=user_id,
+        )
+        for source in requested_sources
+    }
+    try:
+        done, not_done = concurrent.futures.wait(
+            futures.values(),
+            timeout=BROWSE_SERVER_TIMEOUT_SECONDS,
+        )
+        for source, future in futures.items():
+            if future in not_done:
+                future.cancel()
+                logging.warning("SerpAPI Browse search timed out for source %s", source)
+                source_errors[source] = 'Search timed out'
+                grouped_results[source] = []
+                source_counts[source] = 0
+                continue
             try:
-                source_results = futures[source].result(timeout=15) or []
+                source_results = future.result() or []
                 grouped_results[source] = source_results
                 source_counts[source] = len(source_results)
-            except concurrent.futures.TimeoutError:
-                logging.warning(f"Search timeout for source: {source}")
+            except search.SerpApiProviderError:
+                source_errors[source] = 'SerpAPI search failed'
                 grouped_results[source] = []
                 source_counts[source] = 0
-            except Exception as e:
-                logging.error(f"Search failed for {source}: {str(e)}")
+            except Exception:
+                logging.exception("Browse search failed for source %s", source)
+                source_errors[source] = 'Search failed'
                 grouped_results[source] = []
                 source_counts[source] = 0
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    if futures and len(source_errors) == len(futures):
+        return jsonify({
+            'status': False,
+            'error': 'Browse search could not reach SerpAPI. Try again shortly.',
+            'source_errors': source_errors,
+        }), 502
 
     flattened = [
         (source, item)
@@ -365,7 +383,8 @@ def browse_search_all():
         'status': True,
         'results': all_results,
         'grouped_results': deduplicated_groups,
-        'source_counts': source_counts
+        'source_counts': source_counts,
+        'source_errors': source_errors,
     })
 
 @app.route('/api/browse/summary', methods=['POST'])
@@ -481,6 +500,23 @@ def get_workspace(workspace_id):
         return jsonify({'status': False, 'error': 'Workspace not found'}), 404
 
     return jsonify({'status': True, 'workspace': workspace})
+
+@app.route('/api/workspaces/<int:workspace_id>/chat', methods=['GET'])
+def get_workspace_chat(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+
+    workspace = db.get_workspace(user_id, workspace_id)
+    if not workspace:
+        return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+
+    messages = db.get_workspace_chat_messages(workspace_id, user_id)
+    return jsonify({
+        'status': True,
+        'messages': messages,
+        'ai_configured': answer.client is not None,
+    })
 
 @app.route('/api/workspaces', methods=['POST'])
 def create_workspace():
@@ -786,14 +822,73 @@ def answer_chat():
     if not user_id:
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
     
-    data = request.json
+    data = request.get_json(silent=True) or {}
     messages = data.get('messages', [])
     atn = data.get('atn')
+    workspace_id = data.get('workspace_id')
     
     if not messages:
         return jsonify({'status': False, 'error': 'No messages provided'}), 400
+
+    latest_user_content = None
+    if workspace_id is not None:
+        if isinstance(workspace_id, bool):
+            return jsonify({'status': False, 'error': 'Invalid workspace ID'}), 400
+        try:
+            workspace_id = int(workspace_id)
+        except (TypeError, ValueError):
+            return jsonify({'status': False, 'error': 'Invalid workspace ID'}), 400
+
+        workspace = db.get_workspace(user_id, workspace_id)
+        if not workspace:
+            return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+
+        latest_user_content = next((
+            message.get('content')
+            for message in reversed(messages)
+            if isinstance(message, dict)
+            and message.get('role') == 'user'
+            and isinstance(message.get('content'), str)
+            and message.get('content').strip()
+        ), None)
+        if latest_user_content is None:
+            return jsonify({'status': False, 'error': 'No user message provided'}), 400
     
     result = answer.chat_with_sources(messages, user_id, atn=atn)
+    if isinstance(result, str):
+        result = {'status': True, 'response': result}
+    elif not isinstance(result, dict):
+        logging.error("AI chat returned an invalid response type for user %s", user_id)
+        result = {'status': False, 'error': 'Alexander returned an invalid response.'}
+
+    if workspace_id is not None and result.get('status') is True:
+        assistant_content = result.get('response')
+        if not isinstance(assistant_content, str) or not assistant_content.strip():
+            logging.error("AI chat returned no response text for user %s", user_id)
+            return jsonify({
+                'status': False,
+                'error': 'Alexander returned an invalid response.',
+            }), 502
+        try:
+            persisted = db.append_workspace_chat_turn(
+                user_id,
+                workspace_id,
+                latest_user_content,
+                assistant_content,
+            )
+        except Exception:
+            logging.exception(
+                "Failed to persist chat turn for user %s workspace %s",
+                user_id,
+                workspace_id,
+            )
+            return jsonify({
+                'status': False,
+                'error': 'Alexander answered, but the conversation could not be saved.',
+            }), 500
+        if not persisted:
+            return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+
     logging.info(f"User {user_id} had multi-turn conversation")
     return jsonify(result)
 

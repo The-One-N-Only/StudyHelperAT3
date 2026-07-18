@@ -180,6 +180,35 @@ function safeHttpUrl(value) {
     }
 }
 
+function googleBooksVolumeId(item) {
+    const sourceId = textValue(item?.source_id).trim();
+    if (sourceId && !safeHttpUrl(sourceId) && /^[A-Za-z0-9._-]+$/u.test(sourceId)) {
+        return sourceId;
+    }
+
+    for (const candidate of [item?.source_url, item?.source_id]) {
+        const safeUrl = safeHttpUrl(candidate);
+        if (!safeUrl) continue;
+
+        const parsed = new URL(safeUrl);
+        if (parsed.hostname.toLowerCase() !== 'books.google.com') continue;
+
+        const queryId = (parsed.searchParams.get('id') || '').trim();
+        if (queryId) return queryId;
+
+        const editionMatch = parsed.pathname.match(/\/books\/edition\/[^/]+\/([^/]+)$/u);
+        if (editionMatch?.[1]) {
+            try {
+                return decodeURIComponent(editionMatch[1]);
+            } catch (_err) {
+                return editionMatch[1];
+            }
+        }
+    }
+
+    return '';
+}
+
 function loadGoogleBooksApi() {
     if (googleBooksApiPromise) return googleBooksApiPromise;
 
@@ -273,7 +302,7 @@ async function renderGoogleBooksViewer(body, item, generation) {
     const accessInfo = item?.accessInfo && typeof item.accessInfo === 'object'
         ? item.accessInfo
         : {};
-    if (accessInfo.embeddable !== true) {
+    if (accessInfo.embeddable === false) {
         renderGoogleBooksFallback(
             body,
             item,
@@ -282,7 +311,7 @@ async function renderGoogleBooksViewer(body, item, generation) {
         return;
     }
 
-    const volumeId = textValue(item?.source_id).trim();
+    const volumeId = googleBooksVolumeId(item);
     if (!volumeId) {
         renderGoogleBooksFallback(
             body,

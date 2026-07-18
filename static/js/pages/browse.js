@@ -5,7 +5,8 @@ import { createCard } from '../card.js';
 
 const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'scholar'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
-const BROWSE_STATE_VERSION = 1;
+const BROWSE_STATE_VERSION = 2;
+const BROWSE_REQUEST_TIMEOUT_MS = 30000;
 const WHITELIST_GROUP_PAGE_SIZE = 1;
 const DEDUPE_IDENTITY_PROPERTY = '_dedupe_identity';
 const CANONICAL_SOURCE_URL_PROPERTY = '_canonical_source_url';
@@ -133,6 +134,15 @@ function resultCanonicalSourceUrl(item) {
     return canonicalSourceUrl(item.source_url);
 }
 
+function sanitizeBrowseResult(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+    return {
+        ...item,
+        // Browse results come from SerpAPI; never load its untrusted image hosts.
+        thumb_url: '',
+    };
+}
+
 function deduplicateResults(results) {
     if (!Array.isArray(results)) return [];
 
@@ -255,6 +265,90 @@ async function loadWhitelistDomains() {
     }
 }
 
+function getInitialBrowseQuery() {
+    try {
+        const params = new URLSearchParams(window.location?.search || '');
+        return (params.get('q') || params.get('query') || '').trim();
+    } catch (_err) {
+        return '';
+    }
+}
+
+function updateBrowseUrl(query) {
+    if (!window.history?.replaceState) return;
+
+    const pathname = window.location?.pathname || '/browse';
+    const params = new URLSearchParams(window.location?.search || '');
+    params.set('q', query);
+    const queryString = params.toString();
+    window.history.replaceState({}, '', `${pathname}${queryString ? `?${queryString}` : ''}`);
+}
+
+function browseRequestError(result, fallbackMessage) {
+    const serverMessage = result
+        && typeof result === 'object'
+        && !Array.isArray(result)
+        && typeof result.error === 'string'
+        ? result.error.trim()
+        : '';
+    const error = new Error(serverMessage || fallbackMessage);
+    error.isSafeBrowseError = true;
+    return error;
+}
+
+async function fetchBrowseResults(payload) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), BROWSE_REQUEST_TIMEOUT_MS);
+
+    try {
+        const response = await fetch('/api/browse/search-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+        });
+        let result = null;
+        try {
+            result = await response.json();
+        } catch (_err) {
+            throw browseRequestError(null, 'Browse search returned an invalid response.');
+        }
+        if (!response.ok || !result || result.status !== true) {
+            throw browseRequestError(result, 'Browse search failed. Try again shortly.');
+        }
+        return result;
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            throw browseRequestError(null, 'Browse search timed out. Try again.');
+        }
+        if (error?.isSafeBrowseError) throw error;
+        throw browseRequestError(
+            null,
+            'Browse search could not reach SerpAPI. Try again shortly.',
+        );
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+function sourceErrorCount(result) {
+    const sourceErrors = result?.source_errors;
+    if (!sourceErrors || typeof sourceErrors !== 'object' || Array.isArray(sourceErrors)) {
+        return 0;
+    }
+    return Object.keys(sourceErrors).length;
+}
+
+function showPartialSourceWarning(result) {
+    const failedCount = sourceErrorCount(result);
+    if (failedCount > 0) {
+        showToast(
+            `${failedCount} selected source${failedCount === 1 ? '' : 's'} could not be searched. Showing available results.`,
+            'warning',
+        );
+    }
+}
+
 export function initBrowse(root) {
     pageRoot = root;
     pageRoot.innerHTML = `
@@ -336,51 +430,26 @@ export function initBrowse(root) {
                         <p class="text-muted">Use the search bar above to find academic resources from trusted sources</p>
                     </div>
                 </div>
-                <div id="googleCseContainer" class="mt-4"></div>
             </div>
         </div>
             </div>
         </div>
     `;
 
-    loadWhitelistDomains().then(() => {
-        renderWhitelistCheckboxes();
-    });
+    const initialQuery = getInitialBrowseQuery();
 
     registerEvents();
     renderSidebar();
-    ensureGoogleCustomSearch();
     restoreBrowseState();
-}
 
-function ensureGoogleCustomSearch() {
-    const existingScript = document.getElementById('google-cse-script');
-    if (existingScript) {
-        if (window.google?.search?.cse?.element) {
-            window.google.search.cse.element.render({
-                div: 'googleCseContainer',
-                tag: 'search'
-            });
+    loadWhitelistDomains().then(() => {
+        renderWhitelistCheckboxes();
+        if (initialQuery) {
+            const searchInput = pageRoot.querySelector('#searchInput');
+            if (searchInput) searchInput.value = initialQuery;
+            performSearch({ updateUrl: false });
         }
-        return;
-    }
-
-    window.__gcse = {
-        callback: function() {
-            if (window.google?.search?.cse?.element) {
-                window.google.search.cse.element.render({
-                    div: 'googleCseContainer',
-                    tag: 'search'
-                });
-            }
-        }
-    };
-
-    const script = document.createElement('script');
-    script.id = 'google-cse-script';
-    script.async = true;
-    script.src = 'https://cse.google.com/cse.js?cx=7675fc4c77c124dee';
-    document.body.appendChild(script);
+    });
 }
 
 function registerEvents() {
@@ -390,9 +459,13 @@ function registerEvents() {
     const dropdownMenu = pageRoot.querySelector('.browse-dropdown-menu');
     const sortingSelect = pageRoot.querySelector('#filterSorting');
 
-    goBtn.addEventListener('click', performSearch);
+    goBtn.addEventListener('click', () => {
+        performSearch();
+    });
     searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') performSearch();
+        if (e.key === 'Enter') {
+            performSearch();
+        }
     });
 
     filtersDropdown?.addEventListener('click', (event) => {
@@ -547,7 +620,9 @@ function deduplicateGroupedResults(groupedResults) {
         ? groupedResults
         : {};
     const entries = Object.entries(safeGroups).flatMap(([source, items]) => (
-        Array.isArray(items) ? items.map((item) => ({ source, item })) : []
+        Array.isArray(items)
+            ? items.map((item) => ({ source, item: sanitizeBrowseResult(item) }))
+            : []
     ));
     const uniqueItems = deduplicateResults(entries.map(({ item }) => item));
     const deduplicated = Object.fromEntries(
@@ -758,6 +833,7 @@ function restoreBrowseState() {
         const state = JSON.parse(stateString);
         if (!state || typeof state !== 'object') return;
         const isCurrentState = state.version === BROWSE_STATE_VERSION;
+        const preservesExplicitSources = isCurrentState || state.version === 1;
 
         const searchInput = pageRoot.querySelector('#searchInput');
         const yearFromEl = pageRoot.querySelector('#filterYearFrom');
@@ -773,7 +849,7 @@ function restoreBrowseState() {
                 .filter(Boolean)
             : [];
         const restoredSources = Array.from(new Set(
-            isCurrentState
+            preservesExplicitSources
                 ? storedSources
                 : storedSources.filter(
                     (source) => !source.toLowerCase().startsWith('whitelist_')
@@ -868,7 +944,7 @@ function sortResults(results, sortingCriteria) {
     return sorted;
 }
 
-function performSearch() {
+async function performSearch(options = {}) {
     const query = pageRoot.querySelector('#searchInput').value.trim();
     if (!query) return;
 
@@ -877,6 +953,8 @@ function performSearch() {
         showToast('Please select at least one source', 'warning');
         return;
     }
+
+    if (options.updateUrl !== false) updateBrowseUrl(query);
 
     const generation = ++searchGeneration;
     const filters = buildFilters();
@@ -900,44 +978,36 @@ function performSearch() {
     resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Searching...</p></div>';
     renderSidebar(currentSourceCounts, currentSearchResults);
 
-    fetch('/api/browse/search-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, sources, num_results: 10, filters })
-    })
-        .then((r) => {
-            if (generation !== searchGeneration) return null;
-            if (!r.ok) throw new Error('Search request failed');
-            return r.json();
-        })
-        .then((result) => {
-            if (generation !== searchGeneration || !result) return;
-            if (result.status) {
-                currentGroupedResults = normalizedGroupedResults(
-                    result.grouped_results,
-                    result.results,
-                );
-                currentSearchResults = deduplicateResults(
-                    Object.values(currentGroupedResults).flat(),
-                );
-                currentSourceCounts = result.source_counts || {};
-                saveBrowseState();
-                renderCurrentResults();
-            } else {
-                showNoResults();
-            }
-        })
-        .catch(() => {
-            if (generation !== searchGeneration) return;
-            showToast('Search failed', 'danger');
-            showNoResults();
-        })
-        .finally(() => {
-            if (generation !== searchGeneration) return;
-            isInitialSearchPending = false;
-            const currentSortingSelect = pageRoot.querySelector('#filterSorting');
-            if (currentSortingSelect) currentSortingSelect.disabled = false;
+    try {
+        const result = await fetchBrowseResults({
+            query,
+            sources,
+            num_results: 10,
+            filters,
         });
+        if (generation !== searchGeneration) return;
+
+        currentGroupedResults = normalizedGroupedResults(
+            result.grouped_results,
+            result.results,
+        );
+        currentSearchResults = deduplicateResults(
+            Object.values(currentGroupedResults).flat(),
+        );
+        currentSourceCounts = result.source_counts || {};
+        saveBrowseState();
+        renderCurrentResults();
+        showPartialSourceWarning(result);
+    } catch (error) {
+        if (generation !== searchGeneration) return;
+        showToast(error.message, 'danger');
+        showNoResults();
+    } finally {
+        if (generation !== searchGeneration) return;
+        isInitialSearchPending = false;
+        const currentSortingSelect = pageRoot.querySelector('#filterSorting');
+        if (currentSortingSelect) currentSortingSelect.disabled = false;
+    }
 }
 
 function renderResults(results) {
@@ -974,12 +1044,14 @@ function renderResults(results) {
 
         const loadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
         if (loadMoreBtn) {
-            loadMoreBtn.addEventListener('click', loadMoreResults);
+            loadMoreBtn.addEventListener('click', () => {
+                loadMoreResults();
+            });
         }
     }
 }
 
-function loadMoreResults() {
+async function loadMoreResults() {
     if (
         isInitialSearchPending
         || isLoadingMore
@@ -1014,74 +1086,61 @@ function loadMoreResults() {
         loadMoreSpinner.style.display = 'inline-block';
     }
 
-    fetch('/api/browse/search-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    try {
+        const result = await fetchBrowseResults({
             query: lastSearchQuery,
             sources: lastSearchSources,
             num_results: nextWindow,
-            filters: lastSearchFilters || {}
-        })
-    })
-        .then((r) => {
-            if (generation !== searchGeneration) return null;
-            if (!r.ok) throw new Error('Load more request failed');
-            return r.json();
-        })
-        .then((result) => {
-            if (generation !== searchGeneration || !result) return;
-            if (result.status) {
-                const incomingGroups = normalizedGroupedResults(
-                    result.grouped_results,
-                    result.results,
-                );
-                const previousCount = currentSearchResults.length;
-                currentGroupedResults = mergeGroupedResults(
-                    currentGroupedResults,
-                    incomingGroups,
-                );
-                currentSearchResults = deduplicateResults(
-                    Object.values(currentGroupedResults).flat(),
-                );
-                const addedCount = currentSearchResults.length - previousCount;
-                resultWindow = nextWindow;
-                searchExhausted = addedCount === 0;
-                if (result.source_counts) {
-                    currentSourceCounts = result.source_counts;
-                }
-                if (addedCount > 0 && hasBufferedGroupedResults()) {
-                    currentGroupPage += 1;
-                }
-                saveBrowseState();
-                renderCurrentResults();
-            } else {
-                showToast('Failed to load more results', 'danger');
-            }
-        })
-        .catch(() => {
-            if (generation !== searchGeneration) return;
-            showToast('Failed to load more results', 'danger');
-        })
-        .finally(() => {
-            if (generation !== searchGeneration) return;
-            isLoadingMore = false;
-            const currentLoadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
-            const currentLoadMoreText = pageRoot.querySelector('#loadMoreText');
-            const currentLoadMoreSpinner = pageRoot.querySelector('#loadMoreSpinner');
-            const loadMoreUnavailable = searchExhausted && !hasBufferedGroupedResults();
-            if (currentLoadMoreBtn) {
-                currentLoadMoreBtn.disabled = loadMoreUnavailable;
-            }
-            if (currentLoadMoreText) {
-                currentLoadMoreText.textContent = loadMoreUnavailable
-                    ? 'No more results.'
-                    : 'Load More Results';
-            }
-            if (currentLoadMoreSpinner) {
-                currentLoadMoreSpinner.style.display = 'none';
-            }
+            filters: lastSearchFilters || {},
         });
+        if (generation !== searchGeneration) return;
+
+        const incomingGroups = normalizedGroupedResults(
+            result.grouped_results,
+            result.results,
+        );
+        const previousCount = currentSearchResults.length;
+        currentGroupedResults = mergeGroupedResults(
+            currentGroupedResults,
+            incomingGroups,
+        );
+        currentSearchResults = deduplicateResults(
+            Object.values(currentGroupedResults).flat(),
+        );
+        const addedCount = currentSearchResults.length - previousCount;
+        resultWindow = nextWindow;
+        searchExhausted = addedCount === 0 && sourceErrorCount(result) === 0;
+        if (result.source_counts) {
+            currentSourceCounts = result.source_counts;
+        }
+        if (addedCount > 0 && hasBufferedGroupedResults()) {
+            currentGroupPage += 1;
+        }
+        saveBrowseState();
+        renderCurrentResults();
+        showPartialSourceWarning(result);
+    } catch (error) {
+        if (generation !== searchGeneration) return;
+        showToast(error.message || 'Failed to load more results', 'danger');
+    } finally {
+        if (generation !== searchGeneration) return;
+        isLoadingMore = false;
+        const currentLoadMoreBtn = pageRoot.querySelector('#loadMoreBtn');
+        const currentLoadMoreText = pageRoot.querySelector('#loadMoreText');
+        const currentLoadMoreSpinner = pageRoot.querySelector('#loadMoreSpinner');
+        const loadMoreUnavailable = searchExhausted && !hasBufferedGroupedResults();
+        if (currentLoadMoreBtn) {
+            currentLoadMoreBtn.disabled = loadMoreUnavailable;
+        }
+        if (currentLoadMoreText) {
+            currentLoadMoreText.textContent = loadMoreUnavailable
+                ? 'No more results.'
+                : 'Load More Results';
+        }
+        if (currentLoadMoreSpinner) {
+            currentLoadMoreSpinner.style.display = 'none';
+        }
+    }
 }
 
 function showNoResults() {

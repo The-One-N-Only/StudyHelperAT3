@@ -3403,9 +3403,7 @@ root.querySelectorAll = matchingCheckboxes;
 const documentControl = new FakeElement("document");
 globalThis.document = {
   addEventListener: documentControl.addEventListener.bind(documentControl),
-  getElementById(id) {
-    return id === "google-cse-script" ? {} : null;
-  },
+  getElementById() { return null; },
   body: { appendChild() {} },
   createElement(tag) {
     const element = new FakeElement("created " + tag);
@@ -3432,8 +3430,17 @@ globalThis.document = {
     return element;
   },
 };
-globalThis.window = {};
+globalThis.window = {
+  location: { pathname: "/browse", search: "" },
+  history: { replaceState() {} },
+};
 globalThis.escapeHtml = (value) => String(value);
+const nativeSetTimeout = globalThis.setTimeout;
+globalThis.setTimeout = (callback, delay, ...args) => {
+  const timer = nativeSetTimeout(callback, delay, ...args);
+  if (delay === 30000 && typeof timer?.unref === "function") timer.unref();
+  return timer;
+};
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 """
 
@@ -3557,6 +3564,276 @@ process.stdout.write(JSON.stringify({
 """
 
 
+URL_QUERY_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.toastCalls = [];
+search.value = "";
+const historyCalls = [];
+window.location = { pathname: "/browse", search: "?q=quantum%20mechanics" };
+window.history = {
+  replaceState(state, title, url) { historyCalls.push({ state, title, url }); },
+};
+const fetchCalls = [];
+globalThis.fetch = async (url, options) => {
+  fetchCalls.push({ url, options });
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  invariant(url === "/api/browse/search-all", "unexpected URL query endpoint: " + url);
+  const body = JSON.parse(options.body);
+  return {
+    ok: true,
+    async json() {
+      return {
+        status: true,
+        results: [{
+          source_name: "Wikipedia",
+          source_id: body.query,
+          source_url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(body.query),
+          title: body.query,
+        }],
+        source_counts: { wikipedia: 1 },
+      };
+    },
+  };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await flushPromises();
+await flushPromises();
+
+const initialSearchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
+invariant(initialSearchCalls.length === 1, "URL query did not trigger one native Browse search");
+invariant(search.value === "quantum mechanics", "URL query did not populate Browse input");
+invariant(JSON.parse(initialSearchCalls[0].options.body).query === "quantum mechanics",
+  "URL query changed before native Browse request");
+invariant(historyCalls.length === 0, "initial URL query rewrote browser history");
+
+search.value = "archives";
+await go.dispatch("click");
+await flushPromises();
+const searchCalls = fetchCalls.filter((call) => call.url === "/api/browse/search-all");
+invariant(searchCalls.length === 2, "manual Browse search did not use native endpoint");
+invariant(historyCalls.length === 1, "manual Browse search did not update URL");
+invariant(historyCalls[0].url === "/browse?q=archives", "manual Browse URL is wrong");
+
+process.stdout.write(JSON.stringify({
+  query: search.value,
+  requestQueries: searchCalls.map((call) => JSON.parse(call.options.body).query),
+  historyUrls: historyCalls.map((call) => call.url),
+}));
+"""
+
+
+BROWSE_ERROR_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.toastCalls = [];
+globalThis.fetch = async (url) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  return {
+    ok: false,
+    async json() {
+      return {
+        status: false,
+        error: "Browse search is not configured. Add SERP_API_KEY and restart StudyLib.",
+      };
+    },
+  };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+
+invariant(globalThis.toastCalls.length === 1, "Browse failure did not show one toast");
+invariant(
+  globalThis.toastCalls[0][0] ===
+    "Browse search is not configured. Add SERP_API_KEY and restart StudyLib.",
+  "Browse hid the server's safe configuration error",
+);
+invariant(globalThis.toastCalls[0][1] === "danger", "Browse error toast variant changed");
+invariant(sorting.disabled === false, "Browse failure left sorting disabled");
+
+process.stdout.write(JSON.stringify({ toast: globalThis.toastCalls[0] }));
+"""
+
+
+BROWSE_TIMEOUT_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.toastCalls = [];
+const nativeClearTimeout = globalThis.clearTimeout;
+const requestTimers = [];
+const clearedTimers = [];
+globalThis.setTimeout = (callback, delay, ...args) => {
+  if (delay === 30000) {
+    const timer = { id: 100 + requestTimers.length, callback, delay };
+    requestTimers.push(timer);
+    return timer.id;
+  }
+  return nativeSetTimeout(callback, delay, ...args);
+};
+globalThis.clearTimeout = (timerId) => {
+  clearedTimers.push(timerId);
+  nativeClearTimeout(timerId);
+};
+let searchSignal = null;
+globalThis.fetch = async (url, options) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  searchSignal = options.signal;
+  return new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => {
+      const error = new Error("private timeout detail");
+      error.name = "AbortError";
+      reject(error);
+    }, { once: true });
+  });
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+invariant(requestTimers.length === 1, "Browse request timeout was not scheduled");
+invariant(requestTimers[0].delay === 30000, "Browse timeout duration changed");
+invariant(searchSignal && searchSignal.aborted === false, "Browse request lacked an active abort signal");
+requestTimers[0].callback();
+await flushPromises();
+await flushPromises();
+
+invariant(searchSignal.aborted === true, "Browse timeout did not abort request");
+invariant(globalThis.toastCalls.length === 1, "Browse timeout did not show one error");
+invariant(globalThis.toastCalls[0][0] === "Browse search timed out. Try again.",
+  "Browse timeout message changed");
+invariant(!globalThis.toastCalls[0][0].includes("private"), "private timeout detail leaked");
+invariant(sorting.disabled === false, "Browse timeout left sorting disabled");
+invariant(resultsContainer.innerHTML.includes("No results found"),
+  "Browse timeout left the loading spinner visible");
+invariant(clearedTimers.includes(requestTimers[0].id), "Browse timeout timer was not cleared");
+
+process.stdout.write(JSON.stringify({
+  toast: globalThis.toastCalls[0],
+  timeoutDelay: requestTimers[0].delay,
+  sortingDisabled: sorting.disabled,
+}));
+"""
+
+
+BROWSE_PARTIAL_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.toastCalls = [];
+globalThis.fetch = async (url) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  return {
+    ok: true,
+    async json() {
+      return {
+        status: true,
+        results: [{
+          source_name: "Wikipedia",
+          source_id: "wiki-1",
+          source_url: "https://en.wikipedia.org/wiki/Archive",
+          title: "Available result",
+        }],
+        source_counts: { wikipedia: 1, pubmed: 0 },
+        source_errors: { pubmed: "SerpAPI search failed" },
+      };
+    },
+  };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+await flushPromises();
+
+invariant(globalThis.renderedItems.length === 1, "partial Browse result was not rendered");
+invariant(globalThis.renderedItems[0].title === "Available result", "partial result changed");
+invariant(globalThis.toastCalls.length === 1, "partial Browse failure did not show one warning");
+invariant(globalThis.toastCalls[0][1] === "warning", "partial Browse warning variant changed");
+invariant(globalThis.toastCalls[0][0].includes("1 selected source"),
+  "partial Browse warning count missing");
+invariant(!globalThis.toastCalls[0][0].includes("SerpAPI search failed"),
+  "per-source provider detail leaked to warning");
+
+process.stdout.write(JSON.stringify({
+  title: globalThis.renderedItems[0].title,
+  toast: globalThis.toastCalls[0],
+}));
+"""
+
+
+BROWSE_PARTIAL_LOAD_MORE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.toastCalls = [];
+const item = {
+  source_name: "Wikipedia",
+  source_id: "wiki-1",
+  source_url: "https://en.wikipedia.org/wiki/Archive",
+  title: "Only available result",
+};
+const responses = [
+  {
+    status: true,
+    results: [item],
+    source_counts: { wikipedia: 1, pubmed: 0 },
+    source_errors: {},
+  },
+  {
+    status: true,
+    results: [item],
+    source_counts: { wikipedia: 1, pubmed: 0 },
+    source_errors: { pubmed: "SerpAPI search failed" },
+  },
+];
+const requestSizes = [];
+globalThis.fetch = async (url, options) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  requestSizes.push(JSON.parse(options.body).num_results);
+  const payload = responses.shift();
+  invariant(payload, "unexpected partial Load More request");
+  return { ok: true, async json() { return payload; } };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+await flushPromises();
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+await flushPromises();
+
+invariant(requestSizes.join(",") === "10,20", "partial Load More windows changed");
+invariant(controls.get("#loadMoreBtn").disabled === false,
+  "partial Load More failure permanently disabled retry");
+invariant(controls.get("#loadMoreText").textContent === "Load More Results",
+  "partial Load More failure changed retry label");
+invariant(globalThis.toastCalls.length === 1 && globalThis.toastCalls[0][1] === "warning",
+  "partial Load More warning missing");
+
+process.stdout.write(JSON.stringify({
+  requestSizes,
+  disabled: controls.get("#loadMoreBtn").disabled,
+  text: controls.get("#loadMoreText").textContent,
+}));
+"""
+
+
 GROUPED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 globalThis.localStorage = { getItem() { return null; }, setItem() {} };
@@ -3662,6 +3939,7 @@ const restoredState = {
       source_id: "wiki-1",
       source_url: "https://example.test/first",
       title: "Restored first",
+      thumb_url: "https://tracking.invalid/restored.jpg",
     },
     {
       source_name: " wikipedia ",
@@ -3678,12 +3956,13 @@ const restoredState = {
     ...__SERVER_METADATA_RECORDS__,
   ],
 };
+const restoredStorageWrites = [];
 globalThis.localStorage = {
   getItem(key) {
     invariant(key === "studyhelper_browse_state", "wrong restore key");
     return JSON.stringify(restoredState);
   },
-  setItem() {},
+  setItem(key, value) { restoredStorageWrites.push({ key, value }); },
 };
 const fetchCalls = [];
 globalThis.fetch = async (url, options) => {
@@ -3706,6 +3985,9 @@ await controls.get("#loadMoreBtn").dispatch("click");
 
 const searchCall = fetchCalls.find((call) => call.url === "/api/browse/search-all");
 const loadBody = searchCall ? JSON.parse(searchCall.options.body) : null;
+const upgradedState = restoredStorageWrites.length > 0
+  ? JSON.parse(restoredStorageWrites[restoredStorageWrites.length - 1].value)
+  : null;
 process.stdout.write(JSON.stringify({
   query: search.value,
   filters: {
@@ -3716,6 +3998,12 @@ process.stdout.write(JSON.stringify({
   },
   checkedSources: sourceCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value),
   renderedTitles: globalThis.renderedItems.map((item) => item.title),
+  renderedThumbnails: globalThis.renderedItems.map((item) => item.thumb_url || ""),
+  storageWrites: restoredStorageWrites.length,
+  upgradedVersion: upgradedState?.version ?? null,
+  storedThumbnails: Object.values(upgradedState?.groupedResults || {})
+    .flat()
+    .map((item) => item.thumb_url || ""),
   initialButtonDisabled,
   loadBody,
 }));
@@ -4246,6 +4534,51 @@ def browse_runtime(source: str | None = None) -> dict:
     )
 
 
+def url_query_browse_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        URL_QUERY_BROWSE_RUNTIME_HARNESS,
+        "URL query browse",
+    )
+
+
+def browse_error_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_ERROR_RUNTIME_HARNESS,
+        "Browse error",
+    )
+
+
+def browse_timeout_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_TIMEOUT_RUNTIME_HARNESS,
+        "Browse timeout",
+    )
+
+
+def browse_partial_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_PARTIAL_RUNTIME_HARNESS,
+        "partial Browse",
+    )
+
+
+def browse_partial_load_more_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_PARTIAL_LOAD_MORE_RUNTIME_HARNESS,
+        "partial Load More Browse",
+    )
+
+
 def grouped_browse_runtime(source: str | None = None) -> dict:
     return run_task6_module_harness(
         source or read_text("static/js/pages/browse.js"),
@@ -4579,6 +4912,53 @@ def test_task6_browse_runtime_keeps_go_search_listener_and_payload():
     }
 
 
+def test_home_query_runs_native_browse_search_and_manual_search_updates_url():
+    assert url_query_browse_runtime() == {
+        "query": "archives",
+        "requestQueries": ["quantum mechanics", "archives"],
+        "historyUrls": ["/browse?q=archives"],
+    }
+
+
+def test_browse_surfaces_safe_server_error_and_bounds_requests():
+    rendered = browse_error_runtime()
+    browse = read_text("static/js/pages/browse.js")
+
+    assert rendered["toast"] == [
+        "Browse search is not configured. Add SERP_API_KEY and restart StudyLib.",
+        "danger",
+    ]
+    assert "const BROWSE_REQUEST_TIMEOUT_MS = 30000;" in browse
+    assert "new AbortController()" in browse
+    assert "signal: controller.signal" in browse
+
+
+def test_browse_timeout_aborts_request_and_clears_loading_state():
+    assert browse_timeout_runtime() == {
+        "toast": ["Browse search timed out. Try again.", "danger"],
+        "timeoutDelay": 30000,
+        "sortingDisabled": False,
+    }
+
+
+def test_browse_partial_failure_renders_results_with_one_safe_warning():
+    rendered = browse_partial_runtime()
+
+    assert rendered["title"] == "Available result"
+    assert rendered["toast"] == [
+        "1 selected source could not be searched. Showing available results.",
+        "warning",
+    ]
+
+
+def test_partial_load_more_failure_keeps_retry_available():
+    assert browse_partial_load_more_runtime() == {
+        "requestSizes": [10, 20],
+        "disabled": False,
+        "text": "Load More Results",
+    }
+
+
 def test_browse_defaults_only_dedicated_sources_and_leaves_dynamic_whitelist_opt_in():
     browse = read_text("static/js/pages/browse.js")
     app_source = read_text("app.py")
@@ -4724,6 +5104,10 @@ def test_task2_restored_browse_deduplicates_legacy_and_server_metadata_state():
         "Exponent numeric",
         "Port 080",
     ]
+    assert rendered["renderedThumbnails"] == ["", "", "", "", ""]
+    assert rendered["storageWrites"] == 1
+    assert rendered["upgradedVersion"] == 2
+    assert rendered["storedThumbnails"] == ["", "", "", "", ""]
     assert rendered["initialButtonDisabled"] is False
     assert rendered["loadBody"] == {
         "query": "restored archive",
@@ -4742,12 +5126,12 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
     browse = read_text("static/js/pages/browse.js")
     rendered = legacy_browse_runtime()
 
-    assert "const BROWSE_STATE_VERSION = 1;" in browse
+    assert "const BROWSE_STATE_VERSION = 2;" in browse
     assert rendered["checkedSources"] == ["wikipedia", "gbooks", "pubmed"]
     assert rendered["renderedTitles"] == ["Legacy result"]
     assert rendered["storageWrites"] == 1
     assert rendered["upgradedState"] == {
-        "version": 1,
+        "version": 2,
         "query": "legacy archive",
         "sources": ["wikipedia", "gbooks", "pubmed"],
         "filters": {
@@ -4762,6 +5146,7 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
                 "source_id": "legacy-1",
                 "source_url": "https://en.wikipedia.org/wiki/Archive",
                 "title": "Legacy result",
+                "thumb_url": "",
             }
         ],
         "groupedResults": {
@@ -4771,6 +5156,7 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
                     "source_id": "legacy-1",
                     "source_url": "https://en.wikipedia.org/wiki/Archive",
                     "title": "Legacy result",
+                    "thumb_url": "",
                 }
             ]
         },
@@ -4784,7 +5170,11 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
 
 def test_task6_runtime_guards_catch_go_listener_and_unsaved_label_mutations():
     browse = read_text("static/js/pages/browse.js")
-    listener = "    goBtn.addEventListener('click', performSearch);\n"
+    listener = (
+        "    goBtn.addEventListener('click', () => {\n"
+        "        performSearch();\n"
+        "    });\n"
+    )
     assert browse.count(listener) == 1
     with pytest.raises(AssertionError, match="browse runtime harness failed"):
         browse_runtime(browse.replace(listener, "", 1))
@@ -4830,7 +5220,6 @@ def test_task6_browse_structure_preserves_light_output_and_supports_mobile_stack
     assert {"border-end", "p-3", "flex-shrink-0"}.issubset(sidebar.get("class", ()))
     assert {"flex-grow-1", "p-3", "overflow-y-auto"}.issubset(pane.get("class", ()))
     assert pane.select_one("#resultsContainer") is not None
-    assert pane.select_one("#googleCseContainer") is not None
 
     expected_ids = {
         "searchInput",
@@ -4847,15 +5236,30 @@ def test_task6_browse_structure_preserves_light_output_and_supports_mobile_stack
         "filterSorting",
         "sidebarContainer",
         "resultsContainer",
-        "googleCseContainer",
     }
     assert expected_ids.issubset({tag.get("id") for tag in soup.select("[id]")})
 
-    assert browse.count("fetch('/api/browse/search-all'") == 2
+    assert browse.count("fetch('/api/browse/search-all'") == 1
+    assert browse.count("await fetchBrowseResults({") == 2
     assert "const nextWindow = resultWindow + 10;" in browse
     assert "localStorage.setItem(BROWSE_STORAGE_KEY" in browse
     assert "localStorage.getItem(BROWSE_STORAGE_KEY" in browse
-    assert "loadMoreBtn.addEventListener('click', loadMoreResults)" in browse
+    assert "loadMoreBtn.addEventListener('click', () =>" in browse
+
+
+def test_browse_has_no_google_programmable_search_assets_or_container():
+    browse = read_text("static/js/pages/browse.js")
+    css = read_text("static/css/custom.css")
+
+    for obsolete in (
+        "cse.google.com",
+        "google-cse-script",
+        "ensureGoogleCustomSearch",
+        "googleCseContainer",
+    ):
+        assert obsolete not in browse
+
+    assert ".gsc-" not in css
 
 
 def test_task6_dynamic_panels_pagination_and_dark_contract_remain_intact():
@@ -4964,9 +5368,10 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     ):
         assert marker in workspace
     for preserved in (
-        "workspace-tabs nav nav-pills", "noteBtn.dataset.id = note.id",
-        "noteBtn.title = note.title", "editNote(note.id)", "escapeHtml(note.title)",
-        "message.role === 'agent'", "escapeHtml(message.text)", "studyHelperAI.chat(value)",
+            "workspace-tabs nav nav-pills", "noteBtn.dataset.id = note.id",
+            "noteBtn.title = note.title", "editNote(note.id)", "escapeHtml(note.title)",
+            "message.role === 'agent'", "escapeHtml(message.text)",
+            "studyHelperAI.chat(value, { workspaceId: currentWorkspaceId })",
     ):
         assert preserved in workspace
     exact_rules = (
@@ -5465,6 +5870,22 @@ if (scenario === "google_waits_for_offcanvas") {
     openedTabs,
     clearedTimers,
   }));
+} else if (scenario === "google_serp_url_volume_id") {
+  globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
+  const api = installGoogleBooks();
+  const sourceUrl = "https://books.google.com/books?vid=ISBN123&id=serp-volume&dq=archive";
+  const opening = openViewer(googleBook("legacy-id", {
+    source_id: sourceUrl,
+    source_url: sourceUrl,
+    accessInfo: undefined,
+  }));
+  showViewerOffcanvas();
+  await flush();
+  invariant(api.loads.length === 1, "SerpAPI Google Books result did not open native viewer");
+  invariant(api.loads[0].identifier === "serp-volume", "Google Books volume ID was not parsed from URL");
+  api.loads[0].success();
+  await opening;
+  process.stdout.write(JSON.stringify({ identifier: api.loads[0].identifier }));
 } else if (scenario === "google_success_race_resize") {
   globalThis.fetch = async () => { throw new Error("Google Books must not use proxy fetch"); };
   const staleBeforeLoad = openViewer(googleBook("stale-before-load"));
@@ -5714,6 +6135,10 @@ def test_google_books_viewer_loads_volume_once_and_rejects_stale_openings():
         "scriptCount": 1,
         "activeObservers": 1,
     }
+
+
+def test_google_books_viewer_parses_serpapi_result_url_without_access_metadata():
+    assert viewer_runtime("google_serp_url_volume_id") == {"identifier": "serp-volume"}
 
 
 def test_google_books_waits_for_visible_offcanvas_before_loading_viewer():

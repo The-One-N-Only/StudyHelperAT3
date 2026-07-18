@@ -4,17 +4,18 @@ import { showToast } from '../toast.js';
 import { studyHelperAI } from '../ai-prompt.js';
 
 const WORKSPACE_IFRAME_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox';
+const ALEXANDER_WELCOME_MESSAGE = 'Hi, I’m Alexander. Ask a question and I’ll answer using your workspace and available AI sources.';
+const ALEXANDER_NOT_CONFIGURED_MESSAGE = 'Alexander is not configured. Add ANTHROPIC_API_KEY and restart StudyLib.';
 
 let pageRoot = null;
 let currentWorkspaceId = null;
 let currentWorkspaceItems = [];
 let currentNoteId = null;
 let selectedWorkspaceItemId = null;
-let alexanderMessages = [
-    { role: 'agent', text: 'Hi, I’m Alexander. Ask a question and I’ll answer using your workspace and available AI sources.' }
-];
-
+let alexanderMessages = [{ role: 'agent', text: ALEXANDER_WELCOME_MESSAGE }];
+let alexanderAIConfigured = true;
 let alexanderRequestPending = false;
+let alexanderConversationVersion = 0;
 
 export function initWorkspace(root) {
     pageRoot = root;
@@ -107,10 +108,10 @@ function renderWorkspaceDetail() {
                                     <div class="d-flex flex-column h-100">
                                         <div id="alexanderChatMessages" class="border rounded p-3 mb-3 overflow-auto chat-messages" style="min-height: 220px;"></div>
                                         <div class="input-group">
-                                            <input id="alexanderChatInput" type="text" class="form-control chat-input" placeholder="Ask Alexander a question...">
-                                            <button class="btn btn-primary btn-brass" id="alexanderSendBtn" type="button">Send</button>
+                                            <input id="alexanderChatInput" type="text" class="form-control chat-input" placeholder="Ask Alexander a question..."${alexanderAIConfigured ? '' : ' disabled'}>
+                                            <button class="btn btn-primary btn-brass" id="alexanderSendBtn" type="button"${alexanderAIConfigured ? '' : ' disabled'}>Send</button>
                                         </div>
-                                        <small class="text-muted mt-2">Alexander is a hosted research assistant that uses your workspace and available sources.</small>
+                                        <small class="text-muted mt-2" id="alexanderChatStatus" aria-live="polite">${alexanderAIConfigured ? 'Alexander is a hosted research assistant that uses your workspace and available sources.' : ALEXANDER_NOT_CONFIGURED_MESSAGE}</small>
                                     </div>
                                 </div>
                             </div>
@@ -128,6 +129,7 @@ function renderWorkspaceDetail() {
     loadWorkspaceNotes();
     attachWorkspaceDetailListeners();
     renderAlexanderMessages();
+    syncAlexanderChatAvailability();
 }
 
 function attachWorkspaceDetailListeners() {
@@ -155,17 +157,22 @@ function attachWorkspaceDetailListeners() {
 }
 
 function loadWorkspaceDetails() {
+    if (alexanderRequestPending) return;
+
     currentWorkspaceId = window.WORKSPACE_ID;
     if (!currentWorkspaceId) {
         window.location.href = '/';
         return;
     }
+    const conversationVersion = alexanderConversationVersion;
 
     Promise.all([
         fetch(`/api/workspaces/${currentWorkspaceId}`).then((r) => r.json()),
-        fetch(`/api/workspace/items?workspace_id=${currentWorkspaceId}`).then((r) => r.json())
-    ]).then(([workspaceData, itemsData]) => {
-        if (!workspaceData.status) {
+        fetch(`/api/workspace/items?workspace_id=${currentWorkspaceId}`).then((r) => r.json()),
+        fetch(`/api/workspaces/${currentWorkspaceId}/chat`).then((r) => r.json())
+    ]).then(([workspaceData, itemsData, chatData]) => {
+        if (conversationVersion !== alexanderConversationVersion) return;
+        if (!workspaceData.status || !chatData.status) {
             throw new Error('Workspace not found');
         }
 
@@ -173,11 +180,49 @@ function loadWorkspaceDetails() {
         window.WORKSPACE_NAME = workspace.name;
         currentWorkspaceItems = itemsData.items || [];
         selectedWorkspaceItemId = currentWorkspaceItems.length > 0 ? currentWorkspaceItems[0].id : null;
+        applyAlexanderChatData(chatData);
         renderWorkspaceDetail();
     }).catch(() => {
         showToast('Failed to load workspace', 'danger');
         window.location.href = '/';
     });
+}
+
+function applyAlexanderChatData(chatData) {
+    const savedMessages = Array.isArray(chatData?.messages)
+        ? chatData.messages.filter((message) => (
+            message
+            && (message.role === 'user' || message.role === 'assistant')
+            && typeof message.content === 'string'
+        ))
+        : [];
+
+    studyHelperAI.setConversationHistory(savedMessages);
+    alexanderMessages = [
+        { role: 'agent', text: ALEXANDER_WELCOME_MESSAGE },
+        ...savedMessages.map((message) => ({
+            role: message.role === 'assistant' ? 'agent' : 'user',
+            text: message.content
+        }))
+    ];
+    alexanderAIConfigured = chatData?.ai_configured === true;
+}
+
+function syncAlexanderChatAvailability() {
+    const input = pageRoot?.querySelector('#alexanderChatInput');
+    const sendButton = pageRoot?.querySelector('#alexanderSendBtn');
+    const refreshButton = pageRoot?.querySelector('#refreshWorkspaceBtn');
+    const status = pageRoot?.querySelector('#alexanderChatStatus');
+    const unavailable = !alexanderAIConfigured;
+
+    if (input) input.disabled = unavailable || alexanderRequestPending;
+    if (sendButton) sendButton.disabled = unavailable || alexanderRequestPending;
+    if (refreshButton) refreshButton.disabled = alexanderRequestPending;
+    if (status) {
+        status.textContent = unavailable
+            ? ALEXANDER_NOT_CONFIGURED_MESSAGE
+            : 'Alexander is a hosted research assistant that uses your workspace and available sources.';
+    }
 }
 
 function renderSourcesList() {
@@ -507,20 +552,19 @@ function renameWorkspaceDialog() {
 }
 
 async function sendAlexanderMessage() {
-    if (alexanderRequestPending) {
+    if (alexanderRequestPending || !alexanderAIConfigured) {
         return;
     }
 
     const input = pageRoot.querySelector('#alexanderChatInput');
-    const sendButton = pageRoot.querySelector('#alexanderSendBtn');
     const value = input?.value.trim();
     if (!value) {
         return;
     }
 
     alexanderRequestPending = true;
-    input.disabled = true;
-    if (sendButton) sendButton.disabled = true;
+    alexanderConversationVersion += 1;
+    syncAlexanderChatAvailability();
 
     alexanderMessages.push({ role: 'user', text: value });
     renderAlexanderMessages();
@@ -531,7 +575,7 @@ async function sendAlexanderMessage() {
     renderAlexanderMessages();
 
     try {
-        const result = await studyHelperAI.chat(value);
+        const result = await studyHelperAI.chat(value, { workspaceId: currentWorkspaceId });
         if (result.status) {
             alexanderMessages.push({ role: 'agent', text: result.response });
         } else {
@@ -548,8 +592,7 @@ async function sendAlexanderMessage() {
     } finally {
         alexanderMessages = alexanderMessages.filter((message) => message !== loadingMessage);
         alexanderRequestPending = false;
-        input.disabled = false;
-        if (sendButton) sendButton.disabled = false;
+        syncAlexanderChatAvailability();
         renderAlexanderMessages();
     }
 }
