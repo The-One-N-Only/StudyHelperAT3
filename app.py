@@ -45,6 +45,7 @@ Session(app)
 db.setup_db()
 
 LOGIN_EXEMPT = {'login', 'register', 'static', 'not_found', 'internal_error', 'handle_exception'}
+BROWSE_SERVER_TIMEOUT_SECONDS = 25
 
 @app.before_request
 def require_login():
@@ -321,7 +322,10 @@ def browse_search_all():
         for source in requested_sources
     }
     try:
-        done, not_done = concurrent.futures.wait(futures.values(), timeout=30)
+        done, not_done = concurrent.futures.wait(
+            futures.values(),
+            timeout=BROWSE_SERVER_TIMEOUT_SECONDS,
+        )
         for source, future in futures.items():
             if future in not_done:
                 future.cancel()

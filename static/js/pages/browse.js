@@ -322,12 +322,16 @@ async function fetchBrowseResults(payload) {
     }
 }
 
-function showPartialSourceWarning(result) {
+function sourceErrorCount(result) {
     const sourceErrors = result?.source_errors;
     if (!sourceErrors || typeof sourceErrors !== 'object' || Array.isArray(sourceErrors)) {
-        return;
+        return 0;
     }
-    const failedCount = Object.keys(sourceErrors).length;
+    return Object.keys(sourceErrors).length;
+}
+
+function showPartialSourceWarning(result) {
+    const failedCount = sourceErrorCount(result);
     if (failedCount > 0) {
         showToast(
             `${failedCount} selected source${failedCount === 1 ? '' : 's'} could not be searched. Showing available results.`,
@@ -1093,7 +1097,7 @@ async function loadMoreResults() {
         );
         const addedCount = currentSearchResults.length - previousCount;
         resultWindow = nextWindow;
-        searchExhausted = addedCount === 0;
+        searchExhausted = addedCount === 0 && sourceErrorCount(result) === 0;
         if (result.source_counts) {
             currentSourceCounts = result.source_counts;
         }

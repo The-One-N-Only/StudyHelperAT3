@@ -1,5 +1,6 @@
 import json
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON, func, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 import time
 
@@ -41,7 +42,7 @@ class Item(Base):
     thumb_height: Mapped[int] = mapped_column(nullable=False)
     source_url: Mapped[str] = mapped_column(String(1023), nullable=False)
     source_name: Mapped[str] = mapped_column(String(64), nullable=False)
-    source_id: Mapped[str] = mapped_column(String(16), nullable=False, unique=True)
+    source_id: Mapped[str] = mapped_column(String(1023), nullable=False, unique=True)
     # PubMed and academic metadata
     abstract: Mapped[str] = mapped_column(Text, nullable=True)
     authors: Mapped[str] = mapped_column(Text, nullable=True)
@@ -273,31 +274,44 @@ def create_local_user(email, username, password_hash, name=None):
         }
 
 
+def _item_to_dict(item):
+    return {
+        "id": item.id,
+        "title": item.title,
+        "description": item.description,
+        "thumb_url": item.thumb_url,
+        "thumb_mime": item.thumb_mime,
+        "thumb_height": item.thumb_height,
+        "source_url": item.source_url,
+        "source_name": item.source_name,
+        "source_id": item.source_id,
+        "abstract": item.abstract,
+        "authors": item.authors,
+        "journal": item.journal,
+        "year": item.year,
+        "volume": item.volume,
+        "issue": item.issue,
+        "doi": item.doi,
+    }
+
 def get_item_by_source(source_name, source_id, user_id, add_to_recent_search):
     with SessionLocal() as session:
         item = session.query(Item).filter_by(source_name=source_name, source_id=source_id).first()
         if item:
             if add_to_recent_search:
                 append_to_recently_searched(user_id, item.id)
-            return {
-                "id": item.id,
-                "title": item.title,
-                "description": item.description,
-                "thumb_url": item.thumb_url,
-                "thumb_mime": item.thumb_mime,
-                "thumb_height": item.thumb_height,
-                "source_url": item.source_url,
-                "source_name": item.source_name,
-                "source_id": item.source_id,
-                "abstract": item.abstract,
-                "authors": item.authors,
-                "journal": item.journal,
-                "year": item.year,
-                "volume": item.volume,
-                "issue": item.issue,
-                "doi": item.doi
-            }
+            return _item_to_dict(item)
         return None
+
+def get_item_by_source_id(source_id, user_id, add_to_recent_search):
+    """Find URL-backed items regardless of historical display-name casing."""
+    with SessionLocal() as session:
+        item = session.query(Item).filter_by(source_id=source_id).first()
+        if not item:
+            return None
+        if add_to_recent_search:
+            append_to_recently_searched(user_id, item.id)
+        return _item_to_dict(item)
 
 def create_item(item_data, user_id, add_to_recent_search):
     with SessionLocal() as session:
@@ -307,24 +321,23 @@ def create_item(item_data, user_id, add_to_recent_search):
         session.refresh(new_item)
         if add_to_recent_search:
             append_to_recently_searched(user_id, new_item.id)
-        return {
-            "id": new_item.id,
-            "title": new_item.title,
-            "description": new_item.description,
-            "thumb_url": new_item.thumb_url,
-            "thumb_mime": new_item.thumb_mime,
-            "thumb_height": new_item.thumb_height,
-            "source_url": new_item.source_url,
-            "source_name": new_item.source_name,
-            "source_id": new_item.source_id,
-            "abstract": new_item.abstract,
-            "authors": new_item.authors,
-            "journal": new_item.journal,
-            "year": new_item.year,
-            "volume": new_item.volume,
-            "issue": new_item.issue,
-            "doi": new_item.doi
-        }
+        return _item_to_dict(new_item)
+
+def get_or_create_item_by_source_id(item_data, user_id, add_to_recent_search):
+    """Reuse URL-backed rows and recover cleanly from concurrent insert races."""
+    source_id = item_data["source_id"]
+    existing = get_item_by_source_id(source_id, user_id, add_to_recent_search)
+    if existing:
+        return existing
+
+    try:
+        return create_item(item_data, user_id, add_to_recent_search)
+    except IntegrityError:
+        # Another source worker may have inserted the same Serp URL first.
+        existing = get_item_by_source_id(source_id, user_id, add_to_recent_search)
+        if existing:
+            return existing
+        raise
 
 def get_saved_items(user_id):
     with SessionLocal() as session:

@@ -3774,6 +3774,66 @@ process.stdout.write(JSON.stringify({
 """
 
 
+BROWSE_PARTIAL_LOAD_MORE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+globalThis.toastCalls = [];
+const item = {
+  source_name: "Wikipedia",
+  source_id: "wiki-1",
+  source_url: "https://en.wikipedia.org/wiki/Archive",
+  title: "Only available result",
+};
+const responses = [
+  {
+    status: true,
+    results: [item],
+    source_counts: { wikipedia: 1, pubmed: 0 },
+    source_errors: {},
+  },
+  {
+    status: true,
+    results: [item],
+    source_counts: { wikipedia: 1, pubmed: 0 },
+    source_errors: { pubmed: "SerpAPI search failed" },
+  },
+];
+const requestSizes = [];
+globalThis.fetch = async (url, options) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  requestSizes.push(JSON.parse(options.body).num_results);
+  const payload = responses.shift();
+  invariant(payload, "unexpected partial Load More request");
+  return { ok: true, async json() { return payload; } };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+await flushPromises();
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+await flushPromises();
+
+invariant(requestSizes.join(",") === "10,20", "partial Load More windows changed");
+invariant(controls.get("#loadMoreBtn").disabled === false,
+  "partial Load More failure permanently disabled retry");
+invariant(controls.get("#loadMoreText").textContent === "Load More Results",
+  "partial Load More failure changed retry label");
+invariant(globalThis.toastCalls.length === 1 && globalThis.toastCalls[0][1] === "warning",
+  "partial Load More warning missing");
+
+process.stdout.write(JSON.stringify({
+  requestSizes,
+  disabled: controls.get("#loadMoreBtn").disabled,
+  text: controls.get("#loadMoreText").textContent,
+}));
+"""
+
+
 GROUPED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 globalThis.localStorage = { getItem() { return null; }, setItem() {} };
@@ -4499,6 +4559,15 @@ def browse_partial_runtime(source: str | None = None) -> dict:
     )
 
 
+def browse_partial_load_more_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_PARTIAL_LOAD_MORE_RUNTIME_HARNESS,
+        "partial Load More Browse",
+    )
+
+
 def grouped_browse_runtime(source: str | None = None) -> dict:
     return run_task6_module_harness(
         source or read_text("static/js/pages/browse.js"),
@@ -4869,6 +4938,14 @@ def test_browse_partial_failure_renders_results_with_one_safe_warning():
         "1 selected source could not be searched. Showing available results.",
         "warning",
     ]
+
+
+def test_partial_load_more_failure_keeps_retry_available():
+    assert browse_partial_load_more_runtime() == {
+        "requestSizes": [10, 20],
+        "disabled": False,
+        "text": "Load More Results",
+    }
 
 
 def test_browse_defaults_only_dedicated_sources_and_leaves_dynamic_whitelist_opt_in():

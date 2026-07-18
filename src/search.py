@@ -50,7 +50,11 @@ def _browse_source_scope(source):
 
     if isinstance(source, str) and source.startswith("whitelist_"):
         domain = source.split("_", 1)[1]
-        if domain not in whitelist.get_whitelisted_domains():
+        approved_domains = {
+            *whitelist.get_whitelisted_domains(),
+            *whitelist.get_whitelisted_domain_patterns(),
+        }
+        if domain not in approved_domains:
             return "", None
         return f"site:{domain}", whitelist.get_display_name_for_domain(domain)
 
@@ -58,6 +62,8 @@ def _browse_source_scope(source):
 
 
 def _browse_serp_query(query, scope, filters):
+    if " OR " in scope:
+        scope = f"({scope})"
     terms = [str(query).strip(), scope]
     filters = filters if isinstance(filters, Mapping) else {}
 
@@ -142,22 +148,19 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
             item_data = {
                 "title": item.get("title", ""),
                 "description": item.get("snippet", ""),
-                "thumb_url": item.get("thumbnail", ""),
+                # Serp thumbnail hosts are outside the academic whitelist.
+                "thumb_url": "",
                 "thumb_mime": "image/jpeg",
                 "thumb_height": 0,
                 "source_url": link,
                 "source_name": source_name,
                 "source_id": link,
             }
-            results.append(
-                db.get_item_by_source(
-                    item_data["source_name"],
-                    item_data["source_id"],
-                    user_id,
-                    True,
-                )
-                or db.create_item(item_data, user_id, True)
-            )
+            results.append(db.get_or_create_item_by_source_id(
+                item_data,
+                user_id,
+                True,
+            ))
             if len(results) >= target:
                 break
 

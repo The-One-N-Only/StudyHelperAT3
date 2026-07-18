@@ -478,6 +478,7 @@ def test_browse_serpapi_search_scopes_every_dedicated_source(
                         "link": f"https://{domain}/result",
                         "displayed_link": f"https://{domain} / result",
                         "snippet": "Scoped snippet",
+                        "thumbnail": "https://tracking.invalid/pixel.jpg",
                     }
                 ],
                 "serpapi_pagination": {},
@@ -490,10 +491,9 @@ def test_browse_serpapi_search_scopes_every_dedicated_source(
     monkeypatch.setattr(search, "SERP_API_KEY", "serp-test-key")
     monkeypatch.setattr(search.requests, "get", fake_get)
     monkeypatch.setattr(search.whitelist, "is_allowed", lambda _url: True)
-    monkeypatch.setattr(search.db, "get_item_by_source", lambda *_args: None)
     monkeypatch.setattr(
         search.db,
-        "create_item",
+        "get_or_create_item_by_source_id",
         lambda item_data, _user_id, _add_to_recent_search: item_data,
     )
 
@@ -512,6 +512,7 @@ def test_browse_serpapi_search_scopes_every_dedicated_source(
     assert len(results) == 1
     assert results[0]["source_name"] == source_name
     assert results[0]["source_url"] == f"https://{domain}/result"
+    assert results[0]["thumb_url"] == ""
     assert requests_seen == [
         (
             "https://serpapi.com/search",
@@ -531,6 +532,64 @@ def test_browse_serpapi_search_scopes_every_dedicated_source(
     ]
 
 
+def test_browse_serpapi_search_supports_checked_wildcard_domain_pattern(monkeypatch):
+    requests_seen = []
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "organic_results": [{
+                    "title": "University result",
+                    "link": "https://example.edu/research",
+                    "snippet": "Academic result",
+                }]
+            }
+
+    def fake_get(_url, *, params, headers, timeout):
+        requests_seen.append(dict(params))
+        return FakeResponse()
+
+    monkeypatch.setattr(search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    monkeypatch.setattr(search.whitelist, "get_whitelisted_domains", lambda: [])
+    monkeypatch.setattr(
+        search.whitelist,
+        "get_whitelisted_domain_patterns",
+        lambda: ["*.edu"],
+        raising=False,
+    )
+    monkeypatch.setattr(search.whitelist, "is_allowed", lambda _url: True)
+    monkeypatch.setattr(
+        search.db,
+        "get_or_create_item_by_source_id",
+        lambda item_data, _user_id, _recent: item_data,
+        raising=False,
+    )
+
+    results = search.browse_serpapi_search(
+        "archive",
+        1,
+        "whitelist_*.edu",
+        {},
+        user_id=7,
+    )
+
+    assert requests_seen[0]["q"] == "archive site:*.edu"
+    assert results[0]["source_url"] == "https://example.edu/research"
+    assert results[0]["source_name"] == "All edu sites"
+
+
+def test_combined_whitelist_scope_is_parenthesized_before_filters():
+    assert search._browse_serp_query(
+        "archive",
+        "site:example.edu OR site:example.gov",
+        {"min_date": "2020"},
+    ) == "archive (site:example.edu OR site:example.gov) after:2019-12-31"
+
+
 def test_browse_serpapi_search_requires_key_before_network_or_database(monkeypatch):
     monkeypatch.setattr(search, "SERP_API_KEY", "")
 
@@ -540,6 +599,7 @@ def test_browse_serpapi_search_requires_key_before_network_or_database(monkeypat
     monkeypatch.setattr(search.requests, "get", unexpected)
     monkeypatch.setattr(search.db, "get_item_by_source", unexpected)
     monkeypatch.setattr(search.db, "create_item", unexpected)
+    monkeypatch.setattr(search.db, "get_or_create_item_by_source_id", unexpected)
 
     with pytest.raises(search.SerpApiConfigurationError):
         search.browse_serpapi_search(
@@ -691,6 +751,36 @@ def test_browse_search_all_returns_partial_serpapi_results_with_safe_errors(
     assert [item["title"] for item in payload["results"]] == ["Archive"]
     assert payload["source_errors"] == {"pubmed": "SerpAPI search failed"}
     assert provider_detail not in str(payload)
+
+
+def test_browse_server_deadline_leaves_margin_for_browser_response(monkeypatch):
+    import app as flask_app
+
+    observed_timeouts = []
+    real_wait = flask_app.concurrent.futures.wait
+
+    def recording_wait(futures, timeout):
+        observed_timeouts.append(timeout)
+        return real_wait(futures, timeout=timeout)
+
+    monkeypatch.setattr(flask_app.search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(
+        flask_app.search,
+        "browse_serpapi_search",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(flask_app.concurrent.futures, "wait", recording_wait)
+
+    with flask_app.app.test_request_context(
+        "/api/browse/search-all",
+        method="POST",
+        json={"query": "archive", "sources": ["wikipedia"]},
+    ):
+        flask_app.session["user_id"] = 5
+        response = flask_app.browse_search_all()
+
+    assert response.get_json()["status"] is True
+    assert observed_timeouts == [25]
 
 
 def test_browse_search_all_returns_safe_error_when_every_serpapi_source_fails(

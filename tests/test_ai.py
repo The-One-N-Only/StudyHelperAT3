@@ -367,6 +367,45 @@ def test_workspace_deletion_cleans_up_chat_messages(isolated_workspace_db):
         assert session.query(db.WorkspaceChatMessage).count() == 0
 
 
+def test_url_item_upsert_reuses_legacy_source_name_row(isolated_workspace_db):
+    ids = isolated_workspace_db
+    source_url = "https://en.wikipedia.org/wiki/Archive"
+    with ids["session"]() as session:
+        legacy = db.Item(
+            title="Legacy title",
+            description="Legacy description",
+            thumb_url="",
+            thumb_mime="image/jpeg",
+            thumb_height=0,
+            source_url=source_url,
+            source_name="Wikipedia",
+            source_id=source_url,
+        )
+        session.add(legacy)
+        session.commit()
+        legacy_id = legacy.id
+
+    result = db.get_or_create_item_by_source_id(
+        {
+            "title": "Fresh title",
+            "description": "Fresh description",
+            "thumb_url": "",
+            "thumb_mime": "image/jpeg",
+            "thumb_height": 0,
+            "source_url": source_url,
+            "source_name": "wikipedia",
+            "source_id": source_url,
+        },
+        ids["first_user"],
+        False,
+    )
+
+    assert result["id"] == legacy_id
+    assert result["source_name"] == "Wikipedia"
+    with ids["session"]() as session:
+        assert session.query(db.Item).filter_by(source_id=source_url).count() == 1
+
+
 def test_workspace_chat_get_requires_login_and_owned_workspace(monkeypatch):
     import app as flask_app
 
@@ -604,11 +643,13 @@ globalThis.document = {
 
 const input = element();
 const sendButton = element();
+const refreshButton = element();
 const container = element();
 pageRoot = {
     querySelector(selector) {
         if (selector === '#alexanderChatInput') return input;
         if (selector === '#alexanderSendBtn') return sendButton;
+        if (selector === '#refreshWorkspaceBtn') return refreshButton;
         if (selector === '#alexanderChatMessages') return container;
         return null;
     },
@@ -626,6 +667,7 @@ globalThis.__chatImpl = () => {
 input.value = 'First question';
 const firstRequest = sendAlexanderMessage();
 const activeLoading = alexanderMessages.at(-1);
+check(alexanderConversationVersion === 1, 'chat did not invalidate an older Refresh response');
 input.value = 'Duplicate question';
 sendAlexanderMessage();
 check(networkCalls === 1, 'duplicate pending submission made another network call');
@@ -633,12 +675,14 @@ check(globalThis.__chatCalls[0][0] === 'First question', 'chat message payload c
 check(globalThis.__chatCalls[0][1]?.workspaceId === 42, 'chat omitted current workspace ID');
 check(input.disabled === true, 'chat input stayed enabled while request pending');
 check(sendButton.disabled === true, 'Send stayed enabled while request pending');
+check(refreshButton.disabled === true, 'Refresh stayed enabled while chat request pending');
 firstDeferred.resolve({ status: true, response: 'Hosted answer' });
 await firstRequest;
 check(alexanderMessages.includes(oldLoading), 'cleanup removed an older equal loading object');
 check(!alexanderMessages.includes(activeLoading), 'success kept active loading object');
 check(input.disabled === false, 'success did not restore chat input');
 check(sendButton.disabled === false, 'success did not restore Send');
+check(refreshButton.disabled === false, 'success did not restore Refresh');
 check(alexanderMessages.at(-1).text === 'Hosted answer', 'success response was not rendered');
 
 alexanderMessages = [];

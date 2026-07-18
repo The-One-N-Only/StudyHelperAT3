@@ -15,6 +15,7 @@ let selectedWorkspaceItemId = null;
 let alexanderMessages = [{ role: 'agent', text: ALEXANDER_WELCOME_MESSAGE }];
 let alexanderAIConfigured = true;
 let alexanderRequestPending = false;
+let alexanderConversationVersion = 0;
 
 export function initWorkspace(root) {
     pageRoot = root;
@@ -156,17 +157,21 @@ function attachWorkspaceDetailListeners() {
 }
 
 function loadWorkspaceDetails() {
+    if (alexanderRequestPending) return;
+
     currentWorkspaceId = window.WORKSPACE_ID;
     if (!currentWorkspaceId) {
         window.location.href = '/';
         return;
     }
+    const conversationVersion = alexanderConversationVersion;
 
     Promise.all([
         fetch(`/api/workspaces/${currentWorkspaceId}`).then((r) => r.json()),
         fetch(`/api/workspace/items?workspace_id=${currentWorkspaceId}`).then((r) => r.json()),
         fetch(`/api/workspaces/${currentWorkspaceId}/chat`).then((r) => r.json())
     ]).then(([workspaceData, itemsData, chatData]) => {
+        if (conversationVersion !== alexanderConversationVersion) return;
         if (!workspaceData.status || !chatData.status) {
             throw new Error('Workspace not found');
         }
@@ -206,11 +211,13 @@ function applyAlexanderChatData(chatData) {
 function syncAlexanderChatAvailability() {
     const input = pageRoot?.querySelector('#alexanderChatInput');
     const sendButton = pageRoot?.querySelector('#alexanderSendBtn');
+    const refreshButton = pageRoot?.querySelector('#refreshWorkspaceBtn');
     const status = pageRoot?.querySelector('#alexanderChatStatus');
     const unavailable = !alexanderAIConfigured;
 
     if (input) input.disabled = unavailable || alexanderRequestPending;
     if (sendButton) sendButton.disabled = unavailable || alexanderRequestPending;
+    if (refreshButton) refreshButton.disabled = alexanderRequestPending;
     if (status) {
         status.textContent = unavailable
             ? ALEXANDER_NOT_CONFIGURED_MESSAGE
@@ -550,15 +557,14 @@ async function sendAlexanderMessage() {
     }
 
     const input = pageRoot.querySelector('#alexanderChatInput');
-    const sendButton = pageRoot.querySelector('#alexanderSendBtn');
     const value = input?.value.trim();
     if (!value) {
         return;
     }
 
     alexanderRequestPending = true;
-    input.disabled = true;
-    if (sendButton) sendButton.disabled = true;
+    alexanderConversationVersion += 1;
+    syncAlexanderChatAvailability();
 
     alexanderMessages.push({ role: 'user', text: value });
     renderAlexanderMessages();
