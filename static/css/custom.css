@@ -58,6 +58,70 @@ button, .btn, a, input, select, textarea {
     flex: 0 0 auto;
 }
 
+/* Browse visual states share geometry; theme sections below supply materials. */
+#resultsContainer {
+    min-height: min(28rem, calc(100vh - 16rem));
+    position: relative;
+}
+
+.browse-empty-state {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: min(26rem, calc(100vh - 18rem));
+}
+
+.browse-empty-engraving {
+    -webkit-mask: url("/static/img/illustrations/browse-scholar.svg") center / contain no-repeat;
+    aspect-ratio: 2448 / 1468;
+    display: block;
+    margin: 0 auto 1.25rem;
+    mask: url("/static/img/illustrations/browse-scholar.svg") center / contain no-repeat;
+    pointer-events: none;
+    width: min(34rem, 82%);
+}
+
+.loader-container {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    inset: 0;
+    justify-content: center;
+    min-height: min(28rem, calc(100vh - 16rem));
+    padding: 1rem;
+    position: absolute;
+    text-align: center;
+    z-index: 2;
+}
+
+.loader-container[hidden] {
+    display: none;
+}
+
+.browse-loader-picture {
+    display: block;
+    max-width: 100%;
+    pointer-events: none;
+}
+
+.browse-loader-art {
+    display: block;
+    height: auto;
+    max-height: min(24rem, calc(100vh - 24rem));
+    max-width: 100%;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    width: min(24rem, 100%);
+}
+
+.browse-loader-status {
+    font-family: var(--font-display);
+    font-size: var(--text-body-lg);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
 .browse-dropdown-menu {
     position: absolute;
     top: calc(100% + 0.25rem);
@@ -856,6 +920,19 @@ p {
 :root:not([data-bs-theme="dark"]) .browse-search-group {
     margin-inline: auto;
     max-width: 960px;
+}
+
+:root:not([data-bs-theme="dark"]) .browse-empty-engraving {
+    background-color: var(--ink-500);
+    opacity: 0.62;
+}
+
+:root:not([data-bs-theme="dark"]) .loader-container {
+    background-color: var(--paper-100);
+}
+
+:root:not([data-bs-theme="dark"]) .browse-loader-status {
+    color: var(--ink-700);
 }
 
 :root:not([data-bs-theme="dark"]) .browse-search-input {
@@ -1970,6 +2047,19 @@ p {
     max-width: 960px;
 }
 
+[data-bs-theme="dark"] .browse-empty-engraving {
+    background-color: var(--gold-700);
+    opacity: 0.52;
+}
+
+[data-bs-theme="dark"] .loader-container {
+    background-color: #3d2011;
+}
+
+[data-bs-theme="dark"] .browse-loader-status {
+    color: var(--gold-100);
+}
+
 [data-bs-theme="dark"] .browse-dropdown-menu {
     background: var(--surface-600);
     border: 1px solid hsl(35 40% 45% / 0.25);
@@ -2431,6 +2521,21 @@ p {
 }
 
 @media (max-width: 575.98px) {
+    .browse-empty-state,
+    .loader-container {
+        min-height: 18rem;
+        padding: 1rem 0.5rem;
+    }
+
+    .browse-empty-engraving {
+        width: min(24rem, 100%);
+    }
+
+    .browse-loader-art {
+        max-height: min(22rem, calc(100vh - 12rem));
+        width: min(22rem, 100%);
+    }
+
     [data-bs-theme="dark"] .archive-page-title {
         font-size: 1.65rem;
     }

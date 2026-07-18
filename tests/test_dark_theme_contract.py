@@ -3,6 +3,7 @@ from html.parser import HTMLParser
 import json
 from pathlib import Path
 import re
+import struct
 import subprocess
 import xml.etree.ElementTree as ET
 
@@ -1344,6 +1345,69 @@ class LinkCollector(HTMLParser):
 
 def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def gif_dimensions_frames_and_duration(path: Path) -> tuple[int, int, int, int]:
+    """Read GIF geometry and timing without adding an image-library dependency."""
+    data = path.read_bytes()
+    assert data[:6] in (b"GIF87a", b"GIF89a"), f"{path.name} is not a GIF"
+    assert len(data) >= 13, f"{path.name} has a truncated logical screen descriptor"
+    width, height = struct.unpack("<HH", data[6:10])
+    packed = data[10]
+    offset = 13
+    if packed & 0x80:
+        offset += 3 * (2 ** ((packed & 0x07) + 1))
+
+    frames = 0
+    duration_hundredths = 0
+    pending_delay = 0
+
+    def skip_sub_blocks(start: int) -> int:
+        while True:
+            assert start < len(data), f"{path.name} has truncated GIF sub-blocks"
+            size = data[start]
+            start += 1
+            if size == 0:
+                return start
+            assert start + size <= len(data), f"{path.name} has a truncated GIF sub-block"
+            start += size
+
+    while offset < len(data):
+        marker = data[offset]
+        offset += 1
+        if marker == 0x3B:
+            break
+        if marker == 0x21:
+            assert offset < len(data), f"{path.name} has a truncated GIF extension"
+            label = data[offset]
+            offset += 1
+            if label == 0xF9:
+                assert offset + 6 <= len(data), f"{path.name} has a truncated control extension"
+                block_size = data[offset]
+                assert block_size == 4, f"{path.name} has an invalid control extension"
+                pending_delay = struct.unpack("<H", data[offset + 2 : offset + 4])[0]
+                offset += 1 + block_size
+                assert data[offset] == 0, f"{path.name} has an unterminated control extension"
+                offset += 1
+            else:
+                offset = skip_sub_blocks(offset)
+            continue
+        if marker == 0x2C:
+            assert offset + 9 <= len(data), f"{path.name} has a truncated image descriptor"
+            descriptor_packed = data[offset + 8]
+            offset += 9
+            if descriptor_packed & 0x80:
+                offset += 3 * (2 ** ((descriptor_packed & 0x07) + 1))
+            assert offset < len(data), f"{path.name} has no image data"
+            offset += 1  # LZW minimum code size
+            offset = skip_sub_blocks(offset)
+            frames += 1
+            duration_hundredths += pending_delay
+            pending_delay = 0
+            continue
+        raise AssertionError(f"{path.name} has unexpected GIF marker 0x{marker:02x}")
+
+    return width, height, frames, duration_hundredths
 
 
 def parse_css_declarations(rule_body: str, context: str) -> dict[str, str]:
@@ -3118,6 +3182,10 @@ class FakeClassList {
     this.sync();
     return added;
   }
+  add(name) {
+    this.values.add(name);
+    this.sync();
+  }
   remove(name) {
     this.values.delete(name);
     this.sync();
@@ -3172,8 +3240,14 @@ class FakeElement {
     return [];
   }
   appendChild(child) {
+    if (child instanceof FakeElement) child.parentNode = this;
     this.children.push(child);
     return child;
+  }
+  remove() {
+    if (!this.parentNode) return;
+    this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+    this.parentNode = null;
   }
   focus() {}
 }
@@ -3826,7 +3900,7 @@ control("#filterYearTo");
 control("#filterContentType");
 control("#filterSorting");
 control("#sidebarContainer");
-control("#resultsContainer");
+const resultsContainer = control("#resultsContainer");
 const whitelistContainer = control("#whitelistCheckboxes");
 
 function source(name, value, checked, className = "form-check-input browse-source-checkbox") {
@@ -3965,6 +4039,16 @@ const dynamicBeforeResolution = sources.filter(
   (checkbox) => checkbox.value.startsWith("whitelist_")
 ).length;
 __PRE_READINESS_ACTIONS__
+const loadersBeforeResolution = resultsContainer.children.filter(
+  (child) => child.className.split(/\s+/).includes("loader-container")
+);
+const loadingBeforeResolution = {
+  busy: resultsContainer.getAttribute("aria-busy"),
+  count: loadersBeforeResolution.length,
+  visibleCount: loadersBeforeResolution.filter((loader) => !loader.hidden).length,
+  className: loadersBeforeResolution.at(-1)?.className || "",
+  markup: loadersBeforeResolution.at(-1)?.innerHTML || "",
+};
 await new Promise((resolve) => setTimeout(resolve, 0));
 const apiCountBeforeResolution = apiBodies.length;
 
@@ -3978,6 +4062,7 @@ process.stdout.write(JSON.stringify({
   dynamicBeforeResolution,
   dynamicAfterResolution: dynamicSources.length,
   whitelistMarkup,
+  loadingBeforeResolution,
   apiCountBeforeResolution,
   apiBodies,
   historyUrls,
@@ -3989,6 +4074,11 @@ process.stdout.write(JSON.stringify({
   clearedReadinessTimers,
   whitelistAborted: whitelistSignal?.aborted || false,
   unhandledRejections,
+  terminalBusy: resultsContainer.getAttribute("aria-busy"),
+  terminalLoaderCount: resultsContainer.children.filter(
+    (child) => child.className.split(/\s+/).includes("loader-container")
+  ).length,
+  renderedTitles: globalThis.renderedItems.map((item) => item.title),
 }));
 """
 
@@ -4379,7 +4469,7 @@ await go.dispatch("click");
 await flushPromises();
 const duringActive = {
   sortingDisabled: sorting.disabled,
-  loading: resultsContainer.innerHTML.includes("Searching..."),
+  loading: resultsContainer.getAttribute("aria-busy") === "true",
   apiQueries: apiBodies.map((body) => body.query),
 };
 
@@ -4390,7 +4480,7 @@ await go.dispatch("click");
 await flushPromises();
 const afterInvalid = {
   sortingDisabled: sorting.disabled,
-  loading: resultsContainer.innerHTML.includes("Searching..."),
+  loading: resultsContainer.getAttribute("aria-busy") === "true",
   apiQueries: apiBodies.map((body) => body.query),
   toastCalls: globalThis.toastCalls,
 };
@@ -4413,7 +4503,7 @@ process.stdout.write(JSON.stringify({
   duringActive,
   afterInvalid,
   finalSortingDisabled: sorting.disabled,
-  finalLoading: resultsContainer.innerHTML.includes("Searching..."),
+  finalLoading: resultsContainer.getAttribute("aria-busy") === "true",
   renderedTitles: globalThis.renderedItems.map((item) => item.title),
   apiQueries: apiBodies.map((body) => body.query),
 }));
@@ -4473,12 +4563,19 @@ invariant(!globalThis.toastCalls[0][0].includes("private"), "private timeout det
 invariant(sorting.disabled === false, "Browse timeout left sorting disabled");
 invariant(resultsContainer.innerHTML.includes("No results found"),
   "Browse timeout left the loading spinner visible");
+invariant(resultsContainer.getAttribute("aria-busy") === "false",
+  "Browse timeout left results busy");
+invariant(!resultsContainer.children.some(
+  (child) => child.className.split(/\s+/).includes("loader-container")
+),
+  "Browse timeout left its loader mounted");
 invariant(clearedTimers.includes(requestTimers[0].id), "Browse timeout timer was not cleared");
 
 process.stdout.write(JSON.stringify({
   toast: globalThis.toastCalls[0],
   timeoutDelay: requestTimers[0].delay,
   sortingDisabled: sorting.disabled,
+  ariaBusy: resultsContainer.getAttribute("aria-busy"),
 }));
 """
 
@@ -4991,6 +5088,10 @@ const pendingSearchBodies = fetchCalls
 const duringNewestInitial = {
   titles: globalThis.renderedItems.map((item) => item.title),
   sortingDisabled: sorting.disabled,
+  busy: resultsContainer.getAttribute("aria-busy"),
+  loaderCount: resultsContainer.children.filter(
+    (child) => child.className.split(/\s+/).includes("loader-container")
+  ).length,
   loadMorePresent: controls.has("#loadMoreBtn"),
   sidebarReset: controls.get("#sidebarContainer").innerHTML.includes('archive-count-badge">0</span>'),
   requestQueries: pendingSearchBodies.map((body) => body.query),
@@ -5001,6 +5102,10 @@ newestInitial.resolve(response([newest]));
 await flushPromises();
 const afterInitialRace = globalThis.renderedItems.map((item) => item.title);
 const initialSortingReleased = sorting.disabled;
+const terminalBusy = resultsContainer.getAttribute("aria-busy");
+const terminalLoaderCount = resultsContainer.children.filter(
+  (child) => child.className.split(/\s+/).includes("loader-container")
+).length;
 const searchBodies = fetchCalls
   .filter((call) => call.url === "/api/browse/search-all")
   .map((call) => JSON.parse(call.options.body));
@@ -5008,6 +5113,8 @@ process.stdout.write(JSON.stringify({
   afterInitialRace,
   duringNewestInitial,
   initialSortingReleased,
+  terminalBusy,
+  terminalLoaderCount,
   requestQueries: searchBodies.map((body) => body.query),
   requestSizes: searchBodies.map((body) => body.num_results),
 }));
@@ -5395,6 +5502,10 @@ await go.dispatch("click");
 search.value = "dedicated";
 await go.dispatch("click");
 """,
+        "dynamic_only": """
+search.value = "dynamic only";
+await go.dispatch("click");
+""",
     }
     settlements = {
         "success": """
@@ -5422,7 +5533,39 @@ if (readinessTimers.length === 1) readinessTimers[0].callback();
     assert action in actions
     assert outcome in settlements
     restored_state = None
-    if restored:
+    if action == "dynamic_only":
+        restored_state = {
+            "version": 2,
+            "query": "existing archive",
+            "sources": ["whitelist_jstor.org"],
+            "filters": {
+                "min_date": "",
+                "max_date": "",
+                "content_type": "",
+                "sorting": "",
+            },
+            "results": [
+                {
+                    "source_name": "JSTOR",
+                    "source_id": "existing-1",
+                    "source_url": "https://jstor.org/stable/existing-1",
+                    "title": "Existing result",
+                }
+            ],
+            "groupedResults": {
+                "whitelist_jstor.org": [
+                    {
+                        "source_name": "JSTOR",
+                        "source_id": "existing-1",
+                        "source_url": "https://jstor.org/stable/existing-1",
+                        "title": "Existing result",
+                    }
+                ]
+            },
+            "sourceCounts": {"whitelist_jstor.org": 1},
+            "groupPage": 1,
+        }
+    elif restored:
         restored_state = {
             "version": 2,
             "query": "restored",
@@ -6031,6 +6174,138 @@ def test_task6_card_templates_keep_shared_structure_and_equal_wood_cascade():
             assert applied[-1] == wood
 
 
+def test_browse_empty_state_uses_decorative_scholar_engraving():
+    browse = read_text("static/js/pages/browse.js")
+    page = BeautifulSoup(assigned_template_markup(browse, "pageRoot"), "html.parser")
+    results = page.select_one("#resultsContainer")
+    empty = BeautifulSoup(
+        assigned_template_markup(browse, "resultsContainer"), "html.parser"
+    )
+    engraving = empty.select_one(".browse-empty-engraving")
+
+    assert results.get("aria-busy") == "false"
+    assert engraving is not None
+    assert engraving.name == "span"
+    assert engraving.get("aria-hidden") == "true"
+    assert empty.select_one(".bi-mortarboard") is None
+    assert "Search verified academic sources" in empty.get_text(" ", strip=True)
+
+
+def test_browse_loading_precedes_source_readiness_and_uses_accessible_bible_art():
+    rendered = browse_source_readiness_runtime("dedicated", "success")
+    loading = rendered["loadingBeforeResolution"]
+    loader = BeautifulSoup(
+        f'<div class="{loading["className"]}">{loading["markup"]}</div>',
+        "html.parser",
+    ).select_one(".loader-container")
+
+    assert rendered["apiCountBeforeResolution"] == 0
+    assert loading["busy"] == "true"
+    assert loading["count"] == 1
+    assert loader is not None
+    picture = loader.select_one("picture.browse-loader-picture")
+    assert picture is not None
+    reduced_source = picture.select_one('source[media="(prefers-reduced-motion: reduce)"]')
+    assert reduced_source.get("srcset") == (
+        "/static/img/loaders/bible-page-turn-still.png"
+    )
+    image = picture.select_one("img.browse-loader-art")
+    assert image.get("src") == "/static/img/loaders/bible-page-turn.gif"
+    assert image.get("alt") == ""
+    assert image.get("aria-hidden") == "true"
+    status = loader.select_one('[role="status"][aria-live="polite"]')
+    assert status.get_text(" ", strip=True) == "Searching..."
+    assert rendered["terminalBusy"] == "false"
+    assert rendered["terminalLoaderCount"] == 0
+
+
+def test_browse_loading_no_source_preserves_existing_results_and_clears_owned_state():
+    rendered = browse_source_readiness_runtime("dynamic_only", "empty")
+
+    assert rendered["loadingBeforeResolution"]["busy"] == "true"
+    assert rendered["apiBodies"] == []
+    assert rendered["renderedTitles"] == ["Existing result"]
+    assert rendered["toastCalls"] == [
+        ["Please select at least one source", "warning"]
+    ]
+    assert rendered["terminalBusy"] == "false"
+    assert rendered["terminalLoaderCount"] == 0
+
+
+def test_browse_loading_is_generation_owned_through_stale_result_race():
+    rendered = deferred_browse_runtime()
+    waiting = browse_source_readiness_runtime("master_latest", "success")
+
+    assert rendered["duringNewestInitial"]["busy"] == "true"
+    assert rendered["duringNewestInitial"]["loaderCount"] == 1
+    assert rendered["terminalBusy"] == "false"
+    assert rendered["terminalLoaderCount"] == 0
+    assert waiting["loadingBeforeResolution"]["count"] == 2
+    assert waiting["loadingBeforeResolution"]["visibleCount"] == 1
+    assert waiting["terminalBusy"] == "false"
+
+
+def test_browse_archive_visual_assets_are_canonical_optimized_and_motion_safe():
+    scholar_path = ROOT / "static" / "img" / "illustrations" / "browse-scholar.svg"
+    gif_path = ROOT / "static" / "img" / "loaders" / "bible-page-turn.gif"
+    still_path = ROOT / "static" / "img" / "loaders" / "bible-page-turn-still.png"
+
+    scholar = scholar_path.read_text(encoding="utf-8")
+    lowered = scholar.lower()
+    assert "<script" not in lowered
+    assert "<foreignobject" not in lowered
+    assert not re.search(r"\son[a-z]+\s*=", lowered)
+    root = ET.fromstring(scholar)
+    assert root.tag.rsplit("}", 1)[-1] == "svg"
+    assert (root.attrib.get("width"), root.attrib.get("height")) == ("2448", "1468")
+
+    assert gif_path.stat().st_size < 4_000_000
+    assert gif_dimensions_frames_and_duration(gif_path) == (480, 480, 33, 1100)
+    still = still_path.read_bytes()
+    assert still.startswith(b"\x89PNG\r\n\x1a\n")
+    assert struct.unpack(">II", still[16:24]) == (480, 480)
+    assert not list((ROOT / "static").rglob("tilixia-summer-book-2478.gif"))
+
+
+def test_browse_empty_and_loader_css_is_bounded_theme_aware_and_blended():
+    css = read_text("static/css/custom.css")
+    engraving = css_rule_group_declarations(css, (".browse-empty-engraving",))
+    loader = css_rule_group_declarations(css, (".loader-container",))
+    loader_art = css_rule_group_declarations(css, (".browse-loader-art",))
+
+    expected_mask = 'url("/static/img/illustrations/browse-scholar.svg") center / contain no-repeat'
+    assert engraving["-webkit-mask"] == expected_mask
+    assert engraving["mask"] == expected_mask
+    assert engraving["pointer-events"] == "none"
+    assert "min(" in engraving["width"]
+    assert loader["position"] == "absolute"
+    assert loader["inset"] == "0"
+    assert css_rule_group_declarations(css, (".loader-container[hidden]",)) == {
+        "display": "none"
+    }
+    assert loader_art["mix-blend-mode"] == "multiply"
+    assert "100vh" in loader_art["max-height"]
+    assert loader_art["pointer-events"] == "none"
+
+    assert css_rule_group_declarations(
+        css,
+        ('[data-bs-theme="dark"] .browse-empty-engraving',),
+    ) == {"background-color": "var(--gold-700)", "opacity": "0.52"}
+    assert contrast_ratio("#8A6635", "#2E1F0F") > 2.5
+    assert css_rule_group_declarations(
+        css,
+        ('[data-bs-theme="dark"] .loader-container',),
+    )["background-color"] == "#3d2011"
+
+    mobile = css_block_body(css, "@media (max-width: 575.98px)")
+    assert css_rule_group_declarations(mobile, (".browse-empty-engraving",))["width"] == (
+        "min(24rem, 100%)"
+    )
+    assert css_rule_group_declarations(mobile, (".browse-loader-art",))["width"] == (
+        "min(22rem, 100%)"
+    )
+
+
 def test_task6_browse_runtime_starts_search_without_legacy_globals():
     rendered = browse_runtime()
     assert rendered["body"] == {
@@ -6067,6 +6342,7 @@ def test_browse_timeout_aborts_request_and_clears_loading_state():
         "toast": ["Browse search timed out. Try again.", "danger"],
         "timeoutDelay": 30000,
         "sortingDisabled": False,
+        "ariaBusy": "false",
     }
 
 
@@ -6380,12 +6656,16 @@ def test_task2_browse_runtime_ignores_stale_initial_responses():
     assert rendered["duringNewestInitial"] == {
         "titles": [],
         "sortingDisabled": True,
+        "busy": "true",
+        "loaderCount": 1,
         "loadMorePresent": False,
         "sidebarReset": True,
         "requestQueries": ["archive", "fresh", "newest"],
         "requestSizes": [10, 10, 10],
     }
     assert rendered["initialSortingReleased"] is False
+    assert rendered["terminalBusy"] == "false"
+    assert rendered["terminalLoaderCount"] == 0
     assert rendered["requestQueries"] == ["archive", "fresh", "newest"]
     assert rendered["requestSizes"] == [10, 10, 10]
 

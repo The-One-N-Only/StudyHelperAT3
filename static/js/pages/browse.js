@@ -33,6 +33,7 @@ let searchIntentGeneration = 0;
 let browseInitGeneration = 0;
 let browseSourceReadiness = Promise.resolve();
 let isInitialSearchPending = false;
+const searchLoaders = new Map();
 
 function normalizeIdentityText(value) {
     if (value === null || value === undefined) return '';
@@ -402,12 +403,101 @@ function showPartialSourceWarning(result) {
     }
 }
 
+function syncBrowseLoadingState(resultsContainer) {
+    if (!resultsContainer) return;
+    const containerLoaders = Array.from(searchLoaders.values()).filter(
+        (loader) => loader.container === resultsContainer
+    );
+    const activeLoader = containerLoaders.at(-1);
+    containerLoaders.forEach((loader) => {
+        const isActive = loader === activeLoader;
+        loader.element.hidden = !isActive;
+        loader.element.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+    });
+    const isBusy = Boolean(activeLoader);
+    if (isBusy) {
+        resultsContainer.classList.add('browse-results-loading');
+    } else {
+        resultsContainer.classList.remove('browse-results-loading');
+    }
+    resultsContainer.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+
+    if (resultsContainer === pageRoot?.querySelector('#resultsContainer')) {
+        const sortingSelect = pageRoot.querySelector('#filterSorting');
+        if (sortingSelect) sortingSelect.disabled = isBusy || isInitialSearchPending;
+    }
+}
+
+function clearSearchLoader(intentGeneration) {
+    const loader = searchLoaders.get(intentGeneration);
+    if (!loader) return;
+    searchLoaders.delete(intentGeneration);
+    loader.element.remove();
+    syncBrowseLoadingState(loader.container);
+}
+
+function clearSupersededSearchLoaders(intentGeneration) {
+    Array.from(searchLoaders.keys()).forEach((generation) => {
+        if (generation !== intentGeneration) clearSearchLoader(generation);
+    });
+}
+
+function clearResultsBehindSearchLoader(intentGeneration) {
+    const loader = searchLoaders.get(intentGeneration);
+    if (!loader) return;
+    loader.element.remove();
+    loader.container.innerHTML = '';
+    loader.container.appendChild(loader.element);
+    syncBrowseLoadingState(loader.container);
+}
+
+function clearAllSearchLoaders() {
+    Array.from(searchLoaders.keys()).forEach(clearSearchLoader);
+}
+
+function renderBrowseEmptyState() {
+    const resultsContainer = pageRoot.querySelector('#resultsContainer');
+    if (!resultsContainer) return;
+    resultsContainer.innerHTML = `
+        <div class="browse-empty-state text-center py-5">
+            <span class="browse-empty-engraving" aria-hidden="true"></span>
+            <h5>Search verified academic sources</h5>
+            <p class="text-muted">Use the search bar above to find academic resources from trusted sources</p>
+        </div>
+    `;
+    syncBrowseLoadingState(resultsContainer);
+}
+
+function renderSearchLoader(intentGeneration) {
+    const resultsContainer = pageRoot.querySelector('#resultsContainer');
+    if (!resultsContainer) return;
+
+    const loader = document.createElement('div');
+    loader.className = 'loader-container';
+    loader.dataset.browseLoaderGeneration = String(intentGeneration);
+    loader.setAttribute('data-browse-loader-generation', String(intentGeneration));
+    loader.innerHTML = `
+        <picture class="browse-loader-picture">
+            <source media="(prefers-reduced-motion: reduce)" srcset="/static/img/loaders/bible-page-turn-still.png">
+            <img class="browse-loader-art" src="/static/img/loaders/bible-page-turn.gif" alt="" aria-hidden="true">
+        </picture>
+        <p class="browse-loader-status mb-0" role="status" aria-live="polite">Searching...</p>
+    `;
+    resultsContainer.appendChild(loader);
+    searchLoaders.set(intentGeneration, {
+        container: resultsContainer,
+        element: loader,
+    });
+    syncBrowseLoadingState(resultsContainer);
+}
+
 export function initBrowse(root) {
     const initGeneration = ++browseInitGeneration;
     searchIntentGeneration += 1;
     searchGeneration += 1;
     isInitialSearchPending = false;
     isLoadingMore = false;
+    clearAllSearchLoaders();
     pageRoot = root;
     whitelistDomains = [];
     whitelistSourcesRendered = false;
@@ -489,13 +579,7 @@ export function initBrowse(root) {
         <div class="d-flex browse-results-layout" style="height: calc(100vh - 200px);">
             <div class="border-end p-3 flex-shrink-0 browse-sidebar" style="width: 320px; min-width: 320px; overflow-y: auto;" id="sidebarContainer"></div>
             <div class="flex-grow-1 p-3 overflow-y-auto browse-results-pane">
-                <div id="resultsContainer">
-                    <div class="text-center py-5">
-                        <i class="bi bi-mortarboard display-4 text-muted" aria-hidden="true"></i>
-                        <h5>Search verified academic sources</h5>
-                        <p class="text-muted">Use the search bar above to find academic resources from trusted sources</p>
-                    </div>
-                </div>
+                <div id="resultsContainer" aria-busy="false"></div>
             </div>
         </div>
             </div>
@@ -504,6 +588,7 @@ export function initBrowse(root) {
 
     const sortingSelect = pageRoot.querySelector('#filterSorting');
     if (sortingSelect) sortingSelect.disabled = false;
+    renderBrowseEmptyState();
 
     const initialQuery = getInitialBrowseQuery();
 
@@ -1082,21 +1167,28 @@ async function performSearch(options = {}) {
     const query = pageRoot.querySelector('#searchInput').value.trim();
     if (!query) return;
 
-    const filters = buildFilters();
     const intentGeneration = ++searchIntentGeneration;
+    renderSearchLoader(intentGeneration);
+    const filters = buildFilters();
     const sourceReadiness = browseSourceReadiness;
     await sourceReadiness;
     if (
         initGeneration !== browseInitGeneration
         || intentGeneration !== searchIntentGeneration
-    ) return;
+    ) {
+        clearSearchLoader(intentGeneration);
+        return;
+    }
 
     const sources = getSelectedSources();
     if (sources.length === 0) {
         showToast('Please select at least one source', 'warning');
+        clearSearchLoader(intentGeneration);
         return;
     }
 
+    clearSupersededSearchLoaders(intentGeneration);
+    clearResultsBehindSearchLoader(intentGeneration);
     const generation = ++searchGeneration;
     if (options.updateUrl !== false) updateBrowseUrl(query);
 
@@ -1112,9 +1204,7 @@ async function performSearch(options = {}) {
     currentGroupPage = 1;
     currentSourceCounts = {};
 
-    const sortingSelect = pageRoot.querySelector('#filterSorting');
-    if (sortingSelect) sortingSelect.disabled = true;
-    resultsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Searching...</p></div>';
+    syncBrowseLoadingState(resultsContainer);
     renderSidebar(currentSourceCounts, currentSearchResults);
 
     try {
@@ -1135,23 +1225,25 @@ async function performSearch(options = {}) {
         );
         currentSourceCounts = result.source_counts || {};
         saveBrowseState();
+        clearSearchLoader(intentGeneration);
         renderCurrentResults();
         showPartialSourceWarning(result);
     } catch (error) {
         if (generation !== searchGeneration) return;
+        clearSearchLoader(intentGeneration);
         showToast(error.message, 'danger');
         showNoResults();
     } finally {
         if (generation !== searchGeneration) return;
         isInitialSearchPending = false;
-        const currentSortingSelect = pageRoot.querySelector('#filterSorting');
-        if (currentSortingSelect) currentSortingSelect.disabled = false;
+        syncBrowseLoadingState(pageRoot.querySelector('#resultsContainer'));
     }
 }
 
 function renderResults(results) {
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
     resultsContainer.innerHTML = '';
+    syncBrowseLoadingState(resultsContainer);
 
     if (!results || results.length === 0) {
         showNoResults();
@@ -1211,4 +1303,5 @@ async function loadMoreResults() {
 function showNoResults() {
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
     resultsContainer.innerHTML = '<div class="text-center"><i class="bi bi-search display-4 text-muted" aria-hidden="true"></i><h5>No results found</h5></div>';
+    syncBrowseLoadingState(resultsContainer);
 }

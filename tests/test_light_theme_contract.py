@@ -31,7 +31,7 @@ DARK_TEXTURE_NAMES = (
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 DARK_CSS_MARKER = "/* Candlelit Archive: dark theme foundation */"
-DARK_CSS_SHA256 = "67f8486dbe0b9f7748a846827678a7ad55dfaa76807538e5b76b3a7c453ce208"
+DARK_CSS_SHA256 = "846e4fd517487f7795152cf8e49774af8786d37cdf875f494d845d0cc4367ff4"
 LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
 CSS_TOKEN_PATTERN = re.compile(
     r'/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
@@ -1758,6 +1758,25 @@ def test_light_result_card_image_region_and_fallback_match_parchment_contract():
         "filter": "sepia(0.75) saturate(0.8) contrast(1.15)",
         "padding": "1.25rem",
     }
+
+
+def test_light_browse_empty_and_loading_art_uses_parchment_surface_and_dark_engraving():
+    css = light_css()
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .browse-empty-engraving",),
+    ) == {"background-color": "var(--ink-500)", "opacity": "0.62"}
+    assert contrast_ratio(
+        EXPECTED_LIGHT_ROOT_DECLARATIONS["--ink-500"],
+        EXPECTED_LIGHT_ROOT_DECLARATIONS["--paper-100"],
+    ) > 2.5
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .loader-container",),
+    )["background-color"] == "var(--paper-100)"
+    assert read_png_dimensions(
+        ROOT / "static" / "img" / "loaders" / "bible-page-turn-still.png"
+    ) == (480, 480)
 
 
 def test_light_source_tags_use_accessible_ink_at_caption_size():
