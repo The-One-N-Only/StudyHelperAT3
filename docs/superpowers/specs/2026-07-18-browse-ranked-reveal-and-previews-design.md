@@ -37,6 +37,25 @@ Make Browse show one ranked result from every selected source at a time while ke
 - Browse search remains SerpAPI-only. No Wikipedia, Google Books, PubMed, or Scholar search API is added for image lookup.
 - Remote images use lazy loading, no-referrer behavior, and an error fallback.
 
+### Phase 3 visual states
+
+- The supplied scholar-at-desk SVG replaces the mortarboard in the initial Browse empty state.
+- The SVG is decorative and rendered as a CSS mask: slightly darker than the light parchment surface and slightly lighter than the dark archive surface, producing an engraved effect without reducing heading contrast.
+- The supplied `tilixia-summer-bible-3417.gif` is the main Browse search animation. It appears as soon as a valid search starts, including while Browse waits for whitelist source readiness, and remains until results or a terminal error replace it.
+- The loader wrapper uses the active Browse surface colour. Its image uses `mix-blend-mode: multiply` so the GIF paper blends into both themes instead of showing a pale square.
+- Loader markup exposes a live `Searching...` status. The artwork itself is decorative.
+- Reduced-motion users receive a still frame extracted from the Bible animation instead of the animated GIF.
+- The Bible asset is resized for its rendered dimensions before being committed; animation duration and meaningful frames remain intact.
+- The supplied `tilixia-summer-book-2478.gif` remains reserved and is not bundled until a separate product state is assigned to it.
+
+### Phase 3 result-image resolution
+
+- Google Books cover derivation has first priority when a valid Google Books volume ID is present in the result URL or source ID.
+- Otherwise, SerpAPI `thumbnail` and then `favicon` metadata may be used only when the URL is HTTPS, has no credentials or non-standard port, and its host is either an approved source host or exactly/subdomain of `serpapi.com`, `gstatic.com`, `googleusercontent.com`, `books.google.com`, or `wikimedia.org`.
+- No result-image URL is fetched server-side. The browser loads approved remote images with `loading="lazy"`, `decoding="async"`, and `referrerpolicy="no-referrer"`.
+- Broken remote images switch once to a local illustration selected by source category. Google Books uses the open-book illustration, Wikipedia uses the scrollwork illustration, Scholar and PubMed use the stacked-books illustration, and other whitelist sources use the compass illustration.
+- Client-created and Jinja-rendered result cards follow the same URL, fallback, accessibility, and error behavior.
+
 ## Phase 4: Google Books preview timing
 
 - Run a temporary diagnostic build with the viewer timeout disabled.
