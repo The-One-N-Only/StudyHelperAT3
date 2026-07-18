@@ -28,6 +28,7 @@ class User(Base):
     workspace_items = relationship("WorkspaceItem", back_populates="user")
     uploaded_files = relationship("UploadedFile", back_populates="user")
     notes = relationship("Note", back_populates="user")
+    workspace_chat_messages = relationship("WorkspaceChatMessage", back_populates="user")
 
 class Item(Base):
     __tablename__ = "items"
@@ -97,6 +98,21 @@ class Workspace(Base):
     user = relationship("User", back_populates="workspaces")
     items = relationship("WorkspaceItem", back_populates="workspace")
     notes = relationship("Note", back_populates="workspace")
+    chat_messages = relationship("WorkspaceChatMessage", back_populates="workspace")
+
+
+class WorkspaceChatMessage(Base):
+    __tablename__ = "workspace_chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    time_created: Mapped[int] = mapped_column(nullable=False)
+
+    user = relationship("User", back_populates="workspace_chat_messages")
+    workspace = relationship("Workspace", back_populates="chat_messages")
 
 class WorkspaceItem(Base):
     __tablename__ = "workspace_items"
@@ -680,6 +696,65 @@ def get_workspace(user_id, workspace_id):
             "note_count": len(workspace.notes) if workspace.notes else 0
         }
 
+def get_workspace_chat_messages(workspace_id: int, user_id: int) -> list[dict]:
+    """Return oldest-first chat messages for a workspace owned by the user."""
+    with SessionLocal() as session:
+        workspace_exists = session.query(Workspace.id).filter_by(
+            id=workspace_id,
+            user_id=user_id,
+        ).first()
+        if not workspace_exists:
+            return []
+
+        messages = session.query(WorkspaceChatMessage).filter_by(
+            workspace_id=workspace_id,
+            user_id=user_id,
+        ).order_by(
+            WorkspaceChatMessage.time_created.asc(),
+            WorkspaceChatMessage.id.asc(),
+        ).all()
+        return [{
+            "id": message.id,
+            "role": message.role,
+            "content": message.content,
+            "time_created": message.time_created,
+        } for message in messages]
+
+def append_workspace_chat_turn(
+    user_id: int,
+    workspace_id: int,
+    user_content: str,
+    assistant_content: str,
+) -> bool:
+    """Atomically persist one user/assistant turn for an owned workspace."""
+    with SessionLocal() as session:
+        workspace_exists = session.query(Workspace.id).filter_by(
+            id=workspace_id,
+            user_id=user_id,
+        ).first()
+        if not workspace_exists:
+            return False
+
+        created_at = int(time.time())
+        session.add_all([
+            WorkspaceChatMessage(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                role="user",
+                content=user_content,
+                time_created=created_at,
+            ),
+            WorkspaceChatMessage(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                role="assistant",
+                content=assistant_content,
+                time_created=created_at,
+            ),
+        ])
+        session.commit()
+        return True
+
 def create_workspace(user_id, name):
     """Create a new workspace"""
     with SessionLocal() as session:
@@ -712,13 +787,14 @@ def rename_workspace(workspace_id, user_id, new_name):
         }
 
 def delete_workspace(workspace_id, user_id):
-    """Delete a workspace and all its items/notes"""
+    """Delete a workspace and its owned items, notes, and chat history."""
     with SessionLocal() as session:
         workspace = session.query(Workspace).filter_by(id=workspace_id, user_id=user_id).first()
         if not workspace:
             return False
         session.query(WorkspaceItem).filter_by(workspace_id=workspace_id).delete()
         session.query(Note).filter_by(workspace_id=workspace_id).delete()
+        session.query(WorkspaceChatMessage).filter_by(workspace_id=workspace_id).delete()
         session.delete(workspace)
         session.commit()
         return True

@@ -62,7 +62,7 @@ class StudyHelperAI {
    * @returns {Promise<Object>} The AI response
    */
   async chat(userMessage, options = {}) {
-    const { atn = this.currentATN } = options;
+    const { atn = this.currentATN, workspaceId = null } = options;
 
     // Add user message to history
     this.conversationHistory.push({
@@ -71,16 +71,21 @@ class StudyHelperAI {
     });
 
     try {
+      const payload = {
+        messages: this.conversationHistory,
+        atn: atn
+      };
+      if (workspaceId !== null && workspaceId !== undefined) {
+        payload.workspace_id = workspaceId;
+      }
+
       const response = await fetch('/api/answer/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-Token': this.getCSRFToken()
         },
-        body: JSON.stringify({
-          messages: this.conversationHistory,
-          atn: atn
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -117,6 +122,25 @@ class StudyHelperAI {
    */
   setAssessmentTask(atn) {
     this.currentATN = atn;
+  }
+
+  /**
+   * Restore a workspace conversation without sharing mutable API objects.
+   * @param {Array} messages - Oldest-first user/assistant messages
+   */
+  setConversationHistory(messages) {
+    this.conversationHistory = Array.isArray(messages)
+      ? messages
+        .filter((message) => (
+          message
+          && (message.role === 'user' || message.role === 'assistant')
+          && typeof message.content === 'string'
+        ))
+        .map((message) => ({
+          role: message.role,
+          content: message.content
+        }))
+      : [];
   }
 
   /**

@@ -5274,9 +5274,10 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     ):
         assert marker in workspace
     for preserved in (
-        "workspace-tabs nav nav-pills", "noteBtn.dataset.id = note.id",
-        "noteBtn.title = note.title", "editNote(note.id)", "escapeHtml(note.title)",
-        "message.role === 'agent'", "escapeHtml(message.text)", "studyHelperAI.chat(value)",
+            "workspace-tabs nav nav-pills", "noteBtn.dataset.id = note.id",
+            "noteBtn.title = note.title", "editNote(note.id)", "escapeHtml(note.title)",
+            "message.role === 'agent'", "escapeHtml(message.text)",
+            "studyHelperAI.chat(value, { workspaceId: currentWorkspaceId })",
     ):
         assert preserved in workspace
     exact_rules = (

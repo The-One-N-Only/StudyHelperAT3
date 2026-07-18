@@ -497,6 +497,23 @@ def get_workspace(workspace_id):
 
     return jsonify({'status': True, 'workspace': workspace})
 
+@app.route('/api/workspaces/<int:workspace_id>/chat', methods=['GET'])
+def get_workspace_chat(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+
+    workspace = db.get_workspace(user_id, workspace_id)
+    if not workspace:
+        return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+
+    messages = db.get_workspace_chat_messages(workspace_id, user_id)
+    return jsonify({
+        'status': True,
+        'messages': messages,
+        'ai_configured': answer.client is not None,
+    })
+
 @app.route('/api/workspaces', methods=['POST'])
 def create_workspace():
     user_id = session.get('user_id')
@@ -801,14 +818,73 @@ def answer_chat():
     if not user_id:
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
     
-    data = request.json
+    data = request.get_json(silent=True) or {}
     messages = data.get('messages', [])
     atn = data.get('atn')
+    workspace_id = data.get('workspace_id')
     
     if not messages:
         return jsonify({'status': False, 'error': 'No messages provided'}), 400
+
+    latest_user_content = None
+    if workspace_id is not None:
+        if isinstance(workspace_id, bool):
+            return jsonify({'status': False, 'error': 'Invalid workspace ID'}), 400
+        try:
+            workspace_id = int(workspace_id)
+        except (TypeError, ValueError):
+            return jsonify({'status': False, 'error': 'Invalid workspace ID'}), 400
+
+        workspace = db.get_workspace(user_id, workspace_id)
+        if not workspace:
+            return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+
+        latest_user_content = next((
+            message.get('content')
+            for message in reversed(messages)
+            if isinstance(message, dict)
+            and message.get('role') == 'user'
+            and isinstance(message.get('content'), str)
+            and message.get('content').strip()
+        ), None)
+        if latest_user_content is None:
+            return jsonify({'status': False, 'error': 'No user message provided'}), 400
     
     result = answer.chat_with_sources(messages, user_id, atn=atn)
+    if isinstance(result, str):
+        result = {'status': True, 'response': result}
+    elif not isinstance(result, dict):
+        logging.error("AI chat returned an invalid response type for user %s", user_id)
+        result = {'status': False, 'error': 'Alexander returned an invalid response.'}
+
+    if workspace_id is not None and result.get('status') is True:
+        assistant_content = result.get('response')
+        if not isinstance(assistant_content, str) or not assistant_content.strip():
+            logging.error("AI chat returned no response text for user %s", user_id)
+            return jsonify({
+                'status': False,
+                'error': 'Alexander returned an invalid response.',
+            }), 502
+        try:
+            persisted = db.append_workspace_chat_turn(
+                user_id,
+                workspace_id,
+                latest_user_content,
+                assistant_content,
+            )
+        except Exception:
+            logging.exception(
+                "Failed to persist chat turn for user %s workspace %s",
+                user_id,
+                workspace_id,
+            )
+            return jsonify({
+                'status': False,
+                'error': 'Alexander answered, but the conversation could not be saved.',
+            }), 500
+        if not persisted:
+            return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+
     logging.info(f"User {user_id} had multi-turn conversation")
     return jsonify(result)
 

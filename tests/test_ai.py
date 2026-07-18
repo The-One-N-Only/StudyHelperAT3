@@ -5,8 +5,11 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 import src.answer as answer
+import src.db as db
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -275,6 +278,263 @@ def test_answer_provider_error_is_logged_and_sanitised(monkeypatch):
     log_exception.assert_called_once()
 
 
+@pytest.fixture
+def isolated_workspace_db(monkeypatch, tmp_path):
+    test_engine = create_engine(f"sqlite:///{(tmp_path / 'workspace-chat.db').as_posix()}")
+    test_session = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+    db.Base.metadata.create_all(bind=test_engine)
+    monkeypatch.setattr(db, "engine", test_engine)
+    monkeypatch.setattr(db, "SessionLocal", test_session)
+
+    with test_session() as session:
+        first_user = db.User(
+            email="first@example.test",
+            login_platform="local",
+            platform_id={},
+        )
+        second_user = db.User(
+            email="second@example.test",
+            login_platform="local",
+            platform_id={},
+        )
+        session.add_all([first_user, second_user])
+        session.flush()
+        first_workspace = db.Workspace(
+            user_id=first_user.id,
+            name="First workspace",
+            time_created=1,
+        )
+        second_workspace = db.Workspace(
+            user_id=second_user.id,
+            name="Second workspace",
+            time_created=2,
+        )
+        session.add_all([first_workspace, second_workspace])
+        session.commit()
+        return {
+            "session": test_session,
+            "first_user": first_user.id,
+            "second_user": second_user.id,
+            "first_workspace": first_workspace.id,
+            "second_workspace": second_workspace.id,
+        }
+
+
+def test_workspace_chat_db_inserts_turns_oldest_first_and_isolates_owners(
+    isolated_workspace_db,
+):
+    ids = isolated_workspace_db
+
+    assert db.append_workspace_chat_turn(
+        ids["first_user"], ids["first_workspace"], "First question", "First answer"
+    ) is True
+    assert db.append_workspace_chat_turn(
+        ids["first_user"], ids["first_workspace"], "Second question", "Second answer"
+    ) is True
+
+    messages = db.get_workspace_chat_messages(
+        ids["first_workspace"], ids["first_user"]
+    )
+    assert [(message["role"], message["content"]) for message in messages] == [
+        ("user", "First question"),
+        ("assistant", "First answer"),
+        ("user", "Second question"),
+        ("assistant", "Second answer"),
+    ]
+    assert [message["id"] for message in messages] == sorted(
+        message["id"] for message in messages
+    )
+    assert db.get_workspace_chat_messages(
+        ids["first_workspace"], ids["second_user"]
+    ) == []
+    assert db.append_workspace_chat_turn(
+        ids["second_user"], ids["first_workspace"], "Attack", "Blocked"
+    ) is False
+    assert len(db.get_workspace_chat_messages(
+        ids["first_workspace"], ids["first_user"]
+    )) == 4
+
+
+def test_workspace_deletion_cleans_up_chat_messages(isolated_workspace_db):
+    ids = isolated_workspace_db
+    assert db.append_workspace_chat_turn(
+        ids["first_user"], ids["first_workspace"], "Question", "Answer"
+    ) is True
+
+    assert db.delete_workspace(ids["first_workspace"], ids["first_user"]) is True
+
+    with ids["session"]() as session:
+        assert session.query(db.WorkspaceChatMessage).count() == 0
+
+
+def test_workspace_chat_get_requires_login_and_owned_workspace(monkeypatch):
+    import app as flask_app
+
+    with flask_app.app.test_request_context("/api/workspaces/4/chat"):
+        response, status = flask_app.get_workspace_chat(4)
+    assert status == 401
+    assert response.get_json() == {"status": False, "error": "Not logged in"}
+
+    monkeypatch.setattr(flask_app.db, "get_workspace", lambda *_args: None)
+    with flask_app.app.test_request_context("/api/workspaces/4/chat"):
+        flask_app.session["user_id"] = 9
+        response, status = flask_app.get_workspace_chat(4)
+    assert status == 404
+    assert response.get_json() == {"status": False, "error": "Workspace not found"}
+
+
+@pytest.mark.parametrize("configured", (False, True))
+def test_workspace_chat_get_returns_saved_messages_and_ai_state(monkeypatch, configured):
+    import app as flask_app
+
+    saved = [
+        {"id": 1, "role": "user", "content": "Question", "time_created": 10},
+        {"id": 2, "role": "assistant", "content": "Answer", "time_created": 10},
+    ]
+    monkeypatch.setattr(flask_app.db, "get_workspace", lambda *_args: {"id": 4})
+    monkeypatch.setattr(
+        flask_app.db,
+        "get_workspace_chat_messages",
+        lambda workspace_id, user_id: saved,
+        raising=False,
+    )
+    monkeypatch.setattr(flask_app.answer, "client", object() if configured else None)
+
+    with flask_app.app.test_request_context("/api/workspaces/4/chat"):
+        flask_app.session["user_id"] = 9
+        response = flask_app.get_workspace_chat(4)
+
+    assert response.get_json() == {
+        "status": True,
+        "messages": saved,
+        "ai_configured": configured,
+    }
+
+
+def test_answer_chat_persists_successful_owned_workspace_turn(monkeypatch):
+    import app as flask_app
+
+    messages = [
+        {"role": "user", "content": "Earlier"},
+        {"role": "assistant", "content": "Earlier answer"},
+        {"role": "user", "content": "Latest question"},
+    ]
+    append_calls = []
+    monkeypatch.setattr(flask_app.db, "get_workspace", lambda user_id, workspace_id: {"id": workspace_id})
+    monkeypatch.setattr(
+        flask_app.db,
+        "append_workspace_chat_turn",
+        lambda *args: append_calls.append(args) or True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        flask_app.answer,
+        "chat_with_sources",
+        lambda received, user_id, atn=None: {
+            "status": True,
+            "response": "Hosted answer",
+            "sources": [],
+        },
+    )
+
+    with flask_app.app.test_request_context(
+        "/api/answer/chat",
+        method="POST",
+        json={"messages": messages, "workspace_id": 4},
+    ):
+        flask_app.session["user_id"] = 9
+        response = flask_app.answer_chat()
+
+    assert response.get_json()["response"] == "Hosted answer"
+    assert append_calls == [(9, 4, "Latest question", "Hosted answer")]
+
+
+def test_answer_chat_rejects_wrong_workspace_owner_before_provider(monkeypatch):
+    import app as flask_app
+
+    monkeypatch.setattr(flask_app.db, "get_workspace", lambda *_args: None)
+    monkeypatch.setattr(
+        flask_app.answer,
+        "chat_with_sources",
+        lambda *_args, **_kwargs: pytest.fail("provider called for wrong workspace owner"),
+    )
+
+    with flask_app.app.test_request_context(
+        "/api/answer/chat",
+        method="POST",
+        json={
+            "messages": [{"role": "user", "content": "Question"}],
+            "workspace_id": 4,
+        },
+    ):
+        flask_app.session["user_id"] = 9
+        response, status = flask_app.answer_chat()
+
+    assert status == 404
+    assert response.get_json() == {"status": False, "error": "Workspace not found"}
+
+
+def test_answer_chat_does_not_persist_provider_failure(monkeypatch):
+    import app as flask_app
+
+    monkeypatch.setattr(flask_app.db, "get_workspace", lambda *_args: {"id": 4})
+    monkeypatch.setattr(
+        flask_app.db,
+        "append_workspace_chat_turn",
+        lambda *_args: pytest.fail("failed provider response was persisted"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        flask_app.answer,
+        "chat_with_sources",
+        lambda *_args, **_kwargs: {"status": False, "error": AI_PROVIDER_ERROR},
+    )
+
+    with flask_app.app.test_request_context(
+        "/api/answer/chat",
+        method="POST",
+        json={
+            "messages": [{"role": "user", "content": "Question"}],
+            "workspace_id": 4,
+        },
+    ):
+        flask_app.session["user_id"] = 9
+        response = flask_app.answer_chat()
+
+    assert response.get_json() == {"status": False, "error": AI_PROVIDER_ERROR}
+
+
+def test_answer_chat_without_workspace_keeps_legacy_non_persistent_contract(monkeypatch):
+    import app as flask_app
+
+    monkeypatch.setattr(
+        flask_app.db,
+        "get_workspace",
+        lambda *_args: pytest.fail("legacy chat attempted workspace lookup"),
+    )
+    monkeypatch.setattr(
+        flask_app.db,
+        "append_workspace_chat_turn",
+        lambda *_args: pytest.fail("legacy chat attempted persistence"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        flask_app.answer,
+        "chat_with_sources",
+        lambda *_args, **_kwargs: {"status": True, "response": "Legacy answer"},
+    )
+
+    with flask_app.app.test_request_context(
+        "/api/answer/chat",
+        method="POST",
+        json={"messages": [{"role": "user", "content": "Question"}]},
+    ):
+        flask_app.session["user_id"] = 9
+        response = flask_app.answer_chat()
+
+    assert response.get_json() == {"status": True, "response": "Legacy answer"}
+
+
 def test_browse_summary_returns_summariser_dict_directly(monkeypatch):
     import app as flask_app
 
@@ -353,6 +613,7 @@ pageRoot = {
         return null;
     },
 };
+currentWorkspaceId = 42;
 
 const oldLoading = { role: 'agent', text: 'Alexander is thinking...' };
 alexanderMessages = [{ role: 'agent', text: 'Welcome' }, oldLoading];
@@ -368,6 +629,8 @@ const activeLoading = alexanderMessages.at(-1);
 input.value = 'Duplicate question';
 sendAlexanderMessage();
 check(networkCalls === 1, 'duplicate pending submission made another network call');
+check(globalThis.__chatCalls[0][0] === 'First question', 'chat message payload changed');
+check(globalThis.__chatCalls[0][1]?.workspaceId === 42, 'chat omitted current workspace ID');
 check(input.disabled === true, 'chat input stayed enabled while request pending');
 check(sendButton.disabled === true, 'Send stayed enabled while request pending');
 firstDeferred.resolve({ status: true, response: 'Hosted answer' });
@@ -402,9 +665,159 @@ check(input.disabled === false && sendButton.disabled === false, 'server error l
 '''
     prelude = (
         "globalThis.__chatImpl = async () => ({ status: false, error: 'unset' });\n"
-        "globalThis.studyHelperAI = { chat: (...args) => globalThis.__chatImpl(...args) };\n"
+        "globalThis.__chatCalls = [];\n"
+        "globalThis.studyHelperAI = { chat: (...args) => { globalThis.__chatCalls.push(args); return globalThis.__chatImpl(...args); } };\n"
     )
     harness_path = tmp_path / "workspace-ai-lifecycle.mjs"
+    harness_path.write_text(prelude + source + "\n" + harness, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(harness_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_study_helper_ai_restores_history_and_sends_optional_workspace_id(tmp_path):
+    module_path = tmp_path / "ai-prompt-under-test.mjs"
+    module_path.write_text(_read("static/js/ai-prompt.js"), encoding="utf-8")
+    harness = r'''
+function check(condition, message) {
+    if (!condition) throw new Error(message);
+}
+
+globalThis.document = {
+    querySelector: () => null,
+    getElementById: () => null,
+};
+const requests = [];
+globalThis.fetch = async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return {
+        ok: true,
+        async json() { return { status: true, response: `Answer ${requests.length}` }; },
+    };
+};
+
+const { studyHelperAI } = await import("./ai-prompt-under-test.mjs");
+const saved = [
+    { role: "user", content: "Saved question" },
+    { role: "assistant", content: "Saved answer" },
+];
+studyHelperAI.setConversationHistory(saved);
+saved[0].content = "mutated outside";
+await studyHelperAI.chat("Latest question", { workspaceId: 42, atn: "Essay" });
+
+check(requests[0].workspace_id === 42, "workspace ID missing from chat payload");
+check(requests[0].atn === "Essay", "ATN changed");
+check(requests[0].messages.length === 3, "saved history was not restored");
+check(requests[0].messages[0].content === "Saved question", "history was not copied safely");
+check(requests[0].messages[1].role === "assistant", "assistant history role changed");
+
+studyHelperAI.clearConversation();
+await studyHelperAI.chat("Legacy question");
+check(!Object.hasOwn(requests[1], "workspace_id"), "legacy chat gained workspace ID");
+'''
+    harness_path = tmp_path / "ai-prompt-runtime.mjs"
+    harness_path.write_text(harness, encoding="utf-8")
+
+    completed = subprocess.run(
+        ["node", str(harness_path)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_workspace_restores_saved_chat_and_disables_unconfigured_controls(tmp_path):
+    source = _read("static/js/pages/workspace.js")
+    assert "`/api/workspaces/${currentWorkspaceId}/chat`" in source
+    source = source.replace(
+        "import { showToast } from '../toast.js';",
+        "const showToast = () => {};",
+    ).replace(
+        "import { studyHelperAI } from '../ai-prompt.js';",
+        "const studyHelperAI = globalThis.studyHelperAI;",
+    )
+    harness = rf'''
+function check(condition, message) {{
+    if (!condition) throw new Error(message);
+}}
+
+function element() {{
+    let html = "";
+    return {{
+        disabled: false,
+        children: [],
+        scrollTop: 0,
+        scrollHeight: 0,
+        get innerHTML() {{ return html; }},
+        set innerHTML(value) {{ html = String(value); this.children = []; }},
+        get textContent() {{ return html; }},
+        set textContent(value) {{
+            html = String(value)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;");
+        }},
+        appendChild(child) {{ this.children.push(child); this.scrollHeight += 1; }},
+    }};
+}}
+
+globalThis.document = {{ createElement: () => element() }};
+const input = element();
+const sendButton = element();
+const status = element();
+const container = element();
+pageRoot = {{
+    querySelector(selector) {{
+        if (selector === "#alexanderChatInput") return input;
+        if (selector === "#alexanderSendBtn") return sendButton;
+        if (selector === "#alexanderChatStatus") return status;
+        if (selector === "#alexanderChatMessages") return container;
+        return null;
+    }},
+}};
+
+const saved = [
+    {{ id: 1, role: "user", content: "Saved question", time_created: 10 }},
+    {{ id: 2, role: "assistant", content: "Saved answer", time_created: 10 }},
+];
+applyAlexanderChatData({{ status: true, messages: saved, ai_configured: false }});
+renderAlexanderMessages();
+syncAlexanderChatAvailability();
+
+check(globalThis.__historyCalls.length === 1, "saved history was not given to AI client");
+check(JSON.stringify(globalThis.__historyCalls[0]) === JSON.stringify(saved),
+    "AI client received wrong workspace history");
+check(alexanderMessages.length === 3, "saved chat bubbles were not restored after welcome");
+check(alexanderMessages[1].role === "user" && alexanderMessages[1].text === "Saved question",
+    "saved user bubble changed");
+check(alexanderMessages[2].role === "agent" && alexanderMessages[2].text === "Saved answer",
+    "saved assistant bubble changed");
+check(container.children.length === 3, "saved messages are not readable");
+check(input.disabled === true && sendButton.disabled === true,
+    "missing AI configuration left chat controls enabled");
+check(status.textContent.includes({AI_NOT_CONFIGURED_ERROR!r}),
+    "missing AI configuration message was not shown");
+'''
+    prelude = (
+        "globalThis.__historyCalls = [];\n"
+        "globalThis.studyHelperAI = {\n"
+        "  setConversationHistory(messages) { globalThis.__historyCalls.push(messages); },\n"
+        "  chat: async () => ({ status: false, error: 'unused' }),\n"
+        "};\n"
+    )
+    harness_path = tmp_path / "workspace-chat-restore.mjs"
     harness_path.write_text(prelude + source + "\n" + harness, encoding="utf-8")
 
     completed = subprocess.run(
