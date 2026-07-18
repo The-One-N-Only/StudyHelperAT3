@@ -8,6 +8,7 @@ const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 const BROWSE_STATE_VERSION = 2;
 const BROWSE_REQUEST_TIMEOUT_MS = 30000;
 const RESULTS_PER_SOURCE_PER_RANK = 1;
+const MAX_VISIBLE_SOURCE_RANK = 10;
 const DEDUPE_IDENTITY_PROPERTY = '_dedupe_identity';
 const CANONICAL_SOURCE_URL_PROPERTY = '_canonical_source_url';
 const RESPONSE_METADATA_PROPERTIES = new Set([
@@ -672,7 +673,8 @@ function sourcesToDisplay() {
 
 function getVisibleResults() {
     const visible = [];
-    const visibleCount = RESULTS_PER_SOURCE_PER_RANK * currentGroupPage;
+    const visibleRank = Math.min(currentGroupPage, MAX_VISIBLE_SOURCE_RANK);
+    const visibleCount = RESULTS_PER_SOURCE_PER_RANK * visibleRank;
     sourcesToDisplay().forEach((source) => {
         visible.push(...(currentGroupedResults[source] || []).slice(0, visibleCount));
     });
@@ -680,6 +682,7 @@ function getVisibleResults() {
 }
 
 function hasBufferedGroupedResults() {
+    if (currentGroupPage >= MAX_VISIBLE_SOURCE_RANK) return false;
     const visibleCount = RESULTS_PER_SOURCE_PER_RANK * currentGroupPage;
     return sourcesToDisplay().some((source) => (
         (currentGroupedResults[source] || []).length > visibleCount
@@ -872,9 +875,10 @@ function restoreBrowseState() {
 
         lastSearchQuery = restoredQuery || null;
         lastSearchSources = restoredSources;
-        currentGroupPage = Number.isInteger(state.groupPage) && state.groupPage >= 1
+        const restoredGroupPage = Number.isInteger(state.groupPage) && state.groupPage >= 1
             ? state.groupPage
             : 1;
+        currentGroupPage = Math.min(restoredGroupPage, MAX_VISIBLE_SOURCE_RANK);
         applySelectedSources(restoredSources);
 
         currentGroupedResults = normalizedGroupedResults(
@@ -1043,6 +1047,7 @@ async function loadMoreResults() {
         || isLoadingMore
         || !lastSearchQuery
         || !lastSearchSources
+        || currentGroupPage >= MAX_VISIBLE_SOURCE_RANK
         || !hasBufferedGroupedResults()
     ) {
         return;

@@ -3944,6 +3944,71 @@ process.stdout.write(JSON.stringify({
 """
 
 
+MAX_RANK_RESTORED_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+const cachedItems = Array.from({ length: 20 }, (_, index) => ({
+  source_name: "Wikipedia",
+  source_id: `wiki-${index + 1}`,
+  source_url: `https://en.wikipedia.org/wiki/archive-${index + 1}`,
+  title: `wiki-${index + 1}`,
+}));
+const restoredState = {
+  version: 2,
+  query: "legacy cumulative cache",
+  sources: ["wikipedia"],
+  filters: { min_date: "", max_date: "", content_type: "", sorting: "" },
+  results: cachedItems,
+  groupedResults: { wikipedia: cachedItems },
+  sourceCounts: { wikipedia: 20 },
+  groupPage: 11,
+  resultWindow: 20,
+  searchExhausted: false,
+};
+globalThis.localStorage = {
+  getItem(key) {
+    invariant(key === "studyhelper_browse_state", "wrong max-rank restore key");
+    return JSON.stringify(restoredState);
+  },
+  setItem() {},
+};
+const fetchCalls = [];
+globalThis.fetch = async (url) => {
+  fetchCalls.push(url);
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  return {
+    ok: true,
+    async json() {
+      return {
+        status: true,
+        results: cachedItems,
+        grouped_results: { wikipedia: cachedItems },
+        source_counts: { wikipedia: 20 },
+      };
+    },
+  };
+};
+globalThis.toastCalls = [];
+
+const { initBrowse, getBrowseState } = await import(process.argv[1]);
+initBrowse(root);
+await flushPromises();
+const initialTitles = globalThis.renderedItems.map((item) => item.title);
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+
+process.stdout.write(JSON.stringify({
+  initialTitles,
+  afterLoadTitles: globalThis.renderedItems.map((item) => item.title),
+  loadMoreDisabled: controls.get("#loadMoreBtn").disabled,
+  loadMoreText: controls.get("#loadMoreText").textContent,
+  searchRequestCount: fetchCalls.filter((url) => url === "/api/browse/search-all").length,
+  restoredGroupPage: getBrowseState().groupPage,
+}));
+"""
+
+
 LEGACY_BROWSE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
 globalThis.renderedItems = [];
 const gbooks = new FakeElement("gbooks");
@@ -4500,6 +4565,17 @@ def restored_browse_runtime(source: str | None = None) -> dict:
     )
 
 
+def max_rank_restored_browse_runtime(source: str | None = None) -> dict:
+    browse_source = source or read_text("static/js/pages/browse.js")
+    browse_source += "\nexport { getBrowseState };\n"
+    return run_task6_module_harness(
+        browse_source,
+        BROWSE_IMPORT_REPLACEMENTS,
+        MAX_RANK_RESTORED_BROWSE_RUNTIME_HARNESS,
+        "max-rank restored browse",
+    )
+
+
 def legacy_browse_runtime(source: str | None = None) -> dict:
     return run_task6_module_harness(
         source or read_text("static/js/pages/browse.js"),
@@ -4989,6 +5065,18 @@ def test_task2_restored_browse_deduplicates_legacy_and_server_metadata_state():
     assert rendered["storedThumbnails"] == ["", "", "", "", ""]
     assert rendered["initialButtonDisabled"] is False
     assert rendered["searchRequestCount"] == 0
+
+
+def test_restored_v2_browse_clamps_cached_visibility_to_ten_ranks():
+    rendered = max_rank_restored_browse_runtime()
+    expected_titles = [f"wiki-{rank}" for rank in range(1, 11)]
+
+    assert rendered["initialTitles"] == expected_titles
+    assert rendered["afterLoadTitles"] == expected_titles
+    assert rendered["loadMoreDisabled"] is True
+    assert rendered["loadMoreText"] == "No more results."
+    assert rendered["searchRequestCount"] == 0
+    assert rendered["restoredGroupPage"] == 10
 
 
 def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
