@@ -449,6 +449,212 @@ def test_whitelist_search_uses_serpapi_when_key_set(monkeypatch):
     assert results[0]["source_url"] == "https://en.wikipedia.org/wiki/Test"
 
 
+def _run_browse_serpapi_image_results(
+    monkeypatch,
+    organic_results,
+    *,
+    source="wikipedia",
+    allowed_image_prefixes=(),
+):
+    requests_seen = []
+
+    class FakeResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"organic_results": organic_results}
+
+    def fake_get(url, *, params, headers, timeout):
+        requests_seen.append((url, dict(params), dict(headers), timeout))
+        return FakeResponse()
+
+    def is_allowed(url):
+        return (
+            url.startswith("https://en.wikipedia.org/wiki/")
+            or url.startswith("https://books.google.com/books")
+            or any(url.startswith(prefix) for prefix in allowed_image_prefixes)
+        )
+
+    monkeypatch.setattr(search, "SERP_API_KEY", "serp-test-key")
+    monkeypatch.setattr(search.requests, "get", fake_get)
+    monkeypatch.setattr(search.whitelist, "is_allowed", is_allowed)
+    monkeypatch.setattr(
+        search.db,
+        "get_or_create_item_by_source_id",
+        lambda item_data, _user_id, _recent: dict(item_data),
+    )
+
+    results = search.browse_serpapi_search(
+        "archive",
+        len(organic_results),
+        source,
+        {},
+        user_id=7,
+    )
+    return results, requests_seen
+
+
+def test_browse_serpapi_gbooks_cover_from_query_id_precedes_hostile_metadata(
+    monkeypatch,
+):
+    link = "https://books.google.com/books?id=zyTCAlFPjgYC&hl=en"
+    results, requests_seen = _run_browse_serpapi_image_results(
+        monkeypatch,
+        [{
+            "title": "Book",
+            "link": link,
+            "thumbnail": "https://attacker@serpapi.com/hostile.jpg",
+            "favicon": "https://serpapi.com/safe-but-lower-priority.png",
+        }],
+        source="gbooks",
+    )
+
+    assert results[0]["thumb_url"] == (
+        "https://books.google.com/books/content?id=zyTCAlFPjgYC"
+        "&printsec=frontcover&img=1&zoom=1"
+    )
+    assert results[0]["thumb_mime"] == "image/jpeg"
+    assert results[0]["thumb_height"] == 0
+    assert results[0]["source_id"] == link
+    assert len(requests_seen) == 1
+
+
+def test_browse_serpapi_gbooks_cover_supports_edition_path_id(monkeypatch):
+    results, _requests_seen = _run_browse_serpapi_image_results(
+        monkeypatch,
+        [{
+            "title": "Edition",
+            "link": (
+                "https://books.google.com/books/edition/Archive_Studies/"
+                "_o3BjwEACAAJ?hl=en"
+            ),
+            "thumbnail": "https://tracking.invalid/hostile.jpg",
+        }],
+        source="gbooks",
+    )
+
+    assert results[0]["thumb_url"] == (
+        "https://books.google.com/books/content?id=_o3BjwEACAAJ"
+        "&printsec=frontcover&img=1&zoom=1"
+    )
+
+
+@pytest.mark.parametrize(
+    ("thumbnail", "favicon", "allowed_prefixes", "expected"),
+    (
+        (
+            "https://serpapi.com/images/thumb.jpeg",
+            "https://gstatic.com/favicon.png",
+            (),
+            "https://serpapi.com/images/thumb.jpeg",
+        ),
+        (
+            "https://tracking.invalid/thumb.jpg",
+            "https://www.gstatic.com/favicon.png",
+            (),
+            "https://www.gstatic.com/favicon.png",
+        ),
+        (
+            "https://lh3.googleusercontent.com/cover.jpg",
+            "",
+            (),
+            "https://lh3.googleusercontent.com/cover.jpg",
+        ),
+        (
+            "https://books.google.com/cover.jpg",
+            "",
+            (),
+            "https://books.google.com/cover.jpg",
+        ),
+        (
+            "https://upload.wikimedia.org/cover.jpg",
+            "",
+            (),
+            "https://upload.wikimedia.org/cover.jpg",
+        ),
+        (
+            "https://images.example.edu/cover.jpg",
+            "",
+            ("https://images.example.edu/",),
+            "https://images.example.edu/cover.jpg",
+        ),
+    ),
+)
+def test_browse_serpapi_thumbnail_then_favicon_accepts_only_approved_https_hosts(
+    monkeypatch,
+    thumbnail,
+    favicon,
+    allowed_prefixes,
+    expected,
+):
+    results, _requests_seen = _run_browse_serpapi_image_results(
+        monkeypatch,
+        [{
+            "title": "Archive",
+            "link": "https://en.wikipedia.org/wiki/Archive",
+            "thumbnail": thumbnail,
+            "favicon": favicon,
+        }],
+        allowed_image_prefixes=allowed_prefixes,
+    )
+
+    assert results[0]["thumb_url"] == expected
+    assert results[0]["thumb_mime"] == "image/jpeg"
+    assert results[0]["thumb_height"] == 0
+
+
+@pytest.mark.parametrize(
+    "image_url",
+    (
+        "http://serpapi.com/image.jpg",
+        "https://user:password@serpapi.com/image.jpg",
+        "https://serpapi.com:444/image.jpg",
+        "https://serpapi.com/image.jpg#fragment",
+        "https://serpapi.com/image name.jpg",
+        "https://serpapi.com\\image.jpg",
+        "https://evilserpapi.com/image.jpg",
+        "https://tracking.invalid/image.jpg",
+        "https://[broken/image.jpg",
+        "https://serpapi.com/" + ("a" * 240),
+    ),
+)
+def test_browse_serpapi_image_rejects_unsafe_or_oversized_metadata(
+    monkeypatch,
+    image_url,
+):
+    results, requests_seen = _run_browse_serpapi_image_results(
+        monkeypatch,
+        [{
+            "title": "Archive",
+            "link": "https://en.wikipedia.org/wiki/Archive",
+            "thumbnail": image_url,
+            "favicon": image_url,
+        }],
+    )
+
+    assert results[0]["thumb_url"] == ""
+    assert results[0]["thumb_height"] == 0
+    assert len(requests_seen) == 1
+
+
+def test_browse_serpapi_cover_falls_back_empty_when_generated_url_exceeds_db_limit(
+    monkeypatch,
+):
+    long_id = "A" * 220
+    results, _requests_seen = _run_browse_serpapi_image_results(
+        monkeypatch,
+        [{
+            "title": "Oversized edition",
+            "link": f"https://books.google.com/books?id={long_id}",
+            "thumbnail": "https://serpapi.com/" + ("a" * 240),
+        }],
+        source="gbooks",
+    )
+
+    assert results[0]["thumb_url"] == ""
+
+
 @pytest.mark.parametrize(
     ("source", "domain", "source_name"),
     (
@@ -490,7 +696,11 @@ def test_browse_serpapi_search_scopes_every_dedicated_source(
 
     monkeypatch.setattr(search, "SERP_API_KEY", "serp-test-key")
     monkeypatch.setattr(search.requests, "get", fake_get)
-    monkeypatch.setattr(search.whitelist, "is_allowed", lambda _url: True)
+    monkeypatch.setattr(
+        search.whitelist,
+        "is_allowed",
+        lambda url: url.startswith(f"https://{domain}/"),
+    )
     monkeypatch.setattr(
         search.db,
         "get_or_create_item_by_source_id",

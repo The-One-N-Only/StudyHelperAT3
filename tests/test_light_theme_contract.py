@@ -31,7 +31,7 @@ DARK_TEXTURE_NAMES = (
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 DARK_CSS_MARKER = "/* Candlelit Archive: dark theme foundation */"
-DARK_CSS_SHA256 = "af35cc50ac4eefd2bcb01942566e2d6b91c8a970f3a3b0b9cb2860f96826209a"
+DARK_CSS_SHA256 = "67f8486dbe0b9f7748a846827678a7ad55dfaa76807538e5b76b3a7c453ce208"
 LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
 CSS_TOKEN_PATTERN = re.compile(
     r'/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
@@ -1735,6 +1735,29 @@ def test_light_browse_search_overview_and_results_match_component_contract():
     )
     for selectors, expected in expected_rules:
         assert css_rule_group_declarations(css, selectors) == expected
+
+
+def test_light_result_card_image_region_and_fallback_match_parchment_contract():
+    css = light_css()
+    assert css_rule_group_declarations(
+        css,
+        (f"{LIGHT_GUARD} .result-card .result-card-image",),
+    ) == {
+        "background": "var(--paper-100)",
+        "height": "130px",
+        "object-fit": "contain",
+        "width": "100%",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (
+            f'{LIGHT_GUARD} .result-card '
+            '.result-card-image[data-image-kind="fallback"]',
+        ),
+    ) == {
+        "filter": "sepia(0.75) saturate(0.8) contrast(1.15)",
+        "padding": "1.25rem",
+    }
 
 
 def test_light_source_tags_use_accessible_ink_at_caption_size():

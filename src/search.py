@@ -4,7 +4,7 @@ import math
 import os
 import re
 from collections.abc import Mapping
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import requests
 import src.whitelist as whitelist
@@ -15,6 +15,16 @@ GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
 SERP_API_KEY = os.getenv("SERP_API_KEY", "")
 CUSTOM_SEARCH_PAGE_SIZE = 10
 CUSTOM_SEARCH_MAX_RESULTS = 100
+ITEM_THUMB_URL_MAX_LENGTH = 255
+
+BROWSE_IMAGE_PROVIDER_SUFFIXES = (
+    "serpapi.com",
+    "gstatic.com",
+    "googleusercontent.com",
+    "books.google.com",
+    "wikimedia.org",
+)
+GOOGLE_BOOKS_VOLUME_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,220}")
 
 BROWSE_SOURCE_DOMAINS = {
     "wikipedia": ("en.wikipedia.org", "wikipedia"),
@@ -79,6 +89,96 @@ def _browse_serp_query(query, scope, filters):
         terms.append(f'"{content_type}"')
 
     return " ".join(term for term in terms if term)
+
+
+def _host_matches_suffix(hostname, suffix):
+    return hostname == suffix or hostname.endswith(f".{suffix}")
+
+
+def _safe_browse_image_url(value):
+    """Return a bounded HTTPS image URL from an approved host, else empty."""
+    if not isinstance(value, str) or not value or len(value) > ITEM_THUMB_URL_MAX_LENGTH:
+        return ""
+    if value != value.strip() or "\\" in value or any(char.isspace() for char in value):
+        return ""
+
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except (TypeError, ValueError):
+        return ""
+
+    hostname = (parsed.hostname or "").lower()
+    if (
+        parsed.scheme.lower() != "https"
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in (None, 443)
+        or parsed.fragment
+    ):
+        return ""
+
+    normalized = urlunsplit(("https", parsed.netloc.lower(), parsed.path, parsed.query, ""))
+    if len(normalized) > ITEM_THUMB_URL_MAX_LENGTH:
+        return ""
+    provider_host = any(
+        _host_matches_suffix(hostname, suffix)
+        for suffix in BROWSE_IMAGE_PROVIDER_SUFFIXES
+    )
+    if not provider_host and not whitelist.is_allowed(normalized):
+        return ""
+    return normalized
+
+
+def _google_books_volume_id(source_url):
+    if not isinstance(source_url, str):
+        return ""
+    try:
+        parsed = urlsplit(source_url)
+    except (TypeError, ValueError):
+        return ""
+
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme.lower() != "https" or not _host_matches_suffix(
+        hostname, "books.google.com"
+    ):
+        return ""
+
+    query_ids = parse_qs(parsed.query, keep_blank_values=True).get("id", [])
+    candidates = list(query_ids)
+    edition_match = re.fullmatch(r"/books/edition/[^/]+/([^/]+)/?", parsed.path)
+    if edition_match:
+        candidates.append(edition_match.group(1))
+    return next(
+        (
+            candidate
+            for candidate in candidates
+            if GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(candidate)
+        ),
+        "",
+    )
+
+
+def _google_books_cover_url(source_url):
+    volume_id = _google_books_volume_id(source_url)
+    if not volume_id:
+        return ""
+    return _safe_browse_image_url(
+        "https://books.google.com/books/content"
+        f"?id={volume_id}&printsec=frontcover&img=1&zoom=1"
+    )
+
+
+def _browse_result_image_url(item, source):
+    if source == "gbooks":
+        cover_url = _google_books_cover_url(item.get("link", ""))
+        if cover_url:
+            return cover_url
+    return (
+        _safe_browse_image_url(item.get("thumbnail", ""))
+        or _safe_browse_image_url(item.get("favicon", ""))
+    )
 
 
 def browse_serpapi_search(query, num_results, source, filters, *, user_id):
@@ -148,8 +248,7 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
             item_data = {
                 "title": item.get("title", ""),
                 "description": item.get("snippet", ""),
-                # Serp thumbnail hosts are outside the academic whitelist.
-                "thumb_url": "",
+                "thumb_url": _browse_result_image_url(item, source),
                 "thumb_mime": "image/jpeg",
                 "thumb_height": 0,
                 "source_url": link,

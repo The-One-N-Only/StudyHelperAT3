@@ -3,11 +3,18 @@
 import { showToast } from './toast.js';
 import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
 
+const RESULT_IMAGE_FALLBACKS = {
+    books: '/static/img/illustrations/open-book.svg',
+    wikipedia: '/static/img/illustrations/scrollwork-flourish.svg',
+    academic: '/static/img/illustrations/stacked-books.svg',
+    other: '/static/img/illustrations/compass-rose.svg',
+};
+
 export function createCard(item) {
     const card = document.createElement('div');
     card.className = 'card card-fixed shadow-sm surface-leather result-card rounded-3 h-100';
     card.innerHTML = `
-        <img class="card-img-top" style="height: 130px; object-fit: contain; background-color: var(--bs-body-secondary);" alt="">
+        <img class="card-img-top result-card-image" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="">
         <div class="card-body">
             <h6 class="card-title text-truncate mb-1"></h6>
             <p class="card-text small text-muted card-description mb-2"></p>
@@ -33,8 +40,23 @@ export function createCard(item) {
     const saveButton = card.querySelector('.save-btn');
     const viewButton = card.querySelector('.view-btn');
     const addButton = card.querySelector('.add-btn');
-    image.src = safeImageUrl(item.thumb_url);
+    const fallbackImage = resultImageFallback(item);
+    const remoteImage = safeRemoteImageUrl(item.thumb_url);
+    image.src = remoteImage || fallbackImage;
     image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.referrerPolicy = 'no-referrer';
+    image.setAttribute('loading', 'lazy');
+    image.setAttribute('decoding', 'async');
+    image.setAttribute('referrerpolicy', 'no-referrer');
+    image.setAttribute('data-fallback-src', fallbackImage);
+    image.setAttribute('data-image-kind', remoteImage ? 'remote' : 'fallback');
+    image.addEventListener('error', () => {
+        if (image.src === fallbackImage) return;
+        image.src = fallbackImage;
+        image.setAttribute('data-image-kind', 'fallback');
+    }, { once: true });
     card.querySelector('.card-title').textContent = String(item.title ?? '');
     card.querySelector('.card-description').textContent = String(item.description ?? '');
     card.querySelector('.result-source-text').textContent = String(item.source_name ?? '');
@@ -57,16 +79,39 @@ export function createCard(item) {
     return card;
 }
 
-function safeImageUrl(value) {
-    const fallback = '/static/img/placeholder.png';
-    if (!value) return fallback;
+function resultImageFallback(item) {
+    const source = `${String(item?.source_name ?? '')} ${String(item?.source_url ?? '')}`
+        .toLowerCase();
+    if (source.includes('gbooks') || source.includes('google books') || source.includes('books.google.com')) {
+        return RESULT_IMAGE_FALLBACKS.books;
+    }
+    if (source.includes('wikipedia') || source.includes('wikimedia.org')) {
+        return RESULT_IMAGE_FALLBACKS.wikipedia;
+    }
+    if (source.includes('scholar') || source.includes('pubmed')) {
+        return RESULT_IMAGE_FALLBACKS.academic;
+    }
+    return RESULT_IMAGE_FALLBACKS.other;
+}
+
+function safeRemoteImageUrl(value) {
+    if (typeof value !== 'string' || !value || value.length > 255) return '';
+    if (value !== value.trim() || /\s/u.test(value) || value.includes('\\')) return '';
 
     try {
-        const candidate = String(value);
-        const parsed = new URL(candidate, document.baseURI);
-        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? candidate : fallback;
+        const parsed = new URL(value);
+        if (
+            parsed.protocol !== 'https:'
+            || parsed.username
+            || parsed.password
+            || (parsed.port && parsed.port !== '443')
+            || parsed.hash
+        ) {
+            return '';
+        }
+        return value;
     } catch (_error) {
-        return fallback;
+        return '';
     }
 }
 

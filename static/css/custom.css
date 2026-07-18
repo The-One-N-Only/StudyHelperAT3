@@ -912,6 +912,18 @@ p {
     filter: none;
 }
 
+:root:not([data-bs-theme="dark"]) .result-card .result-card-image {
+    background: var(--paper-100);
+    height: 130px;
+    object-fit: contain;
+    width: 100%;
+}
+
+:root:not([data-bs-theme="dark"]) .result-card .result-card-image[data-image-kind="fallback"] {
+    filter: sepia(0.75) saturate(0.8) contrast(1.15);
+    padding: 1.25rem;
+}
+
 :root:not([data-bs-theme="dark"]) .result-card .card-title {
     color: var(--ink-900);
 }
@@ -1994,6 +2006,18 @@ p {
 
 [data-bs-theme="dark"] .result-card img {
     filter: none;
+}
+
+[data-bs-theme="dark"] .result-card .result-card-image {
+    background: var(--surface-700);
+    height: 130px;
+    object-fit: contain;
+    width: 100%;
+}
+
+[data-bs-theme="dark"] .result-card .result-card-image[data-image-kind="fallback"] {
+    filter: brightness(0) saturate(100%) invert(76%) sepia(20%) saturate(667%) hue-rotate(357deg) brightness(88%) contrast(86%);
+    padding: 1.25rem;
 }
 
 [data-bs-theme="dark"] .result-card .card-title {

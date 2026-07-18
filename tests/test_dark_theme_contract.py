@@ -3133,6 +3133,7 @@ class FakeElement {
     this.className = className;
     this.classList = new FakeClassList(this);
     this.listeners = new Map();
+    this.listenerOptions = new Map();
     this.attributes = new Map();
     this.dataset = {};
     this.innerHTML = "";
@@ -3151,10 +3152,11 @@ class FakeElement {
   getAttribute(name) {
     return this.attributes.get(name) ?? null;
   }
-  addEventListener(type, callback) {
+  addEventListener(type, callback, options) {
     const callbacks = this.listeners.get(type) || [];
     callbacks.push(callback);
     this.listeners.set(type, callbacks);
+    this.listenerOptions.set(type, options || {});
   }
   async dispatch(type, init = {}) {
     const callbacks = this.listeners.get(type) || [];
@@ -3255,7 +3257,7 @@ invariant(!hostileCard.innerHTML.includes(attack), "untrusted fields reached inn
 invariant(hostileNodes.get(".card-title").textContent === attack, "title was not assigned as text");
 invariant(hostileNodes.get(".card-description").textContent === attack, "description was not assigned as text");
 invariant(hostileNodes.get(".result-source-text").textContent === attack, "source was not assigned as text");
-invariant(hostileNodes.get(".card-img-top").src === "/static/img/placeholder.png", "unsafe thumbnail survived");
+invariant(hostileNodes.get(".card-img-top").src === "/static/img/illustrations/compass-rose.svg", "unsafe thumbnail did not use compass fallback");
 invariant(hostileNodes.get(".save-btn").dataset.itemId === hostileItem.id, "item id was not assigned safely");
 invariant(hostileNodes.get(".save-btn").getAttribute("aria-label") === "Save result", "unsaved label is wrong");
 invariant(hostileNodes.get(".save-btn").getAttribute("aria-pressed") === "false", "unsaved state is wrong");
@@ -3327,6 +3329,54 @@ const addBody = JSON.parse(actionCalls[4].options.body);
 invariant(addBody.item_id === hostileItem.id && addBody.workspace_id === 42, "workspace add payload changed");
 invariant(hydrateCalls.length === 3, "workspace hydration count changed");
 
+const fallbackItems = [
+  {
+    title: "Book",
+    source_name: "Google Books",
+    source_url: "https://books.google.com/books?id=book-1",
+    expected: "/static/img/illustrations/open-book.svg",
+  },
+  {
+    title: "Encyclopedia",
+    source_name: "Reference",
+    source_url: "https://en.wikipedia.org/wiki/Archive",
+    expected: "/static/img/illustrations/scrollwork-flourish.svg",
+  },
+  {
+    title: "Paper",
+    source_name: "Google Scholar",
+    source_url: "https://scholar.google.com/scholar?q=archive",
+    expected: "/static/img/illustrations/stacked-books.svg",
+  },
+  {
+    title: "Medical paper",
+    source_name: "PubMed",
+    source_url: "https://pubmed.ncbi.nlm.nih.gov/1/",
+    expected: "/static/img/illustrations/stacked-books.svg",
+  },
+];
+const fallbackContracts = fallbackItems.map((item, index) => {
+  const card = createCard({ id: 30 + index, thumb_url: "http://images.test/unsafe.jpg", ...item });
+  const cardImage = card.nodes.get(".card-img-top");
+  return {
+    sourceName: item.source_name,
+    src: cardImage.src,
+    fallback: cardImage.getAttribute("data-fallback-src"),
+    kind: cardImage.getAttribute("data-image-kind"),
+  };
+});
+const remoteCard = createCard({
+  id: 40,
+  title: "Remote cover",
+  source_name: "Google Books",
+  source_url: "https://books.google.com/books?id=remote",
+  thumb_url: "https://books.google.com/books/content?id=remote",
+});
+const remoteImage = remoteCard.nodes.get(".card-img-top");
+const remoteBeforeError = remoteImage.src;
+await remoteImage.dispatch("error");
+const remoteAfterError = remoteImage.src;
+
 process.stdout.write(JSON.stringify({
   template: hostileCard.innerHTML,
   className: hostileCard.className,
@@ -3335,6 +3385,14 @@ process.stdout.write(JSON.stringify({
     description: hostileNodes.get(".card-description").textContent,
     source: hostileNodes.get(".result-source-text").textContent,
     image: hostileNodes.get(".card-img-top").src,
+    imageAttrs: {
+      loading: hostileNodes.get(".card-img-top").getAttribute("loading"),
+      decoding: hostileNodes.get(".card-img-top").getAttribute("decoding"),
+      referrerpolicy: hostileNodes.get(".card-img-top").getAttribute("referrerpolicy"),
+      alt: hostileNodes.get(".card-img-top").alt,
+      fallback: hostileNodes.get(".card-img-top").getAttribute("data-fallback-src"),
+      kind: hostileNodes.get(".card-img-top").getAttribute("data-image-kind"),
+    },
     itemId: hostileNodes.get(".save-btn").dataset.itemId,
     label: hostileNodes.get(".save-btn").getAttribute("aria-label"),
     pressed: hostileNodes.get(".save-btn").getAttribute("aria-pressed"),
@@ -3344,6 +3402,14 @@ process.stdout.write(JSON.stringify({
   savedBefore,
   saveToasts,
   endpoints: actionCalls.map((call) => call.url),
+  fallbackContracts,
+  remote: {
+    beforeError: remoteBeforeError,
+    afterError: remoteAfterError,
+    fallback: remoteImage.getAttribute("data-fallback-src"),
+    kind: remoteImage.getAttribute("data-image-kind"),
+    errorOnce: remoteImage.listenerOptions.get("error")?.once === true,
+  },
 }));
 """
 
@@ -4601,7 +4667,7 @@ const restoredState = {
       source_id: "wiki-1",
       source_url: "https://example.test/first",
       title: "Restored first",
-      thumb_url: "https://tracking.invalid/restored.jpg",
+      thumb_url: "https://serpapi.com/restored.jpg",
     },
     {
       source_name: " wikipedia ",
@@ -4671,6 +4737,9 @@ process.stdout.write(JSON.stringify({
   storedTitles: Object.values(upgradedState?.groupedResults || {})
     .flat()
     .map((item) => item.title),
+  storedSourceIds: Object.values(upgradedState?.groupedResults || {})
+    .flat()
+    .map((item) => item.source_id),
   initialButtonDisabled,
   searchRequestCount: searchCalls.length,
 }));
@@ -5185,6 +5254,11 @@ TASK6_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
             f"{LIGHT_GUARD} .result-card:focus-within",
         ),
         (f"{LIGHT_GUARD} .result-card img",),
+        (f'{LIGHT_GUARD} .result-card .result-card-image',),
+        (
+            f'{LIGHT_GUARD} .result-card '
+            '.result-card-image[data-image-kind="fallback"]',
+        ),
         (f"{LIGHT_GUARD} .result-card .card-title",),
         (f"{LIGHT_GUARD} .result-source",),
         (f"{LIGHT_GUARD} .result-card .card-text",),
@@ -5685,7 +5759,15 @@ def test_task6_client_and_jinja_render_hostile_fields_as_inert_text_with_light_p
         "title": attack,
         "description": attack,
         "source": attack,
-        "image": "/static/img/placeholder.png",
+        "image": "/static/img/illustrations/compass-rose.svg",
+        "imageAttrs": {
+            "loading": "lazy",
+            "decoding": "async",
+            "referrerpolicy": "no-referrer",
+            "alt": "",
+            "fallback": "/static/img/illustrations/compass-rose.svg",
+            "kind": "fallback",
+        },
         "itemId": hostile["id"],
         "label": "Saved result",
         "pressed": "true",
@@ -5695,7 +5777,9 @@ def test_task6_client_and_jinja_render_hostile_fields_as_inert_text_with_light_p
     assert server.select_one(".card-title").get_text(strip=True) == attack
     assert server.select_one(".card-description").get_text(strip=True) == attack
     assert server.select_one(".result-source-text").get_text(strip=True) == attack
-    assert server.select_one("img.card-img-top").get("src") == "/static/img/placeholder.png"
+    assert server.select_one("img.card-img-top").get("src") == (
+        "/static/img/illustrations/compass-rose.svg"
+    )
     assert server.select_one(".save-btn").get("data-item-id") == hostile["id"]
     assert not [
         name
@@ -5716,6 +5800,158 @@ def test_task6_client_and_jinja_render_hostile_fields_as_inert_text_with_light_p
     assert " ".join(save.select_one(".save-icon-dark").get("class")) == client[
         "savedBefore"
     ]["darkIcon"]
+
+
+def test_task1_card_image_fallback_parity_and_remote_failure_contract():
+    client = card_runtime()
+    expected_fallbacks = {
+        "Google Books": "/static/img/illustrations/open-book.svg",
+        "Reference": "/static/img/illustrations/scrollwork-flourish.svg",
+        "Google Scholar": "/static/img/illustrations/stacked-books.svg",
+        "PubMed": "/static/img/illustrations/stacked-books.svg",
+    }
+
+    assert {
+        contract["sourceName"]: contract["src"]
+        for contract in client["fallbackContracts"]
+    } == expected_fallbacks
+    assert all(
+        contract["src"] == contract["fallback"]
+        and contract["kind"] == "fallback"
+        for contract in client["fallbackContracts"]
+    )
+    assert client["remote"] == {
+        "beforeError": "https://books.google.com/books/content?id=remote",
+        "afterError": "/static/img/illustrations/open-book.svg",
+        "fallback": "/static/img/illustrations/open-book.svg",
+        "kind": "fallback",
+        "errorOnce": True,
+    }
+
+    server_items = (
+        {
+            "source_name": "Google Books",
+            "source_url": "https://books.google.com/books?id=1",
+        },
+        {
+            "source_name": "Reference",
+            "source_url": "https://en.wikipedia.org/wiki/Archive",
+        },
+        {
+            "source_name": "Google Scholar",
+            "source_url": "https://scholar.google.com/scholar?q=archive",
+        },
+        {
+            "source_name": "PubMed",
+            "source_url": "https://pubmed.ncbi.nlm.nih.gov/1/",
+        },
+    )
+    for index, partial_item in enumerate(server_items, start=1):
+        item = {
+            "id": index,
+            "title": "Result",
+            "description": "Description",
+            "thumb_url": "http://images.test/unsafe.jpg",
+            "saved": False,
+            **partial_item,
+        }
+        image = BeautifulSoup(
+            render_server_result_card(item), "html.parser"
+        ).select_one("img.card-img-top")
+        fallback = expected_fallbacks[item["source_name"]]
+        assert image.get("src") == fallback
+        assert image.get("data-fallback-src") == fallback
+        assert image.get("data-image-kind") == "fallback"
+        assert image.get("loading") == "lazy"
+        assert image.get("decoding") == "async"
+        assert image.get("referrerpolicy") == "no-referrer"
+        assert image.get("alt") == ""
+        assert not [name for name in image.attrs if name.lower().startswith("on")]
+
+    remote = {
+        "id": 5,
+        "title": "Remote",
+        "description": "Description",
+        "thumb_url": "https://upload.wikimedia.org/remote.jpg",
+        "source_name": "Wikipedia",
+        "source_url": "https://en.wikipedia.org/wiki/Remote",
+        "saved": False,
+    }
+    remote_image = BeautifulSoup(
+        render_server_result_card(remote), "html.parser"
+    ).select_one("img.card-img-top")
+    assert remote_image.get("src") == remote["thumb_url"]
+    assert remote_image.get("data-image-kind") == "remote"
+    assert remote_image.get("data-fallback-src") == (
+        "/static/img/illustrations/scrollwork-flourish.svg"
+    )
+
+    for unsafe_thumbnail in (
+        "https://user:password@serpapi.com/image.jpg",
+        "https://serpapi.com:444/image.jpg",
+        "https://serpapi.com/image name.jpg",
+    ):
+        unsafe_image = BeautifulSoup(
+            render_server_result_card({
+                **remote,
+                "thumb_url": unsafe_thumbnail,
+                "source_name": "Other",
+                "source_url": "https://example.test/result",
+            }),
+            "html.parser",
+        ).select_one("img.card-img-top")
+        assert unsafe_image.get("src") == (
+            "/static/img/illustrations/compass-rose.svg"
+        )
+        assert unsafe_image.get("data-image-kind") == "fallback"
+
+    assert "/static/img/placeholder.png" not in read_text("static/js/card.js")
+    assert "/static/img/placeholder.png" not in read_text("templates/macros.html")
+
+
+def test_task1_result_card_image_css_is_stable_and_theme_aware():
+    css = read_text("static/css/custom.css")
+    base_selectors = (
+        f"{LIGHT_GUARD} .result-card .result-card-image",
+    )
+    assert css_rule_group_declarations(css, base_selectors) == {
+        "background": "var(--paper-100)",
+        "height": "130px",
+        "object-fit": "contain",
+        "width": "100%",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (
+            f'{LIGHT_GUARD} .result-card '
+            '.result-card-image[data-image-kind="fallback"]',
+        ),
+    ) == {
+        "filter": "sepia(0.75) saturate(0.8) contrast(1.15)",
+        "padding": "1.25rem",
+    }
+    assert css_rule_group_declarations(
+        css,
+        ('[data-bs-theme="dark"] .result-card .result-card-image',),
+    ) == {
+        "background": "var(--surface-700)",
+        "height": "130px",
+        "object-fit": "contain",
+        "width": "100%",
+    }
+    assert css_rule_group_declarations(
+        css,
+        (
+            '[data-bs-theme="dark"] .result-card '
+            '.result-card-image[data-image-kind="fallback"]',
+        ),
+    ) == {
+        "filter": (
+            "brightness(0) saturate(100%) invert(76%) sepia(20%) "
+            "saturate(667%) hue-rotate(357deg) brightness(88%) contrast(86%)"
+        ),
+        "padding": "1.25rem",
+    }
 
 
 def test_task6_card_templates_keep_shared_structure_and_equal_wood_cascade():
@@ -6191,10 +6427,20 @@ def test_task2_restored_browse_deduplicates_legacy_and_server_metadata_state():
     ]
     assert rendered["initialTitles"] == ["Restored first"]
     assert rendered["renderedTitles"] == ["Restored first", "Restored second"]
-    assert rendered["renderedThumbnails"] == ["", ""]
+    assert rendered["renderedThumbnails"] == [
+        "https://serpapi.com/restored.jpg",
+        "",
+    ]
+    assert rendered["storedThumbnails"] == [
+        "https://serpapi.com/restored.jpg",
+        "",
+        "",
+        "",
+        "",
+    ]
+    assert rendered["storedSourceIds"][:2] == ["wiki-1", "archive-2"]
     assert rendered["storageWrites"] == 2
     assert rendered["upgradedVersion"] == 2
-    assert rendered["storedThumbnails"] == ["", "", "", "", ""]
     assert rendered["initialButtonDisabled"] is False
     assert rendered["searchRequestCount"] == 0
 

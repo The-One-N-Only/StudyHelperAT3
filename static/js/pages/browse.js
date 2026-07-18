@@ -139,12 +139,33 @@ function resultCanonicalSourceUrl(item) {
     return canonicalSourceUrl(item.source_url);
 }
 
+function normalizedBrowseThumbnail(value) {
+    if (typeof value !== 'string' || !value || value.length > 255) return '';
+    if (value !== value.trim() || /\s/u.test(value) || value.includes('\\')) return '';
+
+    try {
+        const parsed = new URL(value);
+        if (
+            parsed.protocol !== 'https:'
+            || parsed.username
+            || parsed.password
+            || (parsed.port && parsed.port !== '443')
+            || parsed.hash
+        ) {
+            return '';
+        }
+        const normalized = parsed.href;
+        return normalized.length <= 255 ? normalized : '';
+    } catch (_err) {
+        return '';
+    }
+}
+
 function sanitizeBrowseResult(item) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
     return {
         ...item,
-        // Browse results come from SerpAPI; never load its untrusted image hosts.
-        thumb_url: '',
+        thumb_url: normalizedBrowseThumbnail(item.thumb_url),
     };
 }
 
