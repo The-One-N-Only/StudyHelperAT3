@@ -948,6 +948,21 @@ p {
     box-shadow: var(--shadow-gilt-glow);
 }
 
+.ai-overview-spinner {
+    animation-duration: 0.9s;
+    border-width: 0.12em;
+    color: currentColor;
+    flex: 0 0 auto;
+    height: 1rem;
+    width: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-overview-spinner {
+        animation: none;
+    }
+}
+
 :root:not([data-bs-theme="dark"]) .ai-overview-panel,
 :root:not([data-bs-theme="dark"]) .source-summary-panel {
     margin-bottom: 1rem;

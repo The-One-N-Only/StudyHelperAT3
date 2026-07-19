@@ -1760,6 +1760,33 @@ def test_light_result_card_image_region_and_fallback_match_parchment_contract():
     }
 
 
+def test_light_browse_overview_spinner_inherits_theme_and_reduces_motion():
+    css = light_css()
+    assert css_rule_group_declarations(css, (".ai-overview-spinner",)) == {
+        "animation-duration": "0.9s",
+        "border-width": "0.12em",
+        "color": "currentColor",
+        "flex": "0 0 auto",
+        "height": "1rem",
+        "width": "1rem",
+    }
+    reduced_motion_matches = [
+        body
+        for body in css_block_bodies(css, "@media (prefers-reduced-motion: reduce)")
+        if any(
+            selector_group(header) == (".ai-overview-spinner",)
+            for header, _body in css_rule_blocks(body)
+            if not header.startswith("@")
+        )
+    ]
+    assert len(reduced_motion_matches) == 1
+    assert css_rule_group_declarations(
+        reduced_motion_matches[0],
+        (".ai-overview-spinner",),
+    ) == {"animation": "none"}
+    assert f"{LIGHT_GUARD} .ai-overview-spinner" not in css
+
+
 def test_light_browse_empty_and_loading_art_uses_parchment_surface_and_dark_engraving():
     css = light_css()
     assert css_rule_group_declarations(

@@ -1210,7 +1210,14 @@ function getBrowseState() {
         sourceCounts: currentSourceCounts,
         groupPage: currentGroupPage,
         resultWindow: 10,
-        searchExhausted: false
+        searchExhausted: false,
+        overview: (
+            currentOverview.status === 'success'
+            && currentOverview.query === lastSearchQuery
+            && currentOverview.text
+        )
+            ? { query: currentOverview.query, text: currentOverview.text }
+            : null,
     };
 }
 
@@ -1292,6 +1299,22 @@ function restoreBrowseState() {
             && !Array.isArray(state.sourceCounts)
             ? state.sourceCounts
             : {};
+        const storedOverview = state.overview;
+        const restoredOverviewQuery = typeof storedOverview?.query === 'string'
+            ? storedOverview.query.trim()
+            : '';
+        const restoredOverviewText = typeof storedOverview?.text === 'string'
+            ? storedOverview.text.trim()
+            : '';
+        const hasMatchingOverview = (
+            isCurrentState
+            && restoredOverviewQuery === restoredQuery
+            && restoredOverviewText.length > 0
+            && restoredOverviewText.length <= SUMMARY_TEXT_LIMIT
+        );
+        currentOverview = hasMatchingOverview
+            ? overviewState('success', restoredQuery, restoredOverviewText)
+            : overviewState('idle', restoredQuery);
         if (currentSearchResults.length > 0) {
             renderCurrentResults();
         }

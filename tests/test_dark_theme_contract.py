@@ -3932,6 +3932,85 @@ process.stdout.write(JSON.stringify({ summaryCalls, emptyCopy }));
 """
 
 
+BROWSE_OVERVIEW_RESTORE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.toastCalls = [];
+
+const restoredItem = {
+  source_name: "Wikipedia",
+  source_id: "restored-wiki-1",
+  source_url: "https://en.wikipedia.org/wiki/Restored_archive",
+  title: "Restored archive result",
+  description: "A restored Browse result.",
+};
+const restoredState = {
+  version: 2,
+  query: "restored archive",
+  sources: ["wikipedia"],
+  filters: { min_date: "", max_date: "", content_type: "", sorting: "" },
+  results: [restoredItem],
+  groupedResults: { wikipedia: [restoredItem] },
+  sourceCounts: { wikipedia: 1 },
+  groupPage: 1,
+  __OVERVIEW_PROPERTY__
+};
+const storageWrites = [];
+globalThis.localStorage = {
+  getItem() { return JSON.stringify(restoredState); },
+  setItem(key, value) { storageWrites.push({ key, value }); },
+};
+
+const sidebar = controls.get("#sidebarContainer");
+let sidebarMarkup = "";
+let overviewAction = null;
+Object.defineProperty(sidebar, "innerHTML", {
+  configurable: true,
+  get() { return this._innerHTML || ""; },
+  set(value) {
+    sidebarMarkup = String(value);
+    this._innerHTML = sidebarMarkup;
+    const match = sidebarMarkup.match(/data-overview-action="([^"]+)"/);
+    overviewAction = match ? new FakeElement("overview " + match[1]) : null;
+    if (overviewAction) overviewAction.dataset.overviewAction = match[1];
+  },
+});
+sidebar.querySelector = (selector) => (
+  selector === "[data-overview-action]" ? overviewAction : null
+);
+
+let summaryCalls = 0;
+globalThis.fetchBrowseSummary = async (payload) => {
+  summaryCalls += 1;
+  invariant(payload.query === "restored archive", "restored query changed");
+  return "Generated overview.";
+};
+globalThis.fetch = async (url) => {
+  invariant(url === "/static/whitelist.json", "restored state started a search request");
+  return { ok: true, async json() { return { domains: [] }; } };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await flushPromises();
+await flushPromises();
+const initialMarkup = sidebarMarkup;
+const callsBeforeAction = summaryCalls;
+
+__GENERATE_ACTION__
+
+const persistedState = storageWrites.length
+  ? JSON.parse(storageWrites[storageWrites.length - 1].value)
+  : null;
+process.stdout.write(JSON.stringify({
+  initialMarkup,
+  finalMarkup: sidebarMarkup,
+  callsBeforeAction,
+  callsAfterAction: summaryCalls,
+  persistedOverview: persistedState?.overview ?? null,
+}));
+"""
+
+
 BROWSE_FILTER_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""
 const controls = new Map();
 function control(selector, value = "") {
@@ -6026,6 +6105,37 @@ def browse_overview_no_results_runtime(source: str | None = None) -> dict:
     )
 
 
+def browse_overview_restore_runtime(
+    overview: object | None,
+    *,
+    generate: bool = False,
+    source: str | None = None,
+) -> dict:
+    overview_property = (
+        ""
+        if overview is None
+        else f"overview: {json.dumps(overview, ensure_ascii=False)},"
+    )
+    generate_action = ""
+    if generate:
+        generate_action = """
+invariant(overviewAction?.dataset.overviewAction === "generate", "Generate action missing");
+await overviewAction.dispatch("click");
+await flushPromises();
+await flushPromises();
+"""
+    harness = BROWSE_OVERVIEW_RESTORE_RUNTIME_HARNESS.replace(
+        "__OVERVIEW_PROPERTY__",
+        overview_property,
+    ).replace("__GENERATE_ACTION__", generate_action)
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        harness,
+        "restored Browse AI overview",
+    )
+
+
 def browse_filter_runtime(source: str | None = None) -> dict:
     browse_source = source or read_text("static/js/pages/browse.js")
     browse_source += "\nexport { getBrowseState, applySelectedSources };\n"
@@ -7035,6 +7145,74 @@ def test_browse_ai_overview_skips_empty_results():
     }
 
 
+def test_browse_ai_overview_restore_and_generated_success_persistence():
+    restored = browse_overview_restore_runtime(
+        {"query": "restored archive", "text": "Stored overview."},
+    )
+    assert "Stored overview." in restored["initialMarkup"]
+    assert "Generate overview" not in restored["initialMarkup"]
+    assert restored["callsBeforeAction"] == 0
+    assert restored["callsAfterAction"] == 0
+
+    legacy = browse_overview_restore_runtime(None, generate=True)
+    assert "Generate overview" in legacy["initialMarkup"]
+    assert "Generated overview." in legacy["finalMarkup"]
+    assert legacy["callsBeforeAction"] == 0
+    assert legacy["callsAfterAction"] == 1
+    assert legacy["persistedOverview"] == {
+        "query": "restored archive",
+        "text": "Generated overview.",
+    }
+
+
+@pytest.mark.parametrize(
+    "stored_overview",
+    (
+        {"query": "different query", "text": "Wrong query."},
+        {"query": "restored archive", "text": ""},
+        {"query": "restored archive", "text": "x" * 6001},
+        "legacy string",
+    ),
+)
+def test_browse_ai_overview_restore_rejects_invalid_saved_value(stored_overview):
+    rendered = browse_overview_restore_runtime(stored_overview)
+    assert "Generate overview" in rendered["initialMarkup"]
+    assert rendered["callsBeforeAction"] == 0
+    assert rendered["callsAfterAction"] == 0
+
+
+def test_browse_ai_overview_accessibility_and_motion_contract():
+    rendered = browse_overview_restore_runtime(None)
+    soup = BeautifulSoup(rendered["initialMarkup"], "html.parser")
+    overview = soup.select_one("section.ai-overview-panel")
+    assert overview.get("aria-labelledby") == "browseOverviewTitle"
+    assert overview.select_one("h2#browseOverviewTitle") is not None
+    status = overview.select_one("[data-overview-status]")
+    assert status.get("aria-live") == "polite"
+    assert status.get("aria-busy") in {"true", "false"}
+    action = overview.select_one("button[data-overview-action]")
+    assert action.get("type") == "button"
+
+    css = read_text("static/css/custom.css")
+    assert css_rule_group_declarations(css, (".ai-overview-spinner",)) == {
+        "animation-duration": "0.9s",
+        "border-width": "0.12em",
+        "color": "currentColor",
+        "flex": "0 0 auto",
+        "height": "1rem",
+        "width": "1rem",
+    }
+    reduced_motion = css_block_body_containing_selector(
+        css,
+        "@media (prefers-reduced-motion: reduce)",
+        ".ai-overview-spinner",
+    )
+    assert css_rule_group_declarations(
+        reduced_motion,
+        (".ai-overview-spinner",),
+    ) == {"animation": "none"}
+
+
 def test_home_query_runs_native_browse_search_and_manual_search_updates_url():
     assert url_query_browse_runtime() == {
         "query": "archives",
@@ -7522,6 +7700,7 @@ def test_browse_async_whitelist_render_upgrades_versionless_all_domain_state():
         "groupPage": 1,
         "resultWindow": 10,
         "searchExhausted": False,
+        "overview": None,
     }
     assert 'value="whitelist_en.wikipedia.org"' in rendered["whitelistMarkup"]
 
