@@ -9,7 +9,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LIGHT_SPEC_SHA256 = "38cfddd7d60b33930f6e76e3be90e3387ce6d5b53a55976438da1bed9605eb92"
+LIGHT_SPEC_SHA256 = "4dda210b8ea4e43c7ecb17750cd81b1c8dc9468f8324243367d0789ad13980d8"
 LIGHT_TEXTURE_NAMES = (
     "leather-texture-light.png",
     "wood-texture-light.png",
@@ -31,7 +31,7 @@ DARK_TEXTURE_NAMES = (
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 DARK_CSS_MARKER = "/* Candlelit Archive: dark theme foundation */"
-DARK_CSS_SHA256 = "b2ceda5c9fe26a2b73a41a9b4d33ec31880c5f0f9e0e488b019db7d14e5259ae"
+DARK_CSS_SHA256 = "f378da48f66a3a0444bc17cfeccf89e912d1905799fe5068a5f13477bfdb977d"
 LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
 CSS_TOKEN_PATTERN = re.compile(
     r'/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
@@ -1168,7 +1168,7 @@ def test_light_button_hierarchy_uses_rubric_wood_and_ink():
     assert_light_button_state_contract(read_text("static/css/custom.css"))
     browse = read_text("static/js/pages/browse.js")
     upload = read_text("static/js/pages/upload.js")
-    assert 'btn btn-outline-primary btn-secondary-leather" id="loadMoreBtn"' in browse
+    assert 'btn btn-outline-primary btn-secondary-wood" id="loadMoreBtn"' in browse
     assert "loadMoreBtn.disabled = true" in browse
     assert 'btn btn-primary btn-brass w-100" id="uploadBtn" disabled' in upload
     assert css_rule_group_declarations(
@@ -1611,7 +1611,7 @@ def test_light_dashboard_and_page_header_use_old_book_hierarchy():
 def test_light_browse_search_overview_and_results_match_component_contract():
     css = light_css()
     browse = read_text("static/js/pages/browse.js")
-    assert 'class="card surface-wood source-summary-panel mb-3"' in browse
+    assert 'class="card surface-leather source-summary-panel mb-3"' in browse
     assert 'class="list-group-item"' in browse
     assert f"{LIGHT_GUARD} .source-summary-panel .card-body" not in css
     expected_rules = (
@@ -1622,7 +1622,11 @@ def test_light_browse_search_overview_and_results_match_component_contract():
         (
             (f"{LIGHT_GUARD} .browse-search-shell",),
             {
-                "background": "var(--paper-100) !important",
+                "background-color": "var(--paper-100)",
+                "background-image": 'linear-gradient(hsl(33 28% 82% / 0.65), hsl(33 28% 82% / 0.65)), url("/static/img/textures/wood-texture-light.png")',
+                "background-blend-mode": "normal",
+                "background-repeat": "repeat",
+                "background-size": "auto, 180px",
                 "border-bottom": "1px solid hsl(33 30% 60% / 0.30) !important",
                 "position": "relative",
                 "z-index": "calc(var(--z-content) + 1)",

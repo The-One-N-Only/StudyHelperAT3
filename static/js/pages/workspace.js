@@ -59,9 +59,6 @@ function renderWorkspaceDetail() {
                         </div>
                         <div class="card-body d-flex flex-column gap-4">
                             <div>
-                                <textarea id="quickNoteInput" class="form-control quick-note-input h-100" rows="10" placeholder="Write your thoughts, outline key ideas, or summarise the selected source..."></textarea>
-                            </div>
-                            <div>
                                 <div class="d-flex align-items-center justify-content-between mb-2">
                                     <div>
                                         <h6 class="mb-0">Selected source preview</h6>
@@ -70,6 +67,9 @@ function renderWorkspaceDetail() {
                                     <span id="sourceBadge" class="badge bg-secondary archive-count-badge">${currentWorkspaceItems.length} sources</span>
                                 </div>
                                 <div id="selectedSourceViewer" class="border rounded p-2 bg-body-secondary source-preview-shell" style="min-height: 320px;"></div>
+                            </div>
+                            <div>
+                                <textarea id="quickNoteInput" class="form-control quick-note-input h-100" rows="10" placeholder="Write your thoughts, outline key ideas, or summarise the selected source..."></textarea>
                             </div>
                         </div>
                     </div>

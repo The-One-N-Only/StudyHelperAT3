@@ -15,13 +15,21 @@ DEFAULT_HEADERS = {
     "Connection": "keep-alive",
     "Upgrade-Insecure-Requests": "1"
 }
-READER_DOMAINS = {"web.md", "pubmed.ncbi.nlm.nih.gov"}
-READER_DOMAIN_SUFFIXES = (
+READER_DOMAINS = frozenset([
+    "web.md",
+    "pubmed.ncbi.nlm.nih.gov",
+    "eric.ed.gov",
+    "www.britannica.com",
+    "www.researchgate.net",
+    "www.academia.edu",
+])
+READER_DOMAIN_SUFFIXES = frozenset([
     ".gov.uk",
     ".nhs.uk",
     ".gov.au",
     ".ac.uk",
-)
+    ".bbc.co.uk",
+])
 REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 MAX_REDIRECT_HOPS = 5
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -398,6 +406,18 @@ def fetch_source(url):
         return {
             "status": False,
             "error": "Google Books previews use the native viewer.",
+            "fallback_url": url,
+        }
+    if domain in {"www.jstor.org", "www.sciencedirect.com", "link.springer.com"}:
+        return {
+            "status": False,
+            "error": f"{whitelist.get_display_name_for_domain(domain) or domain} content requires a subscription. Open in a new tab.",
+            "html": "",
+            "text": "",
+            "title": whitelist.get_display_name_for_domain(domain) or domain,
+            "url": url,
+            "domain": domain,
+            "mode": "reader",
             "fallback_url": url,
         }
     

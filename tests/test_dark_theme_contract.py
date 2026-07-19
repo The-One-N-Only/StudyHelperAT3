@@ -145,8 +145,8 @@ EXPECTED_DARK_TOKENS = {
     "--z-bg-base": "0",
     "--z-bg-illustration": "1",
     "--z-content": "10",
-    "--z-candle-glow": "40",
-    "--z-overlay": "50",
+    "--z-candle-glow": "1000000000000",
+    "--z-overlay": "1000",
 }
 EXPECTED_BOOTSTRAP_MAPPINGS = {
     "--bs-body-bg": "var(--bg-950)",
@@ -3027,7 +3027,7 @@ def test_dashboard_has_archive_hooks_without_changing_data_flow():
         "archive-category-badge",
         ">Workspace<",
         "loadWorkspaces()",
-        "createWorkspaceDialog",
+        "startInlineWorkspaceCreate",
         "fetch('/api/workspaces')",
     )
     for marker in required:
@@ -3777,7 +3777,7 @@ invariant(
     "description,source_name,source_url,title,whitelist_rank",
   "overview payload leaked extra result metadata",
 );
-invariant(sidebarMarkup.includes("AI Overview"), "overview card missing");
+invariant(sidebarMarkup.includes("Alexander says..."), "overview card missing");
 invariant(sidebarMarkup.includes("Search sources"), "source card was replaced");
 invariant(sidebarMarkup.includes("Try again shortly."), "safe summary error missing");
 invariant(overviewAction?.dataset.overviewAction === "retry", "Retry action missing");
@@ -7969,14 +7969,14 @@ def test_task6_dynamic_panels_pagination_and_dark_contract_remain_intact():
         returned_template_markup(browse, "renderOverviewCard"),
         "html.parser",
     )
-    assert {"card", "mb-3", "surface-wood", "ai-overview-panel"}.issubset(
+    assert {"card", "mb-3", "surface-leather", "ai-overview-panel"}.issubset(
         overview.select_one(".ai-overview-panel").get("class", ())
     )
     pagination = BeautifulSoup(
         assigned_template_markup(browse, "buttonContainer"), "html.parser"
     )
     load_more = pagination.select_one("#loadMoreBtn")
-    assert {"btn", "btn-outline-primary", "btn-secondary-leather"}.issubset(
+    assert {"btn", "btn-outline-primary", "btn-secondary-wood"}.issubset(
         load_more.get("class", ())
     )
     assert load_more.get("type") == "button"
@@ -8012,12 +8012,12 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
     assert all(item.get("aria-hidden") == "true" for item in decorations)
     content = page.select_one(".container.py-4.archive-content.upload-content")
     assert content.get("style") == "max-width: 700px;"
-    zone = content.select_one("#uploadZone.surface-wood.upload-zone")
+    zone = content.select_one("#uploadZone.surface-leather.upload-zone")
     assert {"card-body", "text-center", "p-5"}.issubset(zone.get("class", ()))
     assert zone.select_one("#fileInput").get("style") == "display: none;"
     upload_button = content.select_one("#uploadBtn")
     assert {"btn", "btn-primary", "btn-brass", "w-100"}.issubset(upload_button.get("class", ()))
-    file_panel = content.select_one(".card.surface-wood.file-list-panel")
+    file_panel = content.select_one(".card.surface-leather.file-list-panel")
     assert {"badge", "bg-primary", "archive-count-badge"}.issubset(file_panel.select_one("#fileCountBadge").get("class", ()))
     for marker in (
         "file-icon file-icon-${file.file_type} text-muted",
@@ -8066,8 +8066,8 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     workspace = read_text("static/js/pages/workspace.js")
     css = read_text("static/css/custom.css")
     for marker in (
-        "archive-page archive-page-workspace", "surface-wood workspace-main-panel",
-        "surface-wood workspace-right-panel", "workspace-source-item", "chat-messages",
+        "archive-page archive-page-workspace", "surface-leather workspace-main-panel",
+        "surface-leather workspace-right-panel", "workspace-source-item", "chat-messages",
         '<i class="bi bi-file-earmark-text note-icon-dark d-none me-2" aria-hidden="true"></i><span class="note-icon-light">📝 </span>',
     ):
         assert marker in workspace

@@ -803,7 +803,7 @@ function renderOverviewCard() {
     return `
         <section class="card surface-leather ai-overview-panel mb-3" aria-labelledby="browseOverviewTitle">
             <div class="card-header">
-                <h2 class="card-title h5 mb-0" id="browseOverviewTitle">AI Overview</h2>
+                <h2 class="card-title h5 mb-0" id="browseOverviewTitle">Alexander says...</h2>
             </div>
             <div class="card-body" data-overview-status="${currentOverview.status}" aria-live="polite" aria-busy="${currentOverview.status === 'loading' ? 'true' : 'false'}">
                 ${body}

@@ -444,6 +444,19 @@ body.nav-sidebar-open {
     box-shadow: var(--shadow-parchment-raised);
 }
 
+:root:not([data-bs-theme="dark"]) .surface-leather {
+    background-color: var(--paper-100);
+    background-image:
+        linear-gradient(hsl(33 28% 82% / 0.78), hsl(33 28% 82% / 0.78)),
+        url("/static/img/textures/wood-texture-light.png");
+    background-blend-mode: normal;
+    background-repeat: repeat;
+    background-size: auto, 180px;
+    border: 1px solid hsl(33 30% 65% / 0.45);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-parchment-raised);
+}
+
 .btn-secondary-leather {
     background-color: var(--paper-200);
     background-image:
@@ -477,6 +490,43 @@ body.nav-sidebar-open {
 
 :root:not([data-bs-theme="dark"]) .btn-secondary-leather:hover,
 :root:not([data-bs-theme="dark"]) .btn-secondary-leather:active {
+    border-color: var(--gilt-900);
+    color: var(--ink-900);
+}
+
+.btn-secondary-wood {
+    background-color: var(--paper-200);
+    background-image:
+        linear-gradient(rgb(226 213 198 / 0.72), rgb(226 213 198 / 0.72)),
+        url("/static/img/textures/wood-texture-light.png");
+    background-blend-mode: normal;
+    background-repeat: repeat, repeat;
+    background-size: auto, 180px;
+    border: 1px solid hsl(33 30% 60% / 0.50);
+    border-radius: var(--radius-button);
+    color: var(--ink-900);
+}
+
+:root:not([data-bs-theme="dark"]) .btn-secondary-wood {
+    --bs-btn-color: var(--ink-900);
+    --bs-btn-bg: var(--paper-200);
+    --bs-btn-border-color: hsl(33 30% 60% / 0.50);
+    --bs-btn-hover-color: var(--ink-900);
+    --bs-btn-hover-bg: var(--paper-200);
+    --bs-btn-hover-border-color: var(--gilt-900);
+    --bs-btn-focus-shadow-rgb: 146, 93, 7;
+    --bs-btn-active-color: var(--ink-900);
+    --bs-btn-active-bg: var(--paper-300);
+    --bs-btn-active-border-color: var(--gilt-900);
+    --bs-btn-active-shadow: none;
+    --bs-btn-disabled-color: var(--ink-700);
+    --bs-btn-disabled-bg: var(--paper-200);
+    --bs-btn-disabled-border-color: hsl(33 30% 60% / 0.50);
+    --bs-btn-disabled-opacity: 0.65;
+}
+
+:root:not([data-bs-theme="dark"]) .btn-secondary-wood:hover,
+:root:not([data-bs-theme="dark"]) .btn-secondary-wood:active {
     border-color: var(--gilt-900);
     color: var(--ink-900);
 }
@@ -915,7 +965,13 @@ p {
 }
 
 :root:not([data-bs-theme="dark"]) .browse-search-shell {
-    background: var(--paper-100) !important;
+    background-color: var(--paper-100);
+    background-image:
+        linear-gradient(hsl(33 28% 82% / 0.65), hsl(33 28% 82% / 0.65)),
+        url("/static/img/textures/wood-texture-light.png");
+    background-blend-mode: normal;
+    background-repeat: repeat;
+    background-size: auto, 180px;
     border-bottom: 1px solid hsl(33 30% 60% / 0.30) !important;
     position: relative;
     z-index: calc(var(--z-content) + 1);
@@ -1669,6 +1725,20 @@ p {
     box-shadow: var(--shadow-warm-raised);
 }
 
+[data-bs-theme="dark"] .surface-leather {
+    background-color: var(--surface-700);
+    background-image:
+        linear-gradient(hsl(31 51% 12% / 0.38), hsl(31 51% 12% / 0.38)),
+        url("/static/img/textures/wood-texture.png");
+    background-blend-mode: normal;
+    background-position: 0 0;
+    background-repeat: repeat, repeat;
+    background-size: auto, 200px;
+    border: 1px solid hsl(35 40% 45% / 0.18);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-warm-raised);
+}
+
 [data-bs-theme="dark"] .btn-secondary-leather {
     background-color: var(--surface-800);
     background-image:
@@ -1685,6 +1755,26 @@ p {
 
 [data-bs-theme="dark"] .btn-secondary-leather:hover,
 [data-bs-theme="dark"] .btn-secondary-leather:active {
+    border-color: var(--gold-500);
+    color: var(--gold-100);
+}
+
+[data-bs-theme="dark"] .btn-secondary-wood {
+    background-color: var(--surface-800);
+    background-image:
+        linear-gradient(hsl(30 43% 12% / 0.52), hsl(30 43% 12% / 0.52)),
+        url("/static/img/textures/wood-texture.png");
+    background-blend-mode: normal;
+    background-position: 0 0;
+    background-repeat: repeat, repeat;
+    background-size: auto, 180px;
+    border: 1px solid hsl(35 40% 45% / 0.22);
+    border-radius: var(--radius-button);
+    color: var(--gold-300);
+}
+
+[data-bs-theme="dark"] .btn-secondary-wood:hover,
+[data-bs-theme="dark"] .btn-secondary-wood:active {
     border-color: var(--gold-500);
     color: var(--gold-100);
 }
@@ -1790,6 +1880,30 @@ p {
     border-color: var(--gold-300);
     box-shadow: var(--shadow-warm-glow);
     outline: 0;
+}
+
+[data-bs-theme="dark"] .form-check-input {
+    background-color: var(--surface-600);
+    border-color: var(--gold-700);
+}
+
+[data-bs-theme="dark"] .form-check-input:checked {
+    background-color: var(--gold-500);
+    border-color: var(--gold-500);
+}
+
+[data-bs-theme="dark"] .form-check-input:focus {
+    border-color: var(--gold-300);
+    box-shadow: var(--shadow-warm-glow);
+    outline: 0;
+}
+
+[data-bs-theme="dark"] .form-check-input[type="checkbox"]:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%230A0A0A' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e");
+}
+
+[data-bs-theme="dark"] .form-check-input[type="radio"]:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='2' fill='%230A0A0A'/%3e%3c/svg%3e");
 }
 
 [data-bs-theme="dark"] .text-muted {
@@ -2051,7 +2165,13 @@ p {
 }
 
 [data-bs-theme="dark"] .browse-search-shell {
-    background: hsl(28 45% 8% / 0.78) !important;
+    background-color: var(--surface-700);
+    background-image:
+        linear-gradient(hsl(31 51% 12% / 0.55), hsl(31 51% 12% / 0.55)),
+        url("/static/img/textures/wood-texture.png");
+    background-blend-mode: normal;
+    background-repeat: repeat;
+    background-size: auto, 200px;
     border-bottom: 1px solid hsl(35 40% 45% / 0.12) !important;
     position: relative;
     z-index: calc(var(--z-content) + 1);
@@ -2581,4 +2701,18 @@ p {
     [data-bs-theme="dark"] .chat-message-agent {
         max-width: calc(88% - 2.9rem);
     }
+}
+
+.source-link-truncate {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.source-link-truncate a {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

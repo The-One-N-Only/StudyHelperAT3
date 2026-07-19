@@ -94,35 +94,28 @@ function renderViewerHeader(header, item) {
     );
 
     const metadata = document.createElement('div');
-    metadata.className = 'd-flex flex-wrap gap-2 align-items-center';
+    metadata.className = 'd-flex flex-wrap gap-2 align-items-center min-w-0';
     appendTextElement(
         metadata,
         'span',
         item?.source_name,
-        'badge bg-secondary rounded-pill',
+        'badge bg-secondary rounded-pill flex-shrink-0',
     );
-    appendTextElement(
-        metadata,
-        'small',
-        item?.source_url,
-        'text-muted text-truncate',
-    );
+
+    const sourceUrl = safeHttpUrl(item?.source_url);
+    if (sourceUrl) {
+        const urlLink = document.createElement('a');
+        urlLink.className = 'small text-muted text-truncate d-inline-block source-link-truncate';
+        urlLink.href = sourceUrl;
+        urlLink.target = '_blank';
+        urlLink.rel = 'noopener noreferrer';
+        urlLink.textContent = sourceUrl;
+        urlLink.title = sourceUrl;
+        urlLink.style.maxWidth = '380px';
+        metadata.appendChild(urlLink);
+    }
     details.appendChild(metadata);
     summary.appendChild(details);
-
-    const sourceLink = createExternalLink(
-        item?.source_url,
-        '',
-        'btn btn-link btn-sm p-0 ms-auto',
-    );
-    if (sourceLink) {
-        sourceLink.setAttribute('aria-label', 'Open source in new tab');
-        const icon = document.createElement('i');
-        icon.className = 'bi bi-box-arrow-up-right';
-        icon.setAttribute('aria-hidden', 'true');
-        sourceLink.appendChild(icon);
-        summary.appendChild(sourceLink);
-    }
     header.appendChild(summary);
 
     const actionRow = document.createElement('div');
@@ -600,6 +593,68 @@ export async function openViewer(item) {
             'warning',
             item?.source_url,
             'Open PubMed in new tab',
+        );
+        return;
+    }
+
+    const isScholar = textValue(item?.source_name).toLowerCase() === 'scholar'
+        || textValue(item?.source_name).toLowerCase() === 'google scholar'
+        || textValue(item?.source_url).includes('scholar.google.com');
+    if (isScholar) {
+        renderViewerNotice(
+            body,
+            'Google Scholar blocks proxy access.',
+            'warning',
+            item?.source_url,
+            'Open Google Scholar in new tab',
+        );
+        return;
+    }
+
+    const isJSTOR = textValue(item?.source_url).includes('jstor.org');
+    if (isJSTOR) {
+        renderViewerNotice(
+            body,
+            'JSTOR content is subscription-based and cannot be previewed here.',
+            'warning',
+            item?.source_url,
+            'Open JSTOR in new tab',
+        );
+        return;
+    }
+
+    const isScienceDirect = textValue(item?.source_url).includes('sciencedirect.com');
+    if (isScienceDirect) {
+        renderViewerNotice(
+            body,
+            'ScienceDirect content requires a subscription.',
+            'warning',
+            item?.source_url,
+            'Open ScienceDirect in new tab',
+        );
+        return;
+    }
+
+    const isSpringer = textValue(item?.source_url).includes('link.springer.com');
+    if (isSpringer) {
+        renderViewerNotice(
+            body,
+            'Springer content requires a subscription.',
+            'warning',
+            item?.source_url,
+            'Open Springer in new tab',
+        );
+        return;
+    }
+
+    const isNationalGeo = textValue(item?.source_url).includes('nationalgeographic.com');
+    if (isNationalGeo) {
+        renderViewerNotice(
+            body,
+            'National Geographic content requires a subscription.',
+            'warning',
+            item?.source_url,
+            'Open National Geographic in new tab',
         );
         return;
     }
