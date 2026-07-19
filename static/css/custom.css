@@ -860,6 +860,10 @@ p {
         transition-delay: 0s !important;
         transition-duration: 0.01ms !important;
     }
+
+    .ai-overview-spinner {
+        animation: none;
+    }
 }
 
 /* Old Book: page and component treatments */
@@ -955,12 +959,6 @@ p {
     flex: 0 0 auto;
     height: 1rem;
     width: 1rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .ai-overview-spinner {
-        animation: none;
-    }
 }
 
 :root:not([data-bs-theme="dark"]) .ai-overview-panel,

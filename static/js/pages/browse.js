@@ -990,6 +990,19 @@ function sourcesToDisplay() {
     return sources;
 }
 
+function summarySourceIdentity(item, source, sourceUrl) {
+    if (sourceUrl) {
+        try {
+            const hostname = new URL(sourceUrl).hostname.toLowerCase();
+            if (hostname) return `domain:${hostname.replace(/^www\./u, '')}`;
+        } catch (_err) {
+            // safeSummarySourceUrl already validates URLs; retain a defensive fallback.
+        }
+    }
+    const sourceName = normalizeIdentityText(item?.source_name);
+    return sourceName ? `name:${sourceName}` : `group:${source}`;
+}
+
 function buildSummaryResults(
     groupedResults = currentGroupedResults,
     sources = sourcesToDisplay(),
@@ -999,7 +1012,8 @@ function buildSummaryResults(
     for (const source of sources) {
         const item = (groupedResults[source] || [])[0];
         if (!item) continue;
-        const identity = resultIdentityKey(item) || source;
+        const sourceUrl = safeSummarySourceUrl(item.source_url);
+        const identity = summarySourceIdentity(item, source, sourceUrl);
         if (seen.has(identity)) continue;
         seen.add(identity);
         summaryResults.push({
@@ -1015,7 +1029,7 @@ function buildSummaryResults(
                 item.source_name,
                 SUMMARY_FIELD_LIMITS.source_name,
             ),
-            source_url: safeSummarySourceUrl(item.source_url),
+            source_url: sourceUrl,
             whitelist_rank: 1,
         });
         if (summaryResults.length === SUMMARY_RESULT_LIMIT) break;

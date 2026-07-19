@@ -3717,6 +3717,13 @@ const searchResult = {
   description: "A collection of historical records.",
   extra_private_field: "must not leak",
 };
+const secondSearchResult = {
+  source_name: "Wikipedia",
+  source_id: "wiki-2",
+  source_url: "https://en.wikipedia.org/wiki/Archive_2",
+  title: "Archive 2",
+  description: "A second ranked result.",
+};
 globalThis.fetch = async (url) => {
   if (url === "/static/whitelist.json") {
     return { ok: true, async json() { return { domains: [] }; } };
@@ -3727,9 +3734,9 @@ globalThis.fetch = async (url) => {
     async json() {
       return {
         status: true,
-        results: [searchResult],
-        grouped_results: { wikipedia: [searchResult] },
-        source_counts: { wikipedia: 1 },
+        results: [searchResult, secondSearchResult],
+        grouped_results: { wikipedia: [searchResult, secondSearchResult] },
+        source_counts: { wikipedia: 2 },
       };
     },
   };
@@ -3750,7 +3757,7 @@ await flushPromises();
 
 invariant(summaryCalls.length === 1, "accepted search did not request one overview");
 invariant(summaryCalls[0].query === "archive", "overview query changed");
-invariant(summaryCalls[0].results.length <= 10, "overview payload exceeded ten results");
+invariant(summaryCalls[0].results.length === 1, "overview payload included a lower rank");
 invariant(
   Object.keys(summaryCalls[0].results[0]).sort().join(",") ===
     "description,source_name,source_url,title,whitelist_rank",
@@ -3771,15 +3778,25 @@ invariant(sidebarMarkup.includes("&lt;script&gt;"), "summary text was not escape
 invariant(!sidebarMarkup.includes("<script>"), "summary injected HTML");
 invariant(sidebarMarkup.includes("Search sources"), "Retry replaced source card");
 
+await controls.get("#loadMoreBtn").dispatch("click");
+await flushPromises();
+sorting.value = "recent";
+await sorting.dispatch("change", { target: sorting });
+await flushPromises();
+invariant(summaryCalls.length === 2, "paging or sorting regenerated overview");
+invariant(sidebarMarkup.includes("Recovered"), "paging replaced overview text");
+
 const groups = {};
 for (let index = 0; index < 12; index += 1) {
   const duplicate = index < 2;
   groups["source_" + index] = [{
     source_name: duplicate ? "Duplicate Source" : "Source " + index,
-    source_id: duplicate ? "duplicate-id" : "source-id-" + index,
+    source_id: duplicate ? "duplicate-id-" + index : "source-id-" + index,
     source_url: index === 2
       ? "https://user:pass@source2.example/path#secret"
-      : "https://source" + index + ".example/path#fragment",
+      : duplicate
+        ? "https://duplicate.example/path/" + index
+        : "https://source" + index + ".example/path#fragment",
     title: duplicate ? "Duplicate " + index : "Unique " + index,
     description: "Description " + index,
     extra_private_field: "must not leak",
@@ -3929,6 +3946,111 @@ const emptyCopy = sidebarMarkup.includes(
 invariant(summaryCalls === 0, "empty search requested overview");
 invariant(emptyCopy, "empty overview copy missing");
 process.stdout.write(JSON.stringify({ summaryCalls, emptyCopy }));
+"""
+
+
+BROWSE_OVERVIEW_TIMEOUT_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.toastCalls = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+
+const sidebar = controls.get("#sidebarContainer");
+let sidebarMarkup = "";
+let overviewAction = null;
+Object.defineProperty(sidebar, "innerHTML", {
+  configurable: true,
+  get() { return this._innerHTML || ""; },
+  set(value) {
+    sidebarMarkup = String(value);
+    this._innerHTML = sidebarMarkup;
+    const match = sidebarMarkup.match(/data-overview-action="([^"]+)"/);
+    overviewAction = match ? new FakeElement("overview " + match[1]) : null;
+    if (overviewAction) overviewAction.dataset.overviewAction = match[1];
+  },
+});
+sidebar.querySelector = (selector) => (
+  selector === "[data-overview-action]" ? overviewAction : null
+);
+
+const inheritedSetTimeout = globalThis.setTimeout;
+const inheritedClearTimeout = globalThis.clearTimeout;
+const summaryTimers = [];
+const clearedSummaryTimers = [];
+globalThis.setTimeout = (callback, delay, ...args) => {
+  if (delay === 15000) {
+    const timer = { id: 800 + summaryTimers.length, callback, delay };
+    summaryTimers.push(timer);
+    return timer.id;
+  }
+  return inheritedSetTimeout(callback, delay, ...args);
+};
+globalThis.clearTimeout = (timerId) => {
+  if (summaryTimers.some((timer) => timer.id === timerId)) {
+    clearedSummaryTimers.push(timerId);
+    return;
+  }
+  inheritedClearTimeout(timerId);
+};
+
+let summarySignal = null;
+globalThis.fetchBrowseSummary = (_payload, signal) => {
+  summarySignal = signal;
+  return new Promise((_resolve, reject) => {
+    signal.addEventListener("abort", () => {
+      const error = new Error("private timeout details");
+      error.name = "AbortError";
+      reject(error);
+    }, { once: true });
+  });
+};
+const result = {
+  source_name: "Wikipedia",
+  source_id: "timeout-result",
+  source_url: "https://en.wikipedia.org/wiki/Timeout",
+  title: "Timeout result",
+  description: "A result available before the overview.",
+};
+globalThis.fetch = async (url) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  invariant(url === "/api/browse/search-all", "unexpected overview timeout endpoint");
+  return {
+    ok: true,
+    async json() {
+      return {
+        status: true,
+        results: [result],
+        grouped_results: { wikipedia: [result] },
+        source_counts: { wikipedia: 1 },
+      };
+    },
+  };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+await flushPromises();
+invariant(summaryTimers.length === 1, "overview timeout was not scheduled once");
+invariant(sidebarMarkup.includes("Creating overview"), "overview did not enter loading state");
+
+summaryTimers[0].callback();
+await flushPromises();
+await flushPromises();
+invariant(summarySignal?.aborted === true, "overview timeout did not abort request");
+invariant(sidebarMarkup.includes("Overview took too long. Try again."),
+  "overview timeout message changed");
+invariant(!sidebarMarkup.includes("private timeout details"), "timeout leaked private detail");
+invariant(overviewAction?.dataset.overviewAction === "retry", "timeout Retry missing");
+invariant(clearedSummaryTimers.includes(summaryTimers[0].id), "overview timer was not cleared");
+
+process.stdout.write(JSON.stringify({
+  timeoutDelay: summaryTimers[0].delay,
+  aborted: summarySignal.aborted,
+  retry: overviewAction.dataset.overviewAction,
+}));
 """
 
 
@@ -6105,6 +6227,15 @@ def browse_overview_no_results_runtime(source: str | None = None) -> dict:
     )
 
 
+def browse_overview_timeout_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_OVERVIEW_TIMEOUT_RUNTIME_HARNESS,
+        "timed-out Browse AI overview",
+    )
+
+
 def browse_overview_restore_runtime(
     overview: object | None,
     *,
@@ -7142,6 +7273,14 @@ def test_browse_ai_overview_skips_empty_results():
     assert browse_overview_no_results_runtime() == {
         "summaryCalls": 0,
         "emptyCopy": True,
+    }
+
+
+def test_browse_ai_overview_timeout_aborts_and_offers_retry():
+    assert browse_overview_timeout_runtime() == {
+        "timeoutDelay": 15000,
+        "aborted": True,
+        "retry": "retry",
     }
 
 
