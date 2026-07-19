@@ -31,7 +31,7 @@ DARK_TEXTURE_NAMES = (
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 DARK_CSS_MARKER = "/* Candlelit Archive: dark theme foundation */"
-DARK_CSS_SHA256 = "8f03e946180eedd5fa87a26cee4e3ece3580f4c399201584dd5442facb7815cd"
+DARK_CSS_SHA256 = "b2ceda5c9fe26a2b73a41a9b4d33ec31880c5f0f9e0e488b019db7d14e5259ae"
 LIGHT_GUARD = ':root:not([data-bs-theme="dark"])'
 CSS_TOKEN_PATTERN = re.compile(
     r'/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
@@ -97,7 +97,20 @@ EXPECTED_LIGHT_ROOT_DECLARATIONS = {
     "--bs-body-font-family": "var(--font-body)",
 }
 EXPECTED_LIGHT_MATERIALS = {
-    (".surface-leather",): {
+    (".surface-wood",): {
+        "background-color": "var(--paper-100)",
+        "background-image": (
+            "linear-gradient(var(--paper-100), var(--paper-100)), "
+            'url("/static/img/textures/wood-texture-light.png")'
+        ),
+        "background-blend-mode": "multiply",
+        "background-repeat": "repeat",
+        "background-size": "auto, 180px",
+        "border": "1px solid hsl(33 30% 65% / 0.45)",
+        "border-radius": "var(--radius-panel)",
+        "box-shadow": "var(--shadow-parchment-raised)",
+    },
+    (".btn-secondary-leather",): {
         "background-color": "var(--paper-200)",
         "background-image": (
             "linear-gradient(rgb(226 213 198 / 0.72), "
@@ -107,19 +120,6 @@ EXPECTED_LIGHT_MATERIALS = {
         "background-blend-mode": "normal",
         "background-repeat": "repeat, repeat",
         "background-size": "auto, 380px",
-        "border": "1px solid hsl(33 30% 65% / 0.45)",
-        "border-radius": "var(--radius-panel)",
-        "box-shadow": "var(--shadow-parchment-raised)",
-    },
-    (".btn-secondary-wood",): {
-        "background-color": "var(--paper-100)",
-        "background-image": (
-            "linear-gradient(var(--paper-100), var(--paper-100)), "
-            'url("/static/img/textures/wood-texture-light.png")'
-        ),
-        "background-blend-mode": "multiply",
-        "background-repeat": "repeat",
-        "background-size": "auto, 180px",
         "border": "1px solid hsl(33 30% 60% / 0.50)",
         "border-radius": "var(--radius-button)",
         "color": "var(--ink-900)",
@@ -171,7 +171,7 @@ EXPECTED_LIGHT_WOOD_BUTTON_STATES = {
     "--bs-btn-active-border-color": "var(--gilt-900)",
     "--bs-btn-active-color": "var(--ink-900)",
     "--bs-btn-active-shadow": "none",
-    "--bs-btn-bg": "var(--paper-100)",
+    "--bs-btn-bg": "var(--paper-200)",
     "--bs-btn-border-color": "hsl(33 30% 60% / 0.50)",
     "--bs-btn-color": "var(--ink-900)",
     "--bs-btn-disabled-bg": "var(--paper-200)",
@@ -445,12 +445,12 @@ def assert_light_button_state_contract(css: str) -> None:
         light,
         (
             f"{LIGHT_GUARD} .btn-brass",
-            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-leather)",
         ),
     ) == EXPECTED_LIGHT_PRIMARY_BUTTON_STATES
     assert css_rule_group_declarations(
         light,
-        (f"{LIGHT_GUARD} .btn-secondary-wood",),
+        (f"{LIGHT_GUARD} .btn-secondary-leather",),
     ) == EXPECTED_LIGHT_WOOD_BUTTON_STATES
 
 
@@ -1161,14 +1161,14 @@ def test_light_button_hierarchy_uses_rubric_wood_and_ink():
         css,
         (
             f"{LIGHT_GUARD} .btn-brass",
-            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-leather)",
         ),
     )
     assert primary == EXPECTED_LIGHT_PRIMARY_BUTTON_STATES
     assert_light_button_state_contract(read_text("static/css/custom.css"))
     browse = read_text("static/js/pages/browse.js")
     upload = read_text("static/js/pages/upload.js")
-    assert 'btn btn-outline-primary btn-secondary-wood" id="loadMoreBtn"' in browse
+    assert 'btn btn-outline-primary btn-secondary-leather" id="loadMoreBtn"' in browse
     assert "loadMoreBtn.disabled = true" in browse
     assert 'btn btn-primary btn-brass w-100" id="uploadBtn" disabled' in upload
     assert css_rule_group_declarations(
@@ -1456,7 +1456,7 @@ def test_light_scrollbars_motion_and_reduced_motion_match_contract():
             f"{LIGHT_GUARD} input",
             f"{LIGHT_GUARD} select",
             f"{LIGHT_GUARD} textarea",
-            f"{LIGHT_GUARD} .btn-secondary-wood",
+            f"{LIGHT_GUARD} .btn-secondary-leather",
             f"{LIGHT_GUARD} .btn-brass",
             f"{LIGHT_GUARD} .btn-ghost",
             f"{LIGHT_GUARD} .icon-button",
@@ -1611,7 +1611,7 @@ def test_light_dashboard_and_page_header_use_old_book_hierarchy():
 def test_light_browse_search_overview_and_results_match_component_contract():
     css = light_css()
     browse = read_text("static/js/pages/browse.js")
-    assert 'class="card surface-leather source-summary-panel mb-3"' in browse
+    assert 'class="card surface-wood source-summary-panel mb-3"' in browse
     assert 'class="list-group-item"' in browse
     assert f"{LIGHT_GUARD} .source-summary-panel .card-body" not in css
     expected_rules = (
@@ -1743,7 +1743,7 @@ def test_light_result_card_image_region_and_fallback_match_parchment_contract():
         css,
         (f"{LIGHT_GUARD} .result-card .result-card-image",),
     ) == {
-        "background": "var(--paper-100)",
+        "background": "transparent",
         "height": "130px",
         "object-fit": "contain",
         "width": "100%",
@@ -1755,7 +1755,9 @@ def test_light_result_card_image_region_and_fallback_match_parchment_contract():
             '.result-card-image[data-image-kind="fallback"]',
         ),
     ) == {
-        "filter": "sepia(0.75) saturate(0.8) contrast(1.15)",
+        "filter": "brightness(0.25) sepia(0.6)",
+        "mix-blend-mode": "multiply",
+        "opacity": "0.72",
         "padding": "1.25rem",
     }
 

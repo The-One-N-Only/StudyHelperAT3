@@ -20,6 +20,7 @@ import secrets
 import time
 import re
 import concurrent.futures
+import random
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 import logging
@@ -43,6 +44,21 @@ app.config['SESSION_SQLALCHEMY'] = db_flask
 Session(app)
 
 db.setup_db()
+
+RESULT_IMAGE_FALLBACKS = [
+    '/static/img/illustrations/open-book.svg',
+    '/static/img/illustrations/scrollwork-flourish.svg',
+    '/static/img/illustrations/stacked-books.svg',
+    '/static/img/illustrations/compass-rose.svg',
+    '/static/img/illustrations/browse-scholar.svg',
+    '/static/img/illustrations/sextant.svg',
+    '/static/img/illustrations/victorian-man.svg',
+]
+
+def random_result_fallback():
+    return random.choice(RESULT_IMAGE_FALLBACKS)
+
+app.jinja_env.globals['random_result_fallback'] = random_result_fallback
 
 LOGIN_EXEMPT = {'login', 'register', 'static', 'not_found', 'internal_error', 'handle_exception'}
 BROWSE_SERVER_TIMEOUT_SECONDS = 25
@@ -953,4 +969,4 @@ def internal_error(error):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8010, debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8010)), debug=True)

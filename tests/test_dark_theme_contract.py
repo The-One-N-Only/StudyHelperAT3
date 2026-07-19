@@ -53,6 +53,11 @@ SVG_NAMES = (
     "stacked-books.svg",
     "open-book.svg",
     "scrollwork-flourish.svg",
+    "browse-scholar.svg",
+    "victorian-man.svg",
+)
+VALID_RESULT_FALLBACKS = frozenset(
+    f"/static/img/illustrations/{name}" for name in SVG_NAMES
 )
 DARK_ROOT_SELECTOR = '[data-bs-theme="dark"]'
 DARK_BODY_SELECTOR = '[data-bs-theme="dark"] body'
@@ -136,7 +141,7 @@ EXPECTED_DARK_TOKENS = {
         "0 0 0 1px var(--gold-500), "
         "0 0 18px 2px hsl(35 70% 55% / 0.25)"
     ),
-    "--candle-x": "50%", "--candle-y": "30%", "--candle-radius": "380px",
+    "--candle-x": "50%", "--candle-y": "30%", "--candle-radius": "200px",
     "--z-bg-base": "0",
     "--z-bg-illustration": "1",
     "--z-content": "10",
@@ -176,8 +181,8 @@ EXPECTED_DARK_BODY_DECLARATIONS = {
     "font-family": "var(--font-body)",
 }
 SHARED_REQUIRED_SELECTORS = (
-    '[data-bs-theme="dark"] .surface-leather',
-    '[data-bs-theme="dark"] .btn-secondary-wood',
+    '[data-bs-theme="dark"] .surface-wood',
+    '[data-bs-theme="dark"] .btn-secondary-leather',
     '[data-bs-theme="dark"] .btn-brass',
     '[data-bs-theme="dark"] .btn-ghost',
     '[data-bs-theme="dark"] .icon-button',
@@ -187,8 +192,8 @@ SHARED_REQUIRED_SELECTORS = (
     '[data-bs-theme="dark"] .archive-illustration',
 )
 TASK3_DARK_ONLY_CLASSES = (
-    "surface-leather",
-    "btn-secondary-wood",
+    "surface-wood",
+    "btn-secondary-leather",
     "btn-brass",
     "btn-ghost",
     "icon-button",
@@ -205,12 +210,12 @@ TASK3_DARK_ONLY_CLASSES = (
 )
 TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
     {
-        (".surface-leather",),
-        (".btn-secondary-wood",),
-        (f"{LIGHT_GUARD} .btn-secondary-wood",),
+        (".surface-wood",),
+        (".btn-secondary-leather",),
+        (f"{LIGHT_GUARD} .btn-secondary-leather",),
         (
-            f"{LIGHT_GUARD} .btn-secondary-wood:hover",
-            f"{LIGHT_GUARD} .btn-secondary-wood:active",
+            f"{LIGHT_GUARD} .btn-secondary-leather:hover",
+            f"{LIGHT_GUARD} .btn-secondary-leather:active",
         ),
         (
             f"{LIGHT_GUARD} button",
@@ -218,7 +223,7 @@ TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
             f"{LIGHT_GUARD} input",
             f"{LIGHT_GUARD} select",
             f"{LIGHT_GUARD} textarea",
-            f"{LIGHT_GUARD} .btn-secondary-wood",
+            f"{LIGHT_GUARD} .btn-secondary-leather",
             f"{LIGHT_GUARD} .btn-brass",
             f"{LIGHT_GUARD} .btn-ghost",
             f"{LIGHT_GUARD} .icon-button",
@@ -229,7 +234,7 @@ TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
         ),
         (
             f"{LIGHT_GUARD} .btn-brass",
-            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+            f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-leather)",
         ),
         (f"{LIGHT_GUARD} .btn-ghost",),
         (f"{LIGHT_GUARD} .btn-ghost:hover",),
@@ -397,7 +402,7 @@ SHARED_CONTROL_MOTION_SELECTORS = (
     '[data-bs-theme="dark"] input',
     '[data-bs-theme="dark"] select',
     '[data-bs-theme="dark"] textarea',
-    '[data-bs-theme="dark"] .btn-secondary-wood',
+    '[data-bs-theme="dark"] .btn-secondary-leather',
     '[data-bs-theme="dark"] .btn-brass',
     '[data-bs-theme="dark"] .btn-ghost',
     '[data-bs-theme="dark"] .icon-button',
@@ -901,25 +906,7 @@ EXPECTED_SHARED_RULES = (
         },
     ),
     (
-        ('[data-bs-theme="dark"] .surface-leather',),
-        {
-            "background-color": "var(--surface-800)",
-            "background-image": (
-                "linear-gradient(hsl(30 43% 12% / 0.52), "
-                "hsl(30 43% 12% / 0.52)), "
-                'url("/static/img/textures/leather-texture.png")'
-            ),
-            "background-blend-mode": "normal",
-            "background-position": "0 0",
-            "background-repeat": "repeat, repeat",
-            "background-size": "auto, 420px",
-            "border": "1px solid hsl(35 40% 45% / 0.18)",
-            "border-radius": "var(--radius-panel)",
-            "box-shadow": "var(--shadow-warm-raised)",
-        },
-    ),
-    (
-        ('[data-bs-theme="dark"] .btn-secondary-wood',),
+        ('[data-bs-theme="dark"] .surface-wood',),
         {
             "background-color": "var(--surface-700)",
             "background-image": (
@@ -931,6 +918,24 @@ EXPECTED_SHARED_RULES = (
             "background-position": "0 0",
             "background-repeat": "repeat, repeat",
             "background-size": "auto, 200px",
+            "border": "1px solid hsl(35 40% 45% / 0.18)",
+            "border-radius": "var(--radius-panel)",
+            "box-shadow": "var(--shadow-warm-raised)",
+        },
+    ),
+    (
+        ('[data-bs-theme="dark"] .btn-secondary-leather',),
+        {
+            "background-color": "var(--surface-800)",
+            "background-image": (
+                "linear-gradient(hsl(30 43% 12% / 0.52), "
+                "hsl(30 43% 12% / 0.52)), "
+                'url("/static/img/textures/leather-texture.png")'
+            ),
+            "background-blend-mode": "normal",
+            "background-position": "0 0",
+            "background-repeat": "repeat, repeat",
+            "background-size": "auto, 420px",
             "border": "1px solid hsl(35 40% 45% / 0.22)",
             "border-radius": "var(--radius-button)",
             "color": "var(--gold-300)",
@@ -938,8 +943,8 @@ EXPECTED_SHARED_RULES = (
     ),
     (
         (
-            '[data-bs-theme="dark"] .btn-secondary-wood:hover',
-            '[data-bs-theme="dark"] .btn-secondary-wood:active',
+            '[data-bs-theme="dark"] .btn-secondary-leather:hover',
+            '[data-bs-theme="dark"] .btn-secondary-leather:active',
         ),
         {
             "border-color": "var(--gold-500)",
@@ -949,7 +954,7 @@ EXPECTED_SHARED_RULES = (
     (
         (
             '[data-bs-theme="dark"] .btn-brass',
-            '[data-bs-theme="dark"] .btn-primary:not(.btn-secondary-wood)',
+            '[data-bs-theme="dark"] .btn-primary:not(.btn-secondary-leather)',
         ),
         {
             "--bs-btn-color": "var(--bg-950)",
@@ -2219,12 +2224,12 @@ def mutate_css_rule(
 def assert_dark_material_visibility_contract(css: str) -> None:
     materials = (
         (
-            '[data-bs-theme="dark"] .surface-leather',
-            'url("/static/img/textures/leather-texture.png")',
+            '[data-bs-theme="dark"] .surface-wood',
+            'url("/static/img/textures/wood-texture.png")',
         ),
         (
-            '[data-bs-theme="dark"] .btn-secondary-wood',
-            'url("/static/img/textures/wood-texture.png")',
+            '[data-bs-theme="dark"] .btn-secondary-leather',
+            'url("/static/img/textures/leather-texture.png")',
         ),
     )
     for selector, texture_url in materials:
@@ -2443,27 +2448,27 @@ def test_dark_material_tints_and_illustrations_are_clearly_visible():
     ("selector", "old", "new"),
     (
         (
-            '[data-bs-theme="dark"] .surface-leather',
-            "hsl(30 43% 12% / 0.52)",
-            "hsl(30 43% 12% / 1)",
+            '[data-bs-theme="dark"] .surface-wood',
+            "hsl(31 51% 12% / 0.38)",
+            "hsl(31 51% 12% / 1)",
         ),
         (
-            '[data-bs-theme="dark"] .btn-secondary-wood',
+            '[data-bs-theme="dark"] .btn-secondary-leather',
             "background-blend-mode: normal",
             "background-blend-mode: multiply",
         ),
         (
-            '[data-bs-theme="dark"] .surface-leather',
-            'url("/static/img/textures/leather-texture.png")',
-            "none",
-        ),
-        (
-            '[data-bs-theme="dark"] .btn-secondary-wood',
+            '[data-bs-theme="dark"] .surface-wood',
             'url("/static/img/textures/wood-texture.png")',
             "none",
         ),
+        (
+            '[data-bs-theme="dark"] .btn-secondary-leather',
+            'url("/static/img/textures/leather-texture.png")',
+            "none",
+        ),
     ),
-    ids=("opaque-alpha", "multiply-blend", "leather-url", "wood-url"),
+    ids=("opaque-alpha", "multiply-blend", "wood-url", "leather-url"),
 )
 def test_dark_material_contract_rejects_alpha_blend_or_texture_mutation(
     selector,
@@ -2571,7 +2576,7 @@ def test_shared_contract_rejects_moved_material_declaration():
 def test_shared_contract_rejects_wrong_material_declaration():
     css = mutate_css_rule(
         read_text("static/css/custom.css"),
-        '[data-bs-theme="dark"] .surface-leather',
+        '[data-bs-theme="dark"] .surface-wood',
         "background-blend-mode: normal",
         "background-blend-mode: screen",
     )
@@ -2593,8 +2598,8 @@ def test_shared_contract_rejects_wrong_toast_status_mapping_hidden_by_comment():
 @pytest.mark.parametrize(
     "selector",
     (
-        '[data-bs-theme="light"] .surface-leather',
-        ".surface-leather",
+        '[data-bs-theme="light"] .surface-wood',
+        ".surface-wood",
     ),
     ids=("light", "unscoped"),
 )
@@ -2630,7 +2635,7 @@ def test_shared_contract_boundary_accepts_reordered_approved_light_selector_grou
     css = read_text("static/css/custom.css")
     selectors = (
         f"{LIGHT_GUARD} .btn-brass",
-        f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-wood)",
+        f"{LIGHT_GUARD} .btn-primary:not(.btn-secondary-leather)",
     )
     original_group = ",\n".join(selectors)
     reordered_group = ",\n".join(reversed(selectors))
@@ -2661,11 +2666,11 @@ def test_shared_contract_boundary_accepts_unrelated_duplicate_fallback_declarati
 @pytest.mark.parametrize(
     "selector",
     (
-        '.surface-leather:not([data-bs-theme="dark"])',
+        '.surface-wood:not([data-bs-theme="dark"])',
         r".surface\-leather",
-        '[class~="surface-leather"]',
-        "[data-probe='[data-bs-theme=\"dark\"]'] .surface-leather",
-        ".unrelated { & .surface-leather",
+        '[class~="surface-wood"]',
+        "[data-probe='[data-bs-theme=\"dark\"]'] .surface-wood",
+        ".unrelated { & .surface-wood",
     ),
     ids=(
         "negated-dark",
@@ -2721,14 +2726,14 @@ def test_third_review_boundary_rejects_commented_toast_icon_decoy():
 
 def test_third_review_boundary_accepts_unrelated_task_text_in_attribute():
     css = read_text("static/css/custom.css")
-    css += '\n[data-probe=".surface-leather"] { color: red; }\n'
+    css += '\n[data-probe=".surface-wood"] { color: red; }\n'
 
     assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
 
 
 def test_third_review_boundary_accepts_positive_dark_ancestry_via_is():
     css = read_text("static/css/custom.css")
-    css += '\n:is([data-bs-theme="dark"]) .surface-leather { color: red; }\n'
+    css += '\n:is([data-bs-theme="dark"]) .surface-wood { color: red; }\n'
 
     assert_shared_dark_theme_contract(css, read_text("static/js/toast.js"))
 
@@ -3017,7 +3022,7 @@ def test_dashboard_has_archive_hooks_without_changing_data_flow():
         "archive-page-title",
         "archive-illustration illustration-books",
         "archive-illustration illustration-flourish",
-        "surface-leather workspace-card",
+        "surface-wood workspace-card",
         "workspace-card-add",
         "archive-category-badge",
         ">Workspace<",
@@ -3282,8 +3287,8 @@ function makeCard() {
     [".save-btn", new FakeElement("save", "btn btn-link btn-sm p-0 icon-button save-btn")],
     [".save-icon-light", new FakeElement("light icon")],
     [".save-icon-dark", new FakeElement("dark icon")],
-    [".view-btn", new FakeElement("view", "btn btn-outline-secondary btn-secondary-wood btn-sm w-50 view-btn")],
-    [".add-btn", new FakeElement("add", "btn btn-primary btn-secondary-wood btn-sm w-50 add-btn")],
+    [".view-btn", new FakeElement("view", "btn btn-outline-secondary btn-secondary-leather btn-sm w-50 view-btn")],
+    [".add-btn", new FakeElement("add", "btn btn-primary btn-secondary-leather btn-sm w-50 add-btn")],
     [".workspace-select", new FakeElement("workspace", "form-select form-select-sm archive-dropdown workspace-select")],
   ]);
   for (const selector of [".save-btn", ".view-btn", ".add-btn"]) {
@@ -3353,7 +3358,16 @@ invariant(!hostileCard.innerHTML.includes(attack), "untrusted fields reached inn
 invariant(hostileNodes.get(".card-title").textContent === attack, "title was not assigned as text");
 invariant(hostileNodes.get(".card-description").textContent === attack, "description was not assigned as text");
 invariant(hostileNodes.get(".result-source-text").textContent === attack, "source was not assigned as text");
-invariant(hostileNodes.get(".card-img-top").src === "/static/img/illustrations/compass-rose.svg", "unsafe thumbnail did not use compass fallback");
+const validFallbacks = [
+  "/static/img/illustrations/open-book.svg",
+  "/static/img/illustrations/scrollwork-flourish.svg",
+  "/static/img/illustrations/stacked-books.svg",
+  "/static/img/illustrations/compass-rose.svg",
+  "/static/img/illustrations/browse-scholar.svg",
+  "/static/img/illustrations/sextant.svg",
+  "/static/img/illustrations/victorian-man.svg",
+];
+invariant(validFallbacks.includes(hostileNodes.get(".card-img-top").src), "unsafe thumbnail used invalid fallback: " + hostileNodes.get(".card-img-top").src);
 invariant(hostileNodes.get(".save-btn").dataset.itemId === hostileItem.id, "item id was not assigned safely");
 invariant(hostileNodes.get(".save-btn").getAttribute("aria-label") === "Save result", "unsaved label is wrong");
 invariant(hostileNodes.get(".save-btn").getAttribute("aria-pressed") === "false", "unsaved state is wrong");
@@ -6637,10 +6651,21 @@ def server_metadata_records() -> list[dict]:
 
 
 def render_server_result_card(item: dict) -> str:
+    import random as _random
+    _FALLBACKS = [
+        "/static/img/illustrations/open-book.svg",
+        "/static/img/illustrations/scrollwork-flourish.svg",
+        "/static/img/illustrations/stacked-books.svg",
+        "/static/img/illustrations/compass-rose.svg",
+        "/static/img/illustrations/browse-scholar.svg",
+        "/static/img/illustrations/sextant.svg",
+        "/static/img/illustrations/victorian-man.svg",
+    ]
     environment = Environment(
         loader=FileSystemLoader(ROOT / "templates"),
         autoescape=True,
     )
+    environment.globals["random_result_fallback"] = lambda: _random.choice(_FALLBACKS)
     template = environment.from_string(
         '{% from "macros.html" import card %}{{ card(item) }}'
     )
@@ -6789,31 +6814,26 @@ def test_task6_client_and_jinja_render_hostile_fields_as_inert_text_with_light_p
 
     assert attack not in client["template"]
     assert "onerror=" not in client["template"]
-    assert client["hostile"] == {
-        "title": attack,
-        "description": attack,
-        "source": attack,
-        "image": "/static/img/illustrations/compass-rose.svg",
-        "imageAttrs": {
-            "loading": "lazy",
-            "decoding": "async",
-            "referrerpolicy": "no-referrer",
-            "alt": "",
-            "fallback": "/static/img/illustrations/compass-rose.svg",
-            "kind": "fallback",
-        },
-        "itemId": hostile["id"],
-        "label": "Saved result",
-        "pressed": "true",
-        "lightIcon": "bi bi-bookmark-fill text-danger save-icon-light",
-        "darkIcon": "bi bi-bookmark-check save-icon-dark d-none",
-    }
+    assert client["hostile"]["title"] == attack
+    assert client["hostile"]["description"] == attack
+    assert client["hostile"]["source"] == attack
+    assert client["hostile"]["image"] in VALID_RESULT_FALLBACKS
+    assert client["hostile"]["imageAttrs"]["fallback"] in VALID_RESULT_FALLBACKS
+    assert client["hostile"]["image"] == client["hostile"]["imageAttrs"]["fallback"]
+    assert client["hostile"]["imageAttrs"]["kind"] == "fallback"
+    assert client["hostile"]["imageAttrs"]["loading"] == "lazy"
+    assert client["hostile"]["imageAttrs"]["decoding"] == "async"
+    assert client["hostile"]["imageAttrs"]["referrerpolicy"] == "no-referrer"
+    assert client["hostile"]["imageAttrs"]["alt"] == ""
+    assert client["hostile"]["itemId"] == hostile["id"]
+    assert client["hostile"]["label"] == "Saved result"
+    assert client["hostile"]["pressed"] == "true"
+    assert client["hostile"]["lightIcon"] == "bi bi-bookmark-fill text-danger save-icon-light"
+    assert client["hostile"]["darkIcon"] == "bi bi-bookmark-check save-icon-dark d-none"
     assert server.select_one(".card-title").get_text(strip=True) == attack
     assert server.select_one(".card-description").get_text(strip=True) == attack
     assert server.select_one(".result-source-text").get_text(strip=True) == attack
-    assert server.select_one("img.card-img-top").get("src") == (
-        "/static/img/illustrations/compass-rose.svg"
-    )
+    assert server.select_one("img.card-img-top").get("src") in VALID_RESULT_FALLBACKS
     assert server.select_one(".save-btn").get("data-item-id") == hostile["id"]
     assert not [
         name
@@ -6838,35 +6858,26 @@ def test_task6_client_and_jinja_render_hostile_fields_as_inert_text_with_light_p
 
 def test_task1_card_image_fallback_parity_and_remote_failure_contract():
     client = card_runtime()
-    expected_fallbacks = {
-        "Google Books": "/static/img/illustrations/open-book.svg",
-        "Reference": "/static/img/illustrations/scrollwork-flourish.svg",
-        "Google Scholar": "/static/img/illustrations/stacked-books.svg",
-        "PubMed": "/static/img/illustrations/stacked-books.svg",
-    }
 
-    assert {
-        contract["sourceName"]: contract["src"]
+    assert all(
+        contract["src"] in VALID_RESULT_FALLBACKS
         for contract in client["fallbackContracts"]
-    } == expected_fallbacks
+    )
     assert all(
         contract["src"] == contract["fallback"]
         and contract["kind"] == "fallback"
         for contract in client["fallbackContracts"]
     )
-    assert client["remote"] == {
-        "beforeError": "https://books.google.com/books/content?id=remote",
-        "afterError": "/static/img/illustrations/open-book.svg",
-        "fallback": "/static/img/illustrations/open-book.svg",
-        "kind": "fallback",
-        "errorOnce": True,
-    }
-    assert client["serverRendered"] == {
-        "src": "/static/img/illustrations/scrollwork-flourish.svg",
-        "kind": "fallback",
-        "listenerCount": 1,
-        "errorOnce": True,
-    }
+    assert client["remote"]["beforeError"] == "https://books.google.com/books/content?id=remote"
+    assert client["remote"]["afterError"] in VALID_RESULT_FALLBACKS
+    assert client["remote"]["fallback"] in VALID_RESULT_FALLBACKS
+    assert client["remote"]["afterError"] == client["remote"]["fallback"]
+    assert client["remote"]["kind"] == "fallback"
+    assert client["remote"]["errorOnce"] == True
+    assert client["serverRendered"]["src"] in VALID_RESULT_FALLBACKS
+    assert client["serverRendered"]["kind"] == "fallback"
+    assert client["serverRendered"]["listenerCount"] == 1
+    assert client["serverRendered"]["errorOnce"] == True
 
     server_items = (
         {
@@ -6898,9 +6909,9 @@ def test_task1_card_image_fallback_parity_and_remote_failure_contract():
         image = BeautifulSoup(
             render_server_result_card(item), "html.parser"
         ).select_one("img.card-img-top")
-        fallback = expected_fallbacks[item["source_name"]]
-        assert image.get("src") == fallback
-        assert image.get("data-fallback-src") == fallback
+        assert image.get("src") in VALID_RESULT_FALLBACKS
+        assert image.get("data-fallback-src") in VALID_RESULT_FALLBACKS
+        assert image.get("src") == image.get("data-fallback-src")
         assert image.get("data-image-kind") == "fallback"
         assert image.get("loading") == "lazy"
         assert image.get("decoding") == "async"
@@ -6922,9 +6933,7 @@ def test_task1_card_image_fallback_parity_and_remote_failure_contract():
     ).select_one("img.card-img-top")
     assert remote_image.get("src") == remote["thumb_url"]
     assert remote_image.get("data-image-kind") == "remote"
-    assert remote_image.get("data-fallback-src") == (
-        "/static/img/illustrations/scrollwork-flourish.svg"
-    )
+    assert remote_image.get("data-fallback-src") in VALID_RESULT_FALLBACKS
 
     for unsafe_thumbnail in (
         "https://user:password@serpapi.com/image.jpg",
@@ -6940,9 +6949,7 @@ def test_task1_card_image_fallback_parity_and_remote_failure_contract():
             }),
             "html.parser",
         ).select_one("img.card-img-top")
-        assert unsafe_image.get("src") == (
-            "/static/img/illustrations/compass-rose.svg"
-        )
+        assert unsafe_image.get("src") in VALID_RESULT_FALLBACKS
         assert unsafe_image.get("data-image-kind") == "fallback"
 
     assert "/static/img/placeholder.png" not in read_text("static/js/card.js")
@@ -6955,7 +6962,7 @@ def test_task1_result_card_image_css_is_stable_and_theme_aware():
         f"{LIGHT_GUARD} .result-card .result-card-image",
     )
     assert css_rule_group_declarations(css, base_selectors) == {
-        "background": "var(--paper-100)",
+        "background": "transparent",
         "height": "130px",
         "object-fit": "contain",
         "width": "100%",
@@ -6967,14 +6974,16 @@ def test_task1_result_card_image_css_is_stable_and_theme_aware():
             '.result-card-image[data-image-kind="fallback"]',
         ),
     ) == {
-        "filter": "sepia(0.75) saturate(0.8) contrast(1.15)",
+        "filter": "brightness(0.25) sepia(0.6)",
+        "mix-blend-mode": "multiply",
+        "opacity": "0.72",
         "padding": "1.25rem",
     }
     assert css_rule_group_declarations(
         css,
         ('[data-bs-theme="dark"] .result-card .result-card-image',),
     ) == {
-        "background": "var(--surface-700)",
+        "background": "transparent",
         "height": "130px",
         "object-fit": "contain",
         "width": "100%",
@@ -6986,10 +6995,9 @@ def test_task1_result_card_image_css_is_stable_and_theme_aware():
             '.result-card-image[data-image-kind="fallback"]',
         ),
     ) == {
-        "filter": (
-            "brightness(0) saturate(100%) invert(76%) sepia(20%) "
-            "saturate(667%) hue-rotate(357deg) brightness(88%) contrast(86%)"
-        ),
+        "filter": "brightness(0.45)",
+        "mix-blend-mode": "multiply",
+        "opacity": "0.55",
         "padding": "1.25rem",
     }
 
@@ -7008,10 +7016,10 @@ def test_task6_card_templates_keep_shared_structure_and_equal_wood_cascade():
     }
     server_markup = render_server_result_card(item)
     css = read_text("static/css/custom.css")
-    wood = (
-        "linear-gradient(hsl(31 51% 12% / 0.38), "
-        "hsl(31 51% 12% / 0.38)), "
-        'url("/static/img/textures/wood-texture.png")'
+    leather = (
+        "linear-gradient(hsl(30 43% 12% / 0.52), "
+        "hsl(30 43% 12% / 0.52)), "
+        'url("/static/img/textures/leather-texture.png")'
     )
 
     for markup in (client_markup, server_markup):
@@ -7020,7 +7028,7 @@ def test_task6_card_templates_keep_shared_structure_and_equal_wood_cascade():
             "card",
             "card-fixed",
             "shadow-sm",
-            "surface-leather",
+            "surface-wood",
             "result-card",
             "rounded-3",
             "h-100",
@@ -7029,10 +7037,10 @@ def test_task6_card_templates_keep_shared_structure_and_equal_wood_cascade():
         assert soup.select_one(".save-btn").get("type") == "button"
         assert soup.select_one(".view-btn").get("type") == "button"
         assert soup.select_one(".add-btn").get("type") == "button"
-        assert {"btn-outline-secondary", "btn-secondary-wood"}.issubset(
+        assert {"btn-outline-secondary", "btn-secondary-leather"}.issubset(
             soup.select_one(".view-btn").get("class")
         )
-        assert {"btn-primary", "btn-secondary-wood"}.issubset(
+        assert {"btn-primary", "btn-secondary-leather"}.issubset(
             soup.select_one(".add-btn").get("class")
         )
         if markup == client_markup:
@@ -7044,7 +7052,7 @@ def test_task6_card_templates_keep_shared_structure_and_equal_wood_cascade():
         for target in (".view-btn", ".add-btn"):
             applied = composed_background_images(css, markup, target)
             assert applied
-            assert applied[-1] == wood
+            assert applied[-1] == leather
 
 
 def test_browse_empty_state_uses_decorative_scholar_engraving():
@@ -7961,14 +7969,14 @@ def test_task6_dynamic_panels_pagination_and_dark_contract_remain_intact():
         returned_template_markup(browse, "renderOverviewCard"),
         "html.parser",
     )
-    assert {"card", "mb-3", "surface-leather", "ai-overview-panel"}.issubset(
+    assert {"card", "mb-3", "surface-wood", "ai-overview-panel"}.issubset(
         overview.select_one(".ai-overview-panel").get("class", ())
     )
     pagination = BeautifulSoup(
         assigned_template_markup(browse, "buttonContainer"), "html.parser"
     )
     load_more = pagination.select_one("#loadMoreBtn")
-    assert {"btn", "btn-outline-primary", "btn-secondary-wood"}.issubset(
+    assert {"btn", "btn-outline-primary", "btn-secondary-leather"}.issubset(
         load_more.get("class", ())
     )
     assert load_more.get("type") == "button"
@@ -8004,12 +8012,12 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
     assert all(item.get("aria-hidden") == "true" for item in decorations)
     content = page.select_one(".container.py-4.archive-content.upload-content")
     assert content.get("style") == "max-width: 700px;"
-    zone = content.select_one("#uploadZone.surface-leather.upload-zone")
+    zone = content.select_one("#uploadZone.surface-wood.upload-zone")
     assert {"card-body", "text-center", "p-5"}.issubset(zone.get("class", ()))
     assert zone.select_one("#fileInput").get("style") == "display: none;"
     upload_button = content.select_one("#uploadBtn")
     assert {"btn", "btn-primary", "btn-brass", "w-100"}.issubset(upload_button.get("class", ()))
-    file_panel = content.select_one(".card.surface-leather.file-list-panel")
+    file_panel = content.select_one(".card.surface-wood.file-list-panel")
     assert {"badge", "bg-primary", "archive-count-badge"}.issubset(file_panel.select_one("#fileCountBadge").get("class", ()))
     for marker in (
         "file-icon file-icon-${file.file_type} text-muted",
@@ -8058,8 +8066,8 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     workspace = read_text("static/js/pages/workspace.js")
     css = read_text("static/css/custom.css")
     for marker in (
-        "archive-page archive-page-workspace", "surface-leather workspace-main-panel",
-        "surface-leather workspace-right-panel", "workspace-source-item", "chat-messages",
+        "archive-page archive-page-workspace", "surface-wood workspace-main-panel",
+        "surface-wood workspace-right-panel", "workspace-source-item", "chat-messages",
         '<i class="bi bi-file-earmark-text note-icon-dark d-none me-2" aria-hidden="true"></i><span class="note-icon-light">📝 </span>',
     ):
         assert marker in workspace
@@ -8196,8 +8204,8 @@ def test_candle_cursor_contract_is_dark_scoped_and_guarded():
         "animation": "candle-flicker 4.2s ease-in-out infinite",
         "background": (
             "radial-gradient(circle var(--candle-radius) at var(--candle-x) "
-            "var(--candle-y), hsl(35 80% 68% / 0.16), "
-            "hsl(35 80% 68% / 0.05) 45%, transparent 75%)"
+            "var(--candle-y), hsl(35 80% 68% / 0.30), "
+            "hsl(35 80% 68% / 0.08) 35%, transparent 60%)"
         ),
         "inset": "0",
         "mix-blend-mode": "soft-light",

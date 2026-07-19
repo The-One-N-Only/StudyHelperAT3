@@ -431,21 +431,7 @@ body.nav-sidebar-open {
     display: none;
 }
 
-/* A translucent parchment wash keeps leather grain visible without darkening ink. */
-.surface-leather {
-    background-color: var(--paper-200);
-    background-image:
-        linear-gradient(rgb(226 213 198 / 0.72), rgb(226 213 198 / 0.72)),
-        url("/static/img/textures/leather-texture-light.png");
-    background-blend-mode: normal;
-    background-repeat: repeat, repeat;
-    background-size: auto, 380px;
-    border: 1px solid hsl(33 30% 65% / 0.45);
-    border-radius: var(--radius-panel);
-    box-shadow: var(--shadow-parchment-raised);
-}
-
-.btn-secondary-wood {
+.surface-wood {
     background-color: var(--paper-100);
     background-image:
         linear-gradient(var(--paper-100), var(--paper-100)),
@@ -453,14 +439,27 @@ body.nav-sidebar-open {
     background-blend-mode: multiply;
     background-repeat: repeat;
     background-size: auto, 180px;
+    border: 1px solid hsl(33 30% 65% / 0.45);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-parchment-raised);
+}
+
+.btn-secondary-leather {
+    background-color: var(--paper-200);
+    background-image:
+        linear-gradient(rgb(226 213 198 / 0.72), rgb(226 213 198 / 0.72)),
+        url("/static/img/textures/leather-texture-light.png");
+    background-blend-mode: normal;
+    background-repeat: repeat, repeat;
+    background-size: auto, 380px;
     border: 1px solid hsl(33 30% 60% / 0.50);
     border-radius: var(--radius-button);
     color: var(--ink-900);
 }
 
-:root:not([data-bs-theme="dark"]) .btn-secondary-wood {
+:root:not([data-bs-theme="dark"]) .btn-secondary-leather {
     --bs-btn-color: var(--ink-900);
-    --bs-btn-bg: var(--paper-100);
+    --bs-btn-bg: var(--paper-200);
     --bs-btn-border-color: hsl(33 30% 60% / 0.50);
     --bs-btn-hover-color: var(--ink-900);
     --bs-btn-hover-bg: var(--paper-200);
@@ -476,8 +475,8 @@ body.nav-sidebar-open {
     --bs-btn-disabled-opacity: 0.65;
 }
 
-:root:not([data-bs-theme="dark"]) .btn-secondary-wood:hover,
-:root:not([data-bs-theme="dark"]) .btn-secondary-wood:active {
+:root:not([data-bs-theme="dark"]) .btn-secondary-leather:hover,
+:root:not([data-bs-theme="dark"]) .btn-secondary-leather:active {
     border-color: var(--gilt-900);
     color: var(--ink-900);
 }
@@ -565,7 +564,7 @@ p {
 :root:not([data-bs-theme="dark"]) input,
 :root:not([data-bs-theme="dark"]) select,
 :root:not([data-bs-theme="dark"]) textarea,
-:root:not([data-bs-theme="dark"]) .btn-secondary-wood,
+:root:not([data-bs-theme="dark"]) .btn-secondary-leather,
 :root:not([data-bs-theme="dark"]) .btn-brass,
 :root:not([data-bs-theme="dark"]) .btn-ghost,
 :root:not([data-bs-theme="dark"]) .icon-button,
@@ -577,7 +576,7 @@ p {
 }
 
 :root:not([data-bs-theme="dark"]) .btn-brass,
-:root:not([data-bs-theme="dark"]) .btn-primary:not(.btn-secondary-wood) {
+:root:not([data-bs-theme="dark"]) .btn-primary:not(.btn-secondary-leather) {
     --bs-btn-color: var(--paper-50);
     --bs-btn-bg: var(--rubric-500);
     --bs-btn-border-color: transparent;
@@ -1004,14 +1003,16 @@ p {
 }
 
 :root:not([data-bs-theme="dark"]) .result-card .result-card-image {
-    background: var(--paper-100);
+    background: transparent;
     height: 130px;
     object-fit: contain;
     width: 100%;
 }
 
 :root:not([data-bs-theme="dark"]) .result-card .result-card-image[data-image-kind="fallback"] {
-    filter: sepia(0.75) saturate(0.8) contrast(1.15);
+    filter: brightness(0.25) sepia(0.6);
+    mix-blend-mode: multiply;
+    opacity: 0.72;
     padding: 1.25rem;
 }
 
@@ -1584,13 +1585,13 @@ p {
 
     --candle-x: 50%;
     --candle-y: 30%;
-    --candle-radius: 380px;
+    --candle-radius: 200px;
 
     --z-bg-base: 0;
     --z-bg-illustration: 1;
     --z-content: 10;
-    --z-candle-glow: 40;
-    --z-overlay: 50;
+    --z-candle-glow: 1000000000000;
+    --z-overlay: 1000;
 
     --bs-body-bg: var(--bg-950);
     --bs-body-color: var(--text-primary);
@@ -1643,7 +1644,7 @@ p {
 [data-bs-theme="dark"] input,
 [data-bs-theme="dark"] select,
 [data-bs-theme="dark"] textarea,
-[data-bs-theme="dark"] .btn-secondary-wood,
+[data-bs-theme="dark"] .btn-secondary-leather,
 [data-bs-theme="dark"] .btn-brass,
 [data-bs-theme="dark"] .btn-ghost,
 [data-bs-theme="dark"] .icon-button,
@@ -1654,21 +1655,7 @@ p {
     transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
-[data-bs-theme="dark"] .surface-leather {
-    background-color: var(--surface-800);
-    background-image:
-        linear-gradient(hsl(30 43% 12% / 0.52), hsl(30 43% 12% / 0.52)),
-        url("/static/img/textures/leather-texture.png");
-    background-blend-mode: normal;
-    background-position: 0 0;
-    background-repeat: repeat, repeat;
-    background-size: auto, 420px;
-    border: 1px solid hsl(35 40% 45% / 0.18);
-    border-radius: var(--radius-panel);
-    box-shadow: var(--shadow-warm-raised);
-}
-
-[data-bs-theme="dark"] .btn-secondary-wood {
+[data-bs-theme="dark"] .surface-wood {
     background-color: var(--surface-700);
     background-image:
         linear-gradient(hsl(31 51% 12% / 0.38), hsl(31 51% 12% / 0.38)),
@@ -1677,19 +1664,33 @@ p {
     background-position: 0 0;
     background-repeat: repeat, repeat;
     background-size: auto, 200px;
+    border: 1px solid hsl(35 40% 45% / 0.18);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-warm-raised);
+}
+
+[data-bs-theme="dark"] .btn-secondary-leather {
+    background-color: var(--surface-800);
+    background-image:
+        linear-gradient(hsl(30 43% 12% / 0.52), hsl(30 43% 12% / 0.52)),
+        url("/static/img/textures/leather-texture.png");
+    background-blend-mode: normal;
+    background-position: 0 0;
+    background-repeat: repeat, repeat;
+    background-size: auto, 420px;
     border: 1px solid hsl(35 40% 45% / 0.22);
     border-radius: var(--radius-button);
     color: var(--gold-300);
 }
 
-[data-bs-theme="dark"] .btn-secondary-wood:hover,
-[data-bs-theme="dark"] .btn-secondary-wood:active {
+[data-bs-theme="dark"] .btn-secondary-leather:hover,
+[data-bs-theme="dark"] .btn-secondary-leather:active {
     border-color: var(--gold-500);
     color: var(--gold-100);
 }
 
 [data-bs-theme="dark"] .btn-brass,
-[data-bs-theme="dark"] .btn-primary:not(.btn-secondary-wood) {
+[data-bs-theme="dark"] .btn-primary:not(.btn-secondary-leather) {
     --bs-btn-color: var(--bg-950);
     --bs-btn-bg: var(--gold-300);
     --bs-btn-border-color: transparent;
@@ -1886,9 +1887,9 @@ p {
 [data-bs-theme="dark"] .candle-glow {
     animation: candle-flicker 4.2s ease-in-out infinite;
     background: radial-gradient(circle var(--candle-radius) at var(--candle-x) var(--candle-y),
-        hsl(35 80% 68% / 0.16),
-        hsl(35 80% 68% / 0.05) 45%,
-        transparent 75%);
+        hsl(35 80% 68% / 0.30),
+        hsl(35 80% 68% / 0.08) 35%,
+        transparent 60%);
     inset: 0;
     mix-blend-mode: soft-light;
     pointer-events: none;
@@ -2113,14 +2114,16 @@ p {
 }
 
 [data-bs-theme="dark"] .result-card .result-card-image {
-    background: var(--surface-700);
+    background: transparent;
     height: 130px;
     object-fit: contain;
     width: 100%;
 }
 
 [data-bs-theme="dark"] .result-card .result-card-image[data-image-kind="fallback"] {
-    filter: brightness(0) saturate(100%) invert(76%) sepia(20%) saturate(667%) hue-rotate(357deg) brightness(88%) contrast(86%);
+    filter: brightness(0.45);
+    mix-blend-mode: multiply;
+    opacity: 0.55;
     padding: 1.25rem;
 }
 

@@ -1,21 +1,12 @@
 {% macro card(item) %}
-{% set source_identity = ((item.source_name or '') ~ ' ' ~ (item.source_url or ''))|lower %}
-{% if 'gbooks' in source_identity or 'google books' in source_identity or 'books.google.com' in source_identity %}
-{% set fallback_url = '/static/img/illustrations/open-book.svg' %}
-{% elif 'wikipedia' in source_identity or 'wikimedia.org' in source_identity %}
-{% set fallback_url = '/static/img/illustrations/scrollwork-flourish.svg' %}
-{% elif 'scholar' in source_identity or 'pubmed' in source_identity %}
-{% set fallback_url = '/static/img/illustrations/stacked-books.svg' %}
-{% else %}
-{% set fallback_url = '/static/img/illustrations/compass-rose.svg' %}
-{% endif %}
+{% set fallback_url = random_result_fallback() %}
 {% set raw_thumbnail_url = item.thumb_url or '' %}
 {% set thumbnail_url = raw_thumbnail_url|trim %}
 {% set thumbnail_authority = thumbnail_url[8:].split('/')[0] if thumbnail_url.lower().startswith('https://') else '' %}
 {% set has_safe_thumbnail_port = ':' not in thumbnail_authority or thumbnail_authority.endswith(':443') %}
 {% set has_remote_thumbnail = raw_thumbnail_url == thumbnail_url and thumbnail_url.lower().startswith('https://') and thumbnail_url.split()|length == 1 and '\\' not in thumbnail_url and '#' not in thumbnail_url and '@' not in thumbnail_authority and has_safe_thumbnail_port and thumbnail_url|length <= 255 %}
 {% if not has_remote_thumbnail %}{% set thumbnail_url = fallback_url %}{% endif %}
-<div class="card card-fixed shadow-sm surface-leather result-card rounded-3 h-100">
+<div class="card card-fixed shadow-sm surface-wood result-card rounded-3 h-100">
     <img src="{{ thumbnail_url }}" class="card-img-top result-card-image" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" data-fallback-src="{{ fallback_url }}" data-image-kind="{{ 'remote' if has_remote_thumbnail else 'fallback' }}">
     <div class="card-body">
         <h6 class="card-title text-truncate mb-1">{{ item.title }}</h6>
@@ -29,8 +20,8 @@
         </div>
     </div>
     <div class="card-footer bg-transparent border-top p-2 result-card-actions">
-        <button class="btn btn-outline-secondary btn-secondary-wood btn-sm w-50 view-btn" data-item-id="{{ item.id }}" type="button">View</button>
-        <button class="btn btn-primary btn-secondary-wood btn-sm w-50 add-btn" data-item-id="{{ item.id }}" type="button">Add</button>
+        <button class="btn btn-outline-secondary btn-secondary-leather btn-sm w-50 view-btn" data-item-id="{{ item.id }}" type="button">View</button>
+        <button class="btn btn-primary btn-secondary-leather btn-sm w-50 add-btn" data-item-id="{{ item.id }}" type="button">Add</button>
     </div>
 </div>
 {% endmacro %}

@@ -3,12 +3,20 @@
 import { showToast } from './toast.js';
 import { hydrateWorkspaceSelect, getSelectedWorkspaceId, clearWorkspaceCache } from './workspace-selector.js';
 
-const RESULT_IMAGE_FALLBACKS = {
-    books: '/static/img/illustrations/open-book.svg',
-    wikipedia: '/static/img/illustrations/scrollwork-flourish.svg',
-    academic: '/static/img/illustrations/stacked-books.svg',
-    other: '/static/img/illustrations/compass-rose.svg',
-};
+const RESULT_IMAGE_FALLBACKS_LIST = [
+    '/static/img/illustrations/open-book.svg',
+    '/static/img/illustrations/scrollwork-flourish.svg',
+    '/static/img/illustrations/stacked-books.svg',
+    '/static/img/illustrations/compass-rose.svg',
+    '/static/img/illustrations/browse-scholar.svg',
+    '/static/img/illustrations/sextant.svg',
+    '/static/img/illustrations/victorian-man.svg',
+];
+
+function randomResultImageFallback() {
+    const index = Math.floor(Math.random() * RESULT_IMAGE_FALLBACKS_LIST.length);
+    return RESULT_IMAGE_FALLBACKS_LIST[index];
+}
 const enhancedResultImages = new WeakSet();
 const failedResultImageUrls = new Set();
 
@@ -21,7 +29,7 @@ function enhanceResultImage(image) {
     if (!image || enhancedResultImages.has(image)) return;
 
     const fallbackImage = image.getAttribute('data-fallback-src');
-    if (!Object.values(RESULT_IMAGE_FALLBACKS).includes(fallbackImage)) return;
+    if (!RESULT_IMAGE_FALLBACKS_LIST.includes(fallbackImage)) return;
 
     enhancedResultImages.add(image);
     const remoteImage = safeRemoteImageUrl(
@@ -50,7 +58,7 @@ export function enhanceResultCardImages(root = document) {
 
 export function createCard(item) {
     const card = document.createElement('div');
-    card.className = 'card card-fixed shadow-sm surface-leather result-card rounded-3 h-100';
+    card.className = 'card card-fixed shadow-sm surface-wood result-card rounded-3 h-100';
     card.innerHTML = `
         <img class="card-img-top result-card-image" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="">
         <div class="card-body">
@@ -65,8 +73,8 @@ export function createCard(item) {
             </div>
         </div>
         <div class="card-footer bg-transparent border-top p-2 result-card-actions">
-            <button class="btn btn-outline-secondary btn-secondary-wood btn-sm w-50 view-btn" type="button">View</button>
-            <button class="btn btn-primary btn-secondary-wood btn-sm w-50 add-btn" type="button">Add</button>
+            <button class="btn btn-outline-secondary btn-secondary-leather btn-sm w-50 view-btn" type="button">View</button>
+            <button class="btn btn-primary btn-secondary-leather btn-sm w-50 add-btn" type="button">Add</button>
         </div>
         <div class="d-flex align-items-center gap-2 mt-2">
             <select class="form-select form-select-sm archive-dropdown workspace-select" aria-label="Choose workspace"></select>
@@ -113,18 +121,7 @@ export function createCard(item) {
 }
 
 function resultImageFallback(item) {
-    const source = `${String(item?.source_name ?? '')} ${String(item?.source_url ?? '')}`
-        .toLowerCase();
-    if (source.includes('gbooks') || source.includes('google books') || source.includes('books.google.com')) {
-        return RESULT_IMAGE_FALLBACKS.books;
-    }
-    if (source.includes('wikipedia') || source.includes('wikimedia.org')) {
-        return RESULT_IMAGE_FALLBACKS.wikipedia;
-    }
-    if (source.includes('scholar') || source.includes('pubmed')) {
-        return RESULT_IMAGE_FALLBACKS.academic;
-    }
-    return RESULT_IMAGE_FALLBACKS.other;
+    return randomResultImageFallback();
 }
 
 function safeRemoteImageUrl(value) {
