@@ -2,14 +2,23 @@
 
 import { showToast } from '../toast.js';
 import { createCard } from '../card.js';
+import { fetchBrowseSummary } from '../browse-summary.js';
 
 const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'scholar'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 const BROWSE_STATE_VERSION = 2;
 const BROWSE_REQUEST_TIMEOUT_MS = 30000;
 const BROWSE_WHITELIST_TIMEOUT_MS = 5000;
+const BROWSE_SUMMARY_TIMEOUT_MS = 15000;
 const RESULTS_PER_SOURCE_PER_RANK = 1;
 const MAX_VISIBLE_SOURCE_RANK = 10;
+const SUMMARY_RESULT_LIMIT = 10;
+const SUMMARY_TEXT_LIMIT = 6000;
+const SUMMARY_FIELD_LIMITS = Object.freeze({
+    title: 500,
+    description: 2000,
+    source_name: 200,
+});
 const DEDUPE_IDENTITY_PROPERTY = '_dedupe_identity';
 const CANONICAL_SOURCE_URL_PROPERTY = '_canonical_source_url';
 const RESPONSE_METADATA_PROPERTIES = new Set([
@@ -34,6 +43,30 @@ let browseInitGeneration = 0;
 let browseSourceReadiness = Promise.resolve();
 let isInitialSearchPending = false;
 const searchLoaders = new Map();
+let currentOverview = overviewState();
+let overviewRequestGeneration = 0;
+let activeOverviewController = null;
+
+function overviewState(status = 'idle', query = '', text = '', error = '') {
+    return { status, query, text, error };
+}
+
+function normalizedSummaryField(value, limit) {
+    return typeof value === 'string' ? value.trim().slice(0, limit) : '';
+}
+
+function safeSummarySourceUrl(value) {
+    if (typeof value !== 'string') return '';
+    try {
+        const parsed = new URL(value.trim());
+        if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+        if (parsed.username || parsed.password) return '';
+        parsed.hash = '';
+        return parsed.href.slice(0, 2048);
+    } catch (_err) {
+        return '';
+    }
+}
 
 function normalizeIdentityText(value) {
     if (value === null || value === undefined) return '';
@@ -513,6 +546,8 @@ export function initBrowse(root) {
     isInitialSearchPending = false;
     isLoadingMore = false;
     clearAllSearchLoaders();
+    cancelOverviewRequest();
+    currentOverview = overviewState();
     pageRoot = root;
     whitelistDomains = [];
     whitelistSourcesRendered = false;
@@ -740,51 +775,143 @@ function itemMatchesSource(item, source) {
     return sourceName.includes(source.toLowerCase());
 }
 
+function renderOverviewCard() {
+    const hasResults = currentSearchResults.length > 0;
+    let body = '';
+    if (currentOverview.status === 'loading') {
+        body = `
+            <div class="d-flex align-items-center gap-2">
+                <span class="spinner-border spinner-border-sm ai-overview-spinner" aria-hidden="true"></span>
+                <span>Creating overview…</span>
+            </div>`;
+    } else if (currentOverview.status === 'success') {
+        body = `<p class="small mb-0">${escapeHtml(currentOverview.text)}</p>`;
+    } else if (currentOverview.status === 'error') {
+        body = `
+            <p class="small mb-2">${escapeHtml(currentOverview.error)}</p>
+            <button class="btn btn-sm btn-outline-primary btn-secondary-wood" type="button" data-overview-action="retry">Retry</button>`;
+    } else if (currentOverview.status === 'empty') {
+        body = '<p class="small mb-0">No overview is available because this search returned no results.</p>';
+    } else if (hasResults && lastSearchQuery) {
+        body = `
+            <p class="small mb-2">Generate an overview of these search results.</p>
+            <button class="btn btn-sm btn-outline-primary btn-secondary-wood" type="button" data-overview-action="generate">Generate overview</button>`;
+    } else {
+        body = '<p class="small mb-0">AI search insights will appear here after you run a search.</p>';
+    }
+
+    return `
+        <section class="card surface-leather ai-overview-panel mb-3" aria-labelledby="browseOverviewTitle">
+            <div class="card-header">
+                <h2 class="card-title h5 mb-0" id="browseOverviewTitle">AI Overview</h2>
+            </div>
+            <div class="card-body" data-overview-status="${currentOverview.status}" aria-live="polite" aria-busy="${currentOverview.status === 'loading' ? 'true' : 'false'}">
+                ${body}
+            </div>
+        </section>`;
+}
+
+function bindOverviewAction(sidebar) {
+    const action = sidebar.querySelector('[data-overview-action]');
+    action?.addEventListener('click', () => {
+        if (!lastSearchQuery || currentSearchResults.length === 0) return;
+        void loadSearchSummary(lastSearchQuery, searchGeneration);
+    });
+}
+
 function renderSidebar(sourceCounts = {}, results = []) {
     const sidebar = pageRoot.querySelector('#sidebarContainer');
     const selectedSources = lastSearchSources || [];
-    if (!selectedSources.length) {
-        sidebar.innerHTML = `
-            <div class="card surface-leather ai-overview-panel mb-3">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">AI Overview</h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted small mb-0">AI search insights will appear here after you run a search. For now, results are gathered from trusted academic sources across the full whitelist.</p>
-                </div>
-            </div>
-        `;
+    let html = renderOverviewCard();
+
+    if (selectedSources.length) {
+        html += '<div class="card surface-leather source-summary-panel mb-3">';
+        html += '<div class="card-header"><h5 class="card-title mb-0">Search sources</h5></div>';
+        html += '<div class="list-group list-group-flush">';
+
+        selectedSources.forEach((source) => {
+            const displayName = getDisplayNameForSource(source);
+            const count = sourceCounts[source] != null ? sourceCounts[source] : results.filter((item) => itemMatchesSource(item, source)).length;
+            const topItem = results.find((item) => itemMatchesSource(item, source));
+
+            html += `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong>${escapeHtml(displayName)}</strong>
+                        <span class="badge bg-primary rounded-pill archive-count-badge">${count}</span>
+                    </div>
+            `;
+            if (topItem) {
+                html += `<div class="small text-truncate"><strong>${escapeHtml(topItem.title)}</strong></div>`;
+                html += `<div class="small text-muted text-truncate">${escapeHtml(topItem.description || topItem.source_url || '')}</div>`;
+            } else {
+                html += '<div class="small text-muted">No results yet for this source.</div>';
+            }
+            html += '</div>';
+        });
+
+        html += '</div></div>';
+    }
+    sidebar.innerHTML = html;
+    bindOverviewAction(sidebar);
+}
+
+function cancelOverviewRequest() {
+    overviewRequestGeneration += 1;
+    activeOverviewController?.abort();
+    activeOverviewController = null;
+}
+
+async function loadSearchSummary(query, ownerSearchGeneration) {
+    const results = buildSummaryResults();
+    if (!results.length) {
+        currentOverview = overviewState('empty', query);
+        renderSidebar(currentSourceCounts, currentSearchResults);
         return;
     }
 
-    let html = '<div class="card surface-leather source-summary-panel mb-3">';
-    html += '<div class="card-header"><h5 class="card-title mb-0">Search sources</h5></div>';
-    html += '<div class="list-group list-group-flush">';
+    cancelOverviewRequest();
+    const requestGeneration = overviewRequestGeneration;
+    const controller = new AbortController();
+    activeOverviewController = controller;
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+    }, BROWSE_SUMMARY_TIMEOUT_MS);
+    currentOverview = overviewState('loading', query);
+    renderSidebar(currentSourceCounts, currentSearchResults);
 
-    selectedSources.forEach((source) => {
-        const displayName = getDisplayNameForSource(source);
-        const count = sourceCounts[source] != null ? sourceCounts[source] : results.filter((item) => itemMatchesSource(item, source)).length;
-
-        const topItem = results.find((item) => itemMatchesSource(item, source));
-
-        html += `
-            <div class="list-group-item">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <strong>${escapeHtml(displayName)}</strong>
-                    <span class="badge bg-primary rounded-pill archive-count-badge">${count}</span>
-                </div>
-        `;
-        if (topItem) {
-            html += `<div class="small text-truncate"><strong>${escapeHtml(topItem.title)}</strong></div>`;
-            html += `<div class="small text-muted text-truncate">${escapeHtml(topItem.description || topItem.source_url || '')}</div>`;
-        } else {
-            html += `<div class="small text-muted">No results yet for this source.</div>`;
+    try {
+        const summary = await fetchBrowseSummary({ query, results }, controller.signal);
+        if (
+            ownerSearchGeneration !== searchGeneration
+            || requestGeneration !== overviewRequestGeneration
+        ) return;
+        currentOverview = overviewState(
+            'success',
+            query,
+            summary.slice(0, SUMMARY_TEXT_LIMIT),
+        );
+        saveBrowseState();
+        renderSidebar(currentSourceCounts, currentSearchResults);
+    } catch (error) {
+        if (
+            ownerSearchGeneration !== searchGeneration
+            || requestGeneration !== overviewRequestGeneration
+        ) return;
+        if (error?.name === 'AbortError' && !timedOut) return;
+        const message = timedOut
+            ? 'Overview took too long. Try again.'
+            : (error?.message || 'Unable to create overview. Try again.');
+        currentOverview = overviewState('error', query, '', message);
+        renderSidebar(currentSourceCounts, currentSearchResults);
+    } finally {
+        clearTimeout(timeoutId);
+        if (requestGeneration === overviewRequestGeneration) {
+            activeOverviewController = null;
         }
-        html += '</div>';
-    });
-
-    html += '</div></div>';
-    sidebar.innerHTML = html;
+    }
 }
 
 function groupResultsBySource(results) {
@@ -861,6 +988,39 @@ function sourcesToDisplay() {
         }
     });
     return sources;
+}
+
+function buildSummaryResults(
+    groupedResults = currentGroupedResults,
+    sources = sourcesToDisplay(),
+) {
+    const summaryResults = [];
+    const seen = new Set();
+    for (const source of sources) {
+        const item = (groupedResults[source] || [])[0];
+        if (!item) continue;
+        const identity = resultIdentityKey(item) || source;
+        if (seen.has(identity)) continue;
+        seen.add(identity);
+        summaryResults.push({
+            title: normalizedSummaryField(
+                item.title,
+                SUMMARY_FIELD_LIMITS.title,
+            ) || 'Untitled',
+            description: normalizedSummaryField(
+                item.description,
+                SUMMARY_FIELD_LIMITS.description,
+            ),
+            source_name: normalizedSummaryField(
+                item.source_name,
+                SUMMARY_FIELD_LIMITS.source_name,
+            ),
+            source_url: safeSummarySourceUrl(item.source_url),
+            whitelist_rank: 1,
+        });
+        if (summaryResults.length === SUMMARY_RESULT_LIMIT) break;
+    }
+    return summaryResults;
 }
 
 function getVisibleResults() {
@@ -1204,7 +1364,9 @@ async function performSearch(options = {}) {
 
     clearSupersededSearchLoaders(intentGeneration);
     clearResultsBehindSearchLoader(intentGeneration);
+    cancelOverviewRequest();
     const generation = ++searchGeneration;
+    currentOverview = overviewState('idle', query);
     if (options.updateUrl !== false) updateBrowseUrl(query);
 
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
@@ -1239,10 +1401,16 @@ async function performSearch(options = {}) {
             Object.values(currentGroupedResults).flat(),
         );
         currentSourceCounts = result.source_counts || {};
+        currentOverview = currentSearchResults.length
+            ? overviewState('idle', query)
+            : overviewState('empty', query);
         saveBrowseState();
         clearSearchLoader(intentGeneration);
         renderCurrentResults();
         showPartialSourceWarning(result);
+        if (currentSearchResults.length) {
+            void loadSearchSummary(query, generation);
+        }
     } catch (error) {
         if (generation !== searchGeneration) return;
         clearSearchLoader(intentGeneration);

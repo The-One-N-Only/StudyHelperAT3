@@ -2156,6 +2156,17 @@ def assigned_template_markup(source: str, target: str) -> str:
     return matches[0]
 
 
+def returned_template_markup(source: str, function_name: str) -> str:
+    match = re.search(
+        rf"\bfunction\s+{re.escape(function_name)}\([^)]*\)\s*"
+        rf"\{{.*?\breturn\s*`(?P<markup>.*?)`\s*;\s*\}}",
+        source,
+        flags=re.DOTALL,
+    )
+    assert match is not None, f"expected one {function_name} return template"
+    return match.group("markup")
+
+
 def home_shell_markup(home: str) -> str:
     return assigned_template_markup(home, "root")
 
@@ -3600,6 +3611,324 @@ globalThis.setTimeout = (callback, delay, ...args) => {
   return timer;
 };
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
+"""
+
+
+BROWSE_SUMMARY_CLIENT_RUNTIME_HARNESS = r"""
+function invariant(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+const { fetchBrowseSummary } = await import(process.argv[1]);
+const calls = [];
+globalThis.fetch = async (url, options) => {
+  calls.push({ url, options });
+  return {
+    ok: true,
+    async json() { return { status: true, summary: "Concise overview." }; },
+  };
+};
+
+const controller = new AbortController();
+const summary = await fetchBrowseSummary(
+  { query: "archives", results: [{ title: "Archive" }] },
+  controller.signal,
+);
+invariant(summary === "Concise overview.", "client changed summary text");
+invariant(calls.length === 1, "client issued extra request");
+invariant(calls[0].url === "/api/browse/summary", "client used wrong endpoint");
+invariant(calls[0].options.method === "POST", "client used wrong method");
+invariant(calls[0].options.signal === controller.signal, "client lost abort signal");
+
+const failures = [
+  [
+    { ok: true, json: async () => ({ status: false, error: "Alexander is not configured." }) },
+    "Alexander is not configured.",
+  ],
+  [
+    { ok: false, json: async () => ({ status: false, error: "Try again shortly." }) },
+    "Try again shortly.",
+  ],
+  [
+    { ok: true, json: async () => { throw new SyntaxError("bad JSON"); } },
+    "Unable to create overview. Try again.",
+  ],
+  [
+    { ok: true, json: async () => ({ status: true, summary: "   " }) },
+    "Unable to create overview. Try again.",
+  ],
+];
+
+for (const [response, expectedMessage] of failures) {
+  globalThis.fetch = async () => response;
+  let message = "";
+  try {
+    await fetchBrowseSummary({ query: "archives", results: [] }, controller.signal);
+  } catch (error) {
+    message = error.message;
+  }
+  invariant(message === expectedMessage, "client exposed wrong public error: " + message);
+}
+
+globalThis.fetch = async () => { throw new Error("private socket details"); };
+let networkMessage = "";
+try {
+  await fetchBrowseSummary({ query: "archives", results: [] }, controller.signal);
+} catch (error) {
+  networkMessage = error.message;
+}
+invariant(
+  networkMessage === "Unable to create overview. Try again.",
+  "client exposed network details",
+);
+
+process.stdout.write(JSON.stringify({ summary, callCount: calls.length }));
+"""
+
+
+BROWSE_OVERVIEW_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.toastCalls = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+
+const sidebar = controls.get("#sidebarContainer");
+let sidebarMarkup = "";
+let overviewAction = null;
+Object.defineProperty(sidebar, "innerHTML", {
+  configurable: true,
+  get() { return this._innerHTML || ""; },
+  set(value) {
+    sidebarMarkup = String(value);
+    this._innerHTML = sidebarMarkup;
+    const match = sidebarMarkup.match(/data-overview-action="([^"]+)"/);
+    overviewAction = match ? new FakeElement("overview " + match[1]) : null;
+    if (overviewAction) overviewAction.dataset.overviewAction = match[1];
+  },
+});
+sidebar.querySelector = (selector) => (
+  selector === "[data-overview-action]" ? overviewAction : null
+);
+
+const searchResult = {
+  source_name: "Wikipedia",
+  source_id: "wiki-1",
+  source_url: "https://en.wikipedia.org/wiki/Archive#History",
+  title: "Archive",
+  description: "A collection of historical records.",
+  extra_private_field: "must not leak",
+};
+globalThis.fetch = async (url) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  invariant(url === "/api/browse/search-all", "unexpected overview search endpoint");
+  return {
+    ok: true,
+    async json() {
+      return {
+        status: true,
+        results: [searchResult],
+        grouped_results: { wikipedia: [searchResult] },
+        source_counts: { wikipedia: 1 },
+      };
+    },
+  };
+};
+
+const summaryCalls = [];
+globalThis.fetchBrowseSummary = async (payload, signal) => {
+  summaryCalls.push({ ...payload, signal });
+  if (summaryCalls.length === 1) throw new Error("Try again shortly.");
+  return "Recovered <script>alert('unsafe')</script> overview.";
+};
+
+const { initBrowse, buildSummaryResults } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+await flushPromises();
+
+invariant(summaryCalls.length === 1, "accepted search did not request one overview");
+invariant(summaryCalls[0].query === "archive", "overview query changed");
+invariant(summaryCalls[0].results.length <= 10, "overview payload exceeded ten results");
+invariant(
+  Object.keys(summaryCalls[0].results[0]).sort().join(",") ===
+    "description,source_name,source_url,title,whitelist_rank",
+  "overview payload leaked extra result metadata",
+);
+invariant(sidebarMarkup.includes("AI Overview"), "overview card missing");
+invariant(sidebarMarkup.includes("Search sources"), "source card was replaced");
+invariant(sidebarMarkup.includes("Try again shortly."), "safe summary error missing");
+invariant(overviewAction?.dataset.overviewAction === "retry", "Retry action missing");
+
+await overviewAction.dispatch("click");
+await flushPromises();
+await flushPromises();
+
+invariant(summaryCalls.length === 2, "Retry did not request one new overview");
+invariant(sidebarMarkup.includes("Recovered"), "Retry did not recover overview");
+invariant(sidebarMarkup.includes("&lt;script&gt;"), "summary text was not escaped");
+invariant(!sidebarMarkup.includes("<script>"), "summary injected HTML");
+invariant(sidebarMarkup.includes("Search sources"), "Retry replaced source card");
+
+const groups = {};
+for (let index = 0; index < 12; index += 1) {
+  const duplicate = index < 2;
+  groups["source_" + index] = [{
+    source_name: duplicate ? "Duplicate Source" : "Source " + index,
+    source_id: duplicate ? "duplicate-id" : "source-id-" + index,
+    source_url: index === 2
+      ? "https://user:pass@source2.example/path#secret"
+      : "https://source" + index + ".example/path#fragment",
+    title: duplicate ? "Duplicate " + index : "Unique " + index,
+    description: "Description " + index,
+    extra_private_field: "must not leak",
+  }];
+}
+const boundary = buildSummaryResults(groups, Object.keys(groups));
+invariant(boundary.length === 10, "summary boundary did not keep ten unique sources");
+invariant(boundary[0].title === "Duplicate 0", "summary group order changed");
+invariant(boundary[1].title === "Unique 2", "duplicate source was not removed");
+invariant(boundary[1].source_url === "", "credential-bearing URL was retained");
+invariant(boundary[9].title === "Unique 10", "summary cap selected wrong final source");
+invariant(!boundary.some((item) => item.title === "Unique 11"), "eleventh source crossed cap");
+invariant(
+  boundary.every((item) => Object.keys(item).sort().join(",") ===
+    "description,source_name,source_url,title,whitelist_rank"),
+  "boundary payload leaked extra fields",
+);
+invariant(boundary.every((item) => item.whitelist_rank === 1), "rank-one contract changed");
+
+process.stdout.write(JSON.stringify({
+  summaryCalls: summaryCalls.length,
+  recovered: sidebarMarkup.includes("Recovered"),
+  boundaryLength: boundary.length,
+}));
+"""
+
+
+BROWSE_OVERVIEW_STALE_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.toastCalls = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+
+const sidebar = controls.get("#sidebarContainer");
+let sidebarMarkup = "";
+Object.defineProperty(sidebar, "innerHTML", {
+  configurable: true,
+  get() { return this._innerHTML || ""; },
+  set(value) { sidebarMarkup = String(value); this._innerHTML = sidebarMarkup; },
+});
+sidebar.querySelector = () => null;
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+const summaryA = deferred();
+const summaryB = deferred();
+const summaryCalls = [];
+globalThis.fetchBrowseSummary = (payload, signal) => {
+  summaryCalls.push({ query: payload.query, signal });
+  return payload.query === "query a" ? summaryA.promise : summaryB.promise;
+};
+globalThis.fetch = async (url, options = {}) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  invariant(url === "/api/browse/search-all", "unexpected stale overview endpoint");
+  const query = JSON.parse(options.body).query;
+  const item = {
+    source_name: "Wikipedia",
+    source_id: query,
+    source_url: "https://en.wikipedia.org/wiki/" + encodeURIComponent(query),
+    title: query,
+    description: "Result for " + query,
+  };
+  return {
+    ok: true,
+    async json() {
+      return {
+        status: true,
+        results: [item],
+        grouped_results: { wikipedia: [item] },
+        source_counts: { wikipedia: 1 },
+      };
+    },
+  };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+search.value = "query a";
+await go.dispatch("click");
+await flushPromises();
+await flushPromises();
+invariant(summaryCalls.length === 1, "query A overview did not start");
+
+search.value = "query b";
+await go.dispatch("click");
+await flushPromises();
+await flushPromises();
+invariant(summaryCalls.length === 2, "query B overview did not start");
+const firstAborted = summaryCalls[0].signal.aborted;
+
+summaryB.resolve("Query B overview.");
+await flushPromises();
+await flushPromises();
+summaryA.resolve("Query A overview.");
+await flushPromises();
+await flushPromises();
+
+invariant(firstAborted, "query A overview signal was not aborted");
+invariant(sidebarMarkup.includes("Query B overview."), "query B overview missing");
+invariant(!sidebarMarkup.includes("Query A overview."), "stale query A overview won race");
+process.stdout.write(JSON.stringify({ text: "Query B overview.", firstAborted }));
+"""
+
+
+BROWSE_OVERVIEW_NO_RESULTS_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + BROWSE_DOM_RUNTIME + r"""
+globalThis.renderedItems = [];
+globalThis.toastCalls = [];
+globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+
+const sidebar = controls.get("#sidebarContainer");
+let sidebarMarkup = "";
+Object.defineProperty(sidebar, "innerHTML", {
+  configurable: true,
+  get() { return this._innerHTML || ""; },
+  set(value) { sidebarMarkup = String(value); this._innerHTML = sidebarMarkup; },
+});
+sidebar.querySelector = () => null;
+
+let summaryCalls = 0;
+globalThis.fetchBrowseSummary = async () => { summaryCalls += 1; return "Unexpected"; };
+globalThis.fetch = async (url) => {
+  if (url === "/static/whitelist.json") {
+    return { ok: true, async json() { return { domains: [] }; } };
+  }
+  invariant(url === "/api/browse/search-all", "unexpected empty overview endpoint");
+  return {
+    ok: true,
+    async json() {
+      return { status: true, results: [], grouped_results: {}, source_counts: {} };
+    },
+  };
+};
+
+const { initBrowse } = await import(process.argv[1]);
+initBrowse(root);
+await go.dispatch("click");
+await flushPromises();
+await flushPromises();
+
+const emptyCopy = sidebarMarkup.includes(
+  "No overview is available because this search returned no results."
+);
+invariant(summaryCalls === 0, "empty search requested overview");
+invariant(emptyCopy, "empty overview copy missing");
+process.stdout.write(JSON.stringify({ summaryCalls, emptyCopy }));
 """
 
 
@@ -5556,6 +5885,7 @@ CARD_IMPORT_REPLACEMENTS = (
         "const clearWorkspaceCache = () => {};",
     ),
 )
+BROWSE_SUMMARY_IMPORT = "import { fetchBrowseSummary } from '../browse-summary.js';"
 BROWSE_IMPORT_REPLACEMENTS = (
     (
         "import { showToast } from '../toast.js';",
@@ -5564,6 +5894,13 @@ BROWSE_IMPORT_REPLACEMENTS = (
     (
         "import { createCard } from '../card.js';",
         "const createCard = (item) => { globalThis.renderedItems.push(item); return item; };",
+    ),
+    (
+        BROWSE_SUMMARY_IMPORT,
+        "const fetchBrowseSummary = (...args) => "
+        "globalThis.fetchBrowseSummary "
+        "? globalThis.fetchBrowseSummary(...args) "
+        ": Promise.reject(new Error('Test summary unavailable'));",
     ),
 )
 TASK6_DARK_ONLY_CLASSES = (
@@ -5648,6 +5985,44 @@ def browse_runtime(source: str | None = None) -> dict:
         BROWSE_IMPORT_REPLACEMENTS,
         BROWSE_RUNTIME_HARNESS,
         "browse",
+    )
+
+
+def browse_summary_client_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/browse-summary.js"),
+        (),
+        BROWSE_SUMMARY_CLIENT_RUNTIME_HARNESS,
+        "Browse summary client",
+    )
+
+
+def browse_overview_runtime(source: str | None = None) -> dict:
+    browse_source = source or read_text("static/js/pages/browse.js")
+    browse_source += "\nexport { buildSummaryResults };\n"
+    return run_task6_module_harness(
+        browse_source,
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_OVERVIEW_RUNTIME_HARNESS,
+        "Browse AI overview",
+    )
+
+
+def browse_overview_stale_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_OVERVIEW_STALE_RUNTIME_HARNESS,
+        "stale Browse AI overview",
+    )
+
+
+def browse_overview_no_results_runtime(source: str | None = None) -> dict:
+    return run_task6_module_harness(
+        source or read_text("static/js/pages/browse.js"),
+        BROWSE_IMPORT_REPLACEMENTS,
+        BROWSE_OVERVIEW_NO_RESULTS_RUNTIME_HARNESS,
+        "empty Browse AI overview",
     )
 
 
@@ -5910,6 +6285,7 @@ def broken_image_grouped_browse_runtime(
             "import { createCard } from '../card.js';",
             f"import {{ createCard }} from {json.dumps(card_module_url)};",
         ),
+        BROWSE_IMPORT_REPLACEMENTS[2],
     )
     return run_task6_module_harness(
         browse_source or read_text("static/js/pages/browse.js"),
@@ -6630,6 +7006,35 @@ def test_task6_browse_runtime_starts_search_without_legacy_globals():
     }
 
 
+def test_browse_summary_client_enforces_structured_contract_and_abort_signal():
+    assert browse_summary_client_runtime() == {
+        "summary": "Concise overview.",
+        "callCount": 1,
+    }
+
+
+def test_browse_ai_overview_runs_after_results_and_keeps_source_card():
+    assert browse_overview_runtime() == {
+        "summaryCalls": 2,
+        "recovered": True,
+        "boundaryLength": 10,
+    }
+
+
+def test_browse_ai_overview_ignores_stale_query_response():
+    assert browse_overview_stale_runtime() == {
+        "text": "Query B overview.",
+        "firstAborted": True,
+    }
+
+
+def test_browse_ai_overview_skips_empty_results():
+    assert browse_overview_no_results_runtime() == {
+        "summaryCalls": 0,
+        "emptyCopy": True,
+    }
+
+
 def test_home_query_runs_native_browse_search_and_manual_search_updates_url():
     assert url_query_browse_runtime() == {
         "query": "archives",
@@ -7234,7 +7639,10 @@ def test_browse_has_no_google_programmable_search_assets_or_container():
 
 def test_task6_dynamic_panels_pagination_and_dark_contract_remain_intact():
     browse = read_text("static/js/pages/browse.js")
-    overview = BeautifulSoup(assigned_template_markup(browse, "sidebar"), "html.parser")
+    overview = BeautifulSoup(
+        returned_template_markup(browse, "renderOverviewCard"),
+        "html.parser",
+    )
     assert {"card", "mb-3", "surface-leather", "ai-overview-panel"}.issubset(
         overview.select_one(".ai-overview-panel").get("class", ())
     )
