@@ -3,8 +3,20 @@
 {% block title %}Register - StudyLib{% endblock %}
 
 {% block content %}
-<main class="container py-5">
-    <div class="row justify-content-center">
+<main class="container py-5 archive-page archive-page-auth">
+    <span class="archive-illustration illustration-compass" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-sextant" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-books" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-scholar" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-victorian-man" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-candlestick" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-telescope" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-hourglass" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-armillary-sphere" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-oil-lamp" aria-hidden="true"></span>
+    
+    <div class="archive-content">
+        <div class="row justify-content-center">
         <div class="col-md-6">
             <div class="card shadow-sm">
                 <div class="card-header">
@@ -33,6 +45,14 @@
                             <label for="confirm_password" class="form-label">Confirm password</label>
                             <input type="password" id="confirm_password" name="confirm_password" class="form-control" required>
                         </div>
+                        <div class="mb-3">
+                            <label for="gender" class="form-label">Gender</label>
+                            <select id="gender" name="gender" class="form-select">
+                                <option value="gentleman" {{ 'selected' if (form_values.gender if form_values is defined else 'gentleman') == 'gentleman' else '' }}>Gentleman</option>
+                                <option value="lady" {{ 'selected' if (form_values.gender if form_values is defined else 'gentleman') == 'lady' else '' }}>Lady</option>
+                                <option value="secret" {{ 'selected' if (form_values.gender if form_values is defined else 'gentleman') == 'secret' else '' }}>I'll never tell...</option>
+                            </select>
+                        </div>
                         <button type="submit" class="btn btn-primary">Register</button>
                     </form>
                 </div>
@@ -41,6 +61,7 @@
                 </div>
             </div>
         </div>
+    </div>
     </div>
 </main>
 {% endblock %}

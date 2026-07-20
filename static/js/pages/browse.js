@@ -557,6 +557,13 @@ export function initBrowse(root) {
         <div class="archive-page archive-page-browse">
             <span class="archive-illustration illustration-books" aria-hidden="true"></span>
             <span class="archive-illustration illustration-flourish" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-oil-lamp" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-armillary-sphere" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-hourglass" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-telescope" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-candlestick" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-victorian-man" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-scholar" aria-hidden="true"></span>
             <div class="archive-content">
         <div class="bg-body-tertiary border-bottom browse-search-shell p-3 mb-3">
             <div class="container-fluid">

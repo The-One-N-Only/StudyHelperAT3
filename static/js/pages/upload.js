@@ -11,6 +11,14 @@ export function initUpload(root) {
         <div class="archive-page archive-page-upload">
             <span class="archive-illustration illustration-compass" aria-hidden="true"></span>
             <span class="archive-illustration illustration-sextant" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-books" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-scholar" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-victorian-man" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-candlestick" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-telescope" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-hourglass" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-armillary-sphere" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-oil-lamp" aria-hidden="true"></span>
             <span class="archive-illustration illustration-flourish" aria-hidden="true"></span>
             <div class="container py-4 archive-content upload-content" style="max-width: 700px;">
                 <div class="card p-0 mb-4 upload-panel">

@@ -1552,6 +1552,87 @@ p {
         width: 120px;
     }
 
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-books,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-books {
+    bottom: 0;
+    height: 160px;
+    left: 0;
+    width: 240px;
+}
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-compass,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-compass {
+    height: 180px;
+    left: 1rem;
+    top: 1rem;
+    width: 180px;
+}
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-sextant,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-sextant {
+    height: 200px;
+    right: 1rem;
+    top: 24%;
+    width: 200px;
+}
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-scholar,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-scholar {
+    height: 150px;
+    right: 1rem;
+    top: 1rem;
+    width: 150px;
+}
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-telescope,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-telescope {
+    height: 140px;
+    left: 32%;
+    top: 1rem;
+    width: 220px;
+}
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-armillary-sphere,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-armillary-sphere {
+    height: 160px;
+    right: 14rem;
+    top: 1rem;
+    width: 160px;
+}
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-victorian-man,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-victorian-man {
+    height: 220px;
+    left: 1rem;
+    top: 13rem;
+    width: 180px;
+}
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-candlestick,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-candlestick {
+    bottom: 0;
+    height: 200px;
+    right: 0;
+    width: 100px;
+}
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-oil-lamp,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-oil-lamp {
+    bottom: 0;
+    height: 180px;
+    left: 20%;
+    width: 120px;
+}
+
+:root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-hourglass,
+:root:not([data-bs-theme="dark"]) .archive-page-user .illustration-hourglass {
+    bottom: 0;
+    height: 160px;
+    right: 30%;
+    width: 100px;
+}
+
     :root:not([data-bs-theme="dark"]) .archive-page .archive-page-title {
         font-size: 1.65rem;
     }
@@ -1595,6 +1676,41 @@ p {
         outline: 2px solid Highlight;
         outline-offset: 2px;
     }
+}
+
+:root:not([data-bs-theme="dark"]) .illustration-candlestick {
+    --illustration-image: url("/static/img/illustrations/candlestick.svg");
+    opacity: 0.10;
+}
+
+:root:not([data-bs-theme="dark"]) .illustration-telescope {
+    --illustration-image: url("/static/img/illustrations/telescope.svg");
+    opacity: 0.10;
+}
+
+:root:not([data-bs-theme="dark"]) .illustration-hourglass {
+    --illustration-image: url("/static/img/illustrations/hourglass.svg");
+    opacity: 0.10;
+}
+
+:root:not([data-bs-theme="dark"]) .illustration-armillary-sphere {
+    --illustration-image: url("/static/img/illustrations/armillary-sphere.svg");
+    opacity: 0.10;
+}
+
+:root:not([data-bs-theme="dark"]) .illustration-oil-lamp {
+    --illustration-image: url("/static/img/illustrations/oil-lamp.svg");
+    opacity: 0.10;
+}
+
+:root:not([data-bs-theme="dark"]) .illustration-scholar {
+    --illustration-image: url("/static/img/illustrations/browse-scholar.svg");
+    opacity: 0.10;
+}
+
+:root:not([data-bs-theme="dark"]) .illustration-victorian-man {
+    --illustration-image: url("/static/img/illustrations/victorian-man.svg");
+    opacity: 0.10;
 }
 
 /* Candlelit Archive: dark theme foundation */
@@ -2694,12 +2810,137 @@ p {
         width: 120px;
     }
 
+[data-bs-theme="dark"] .archive-page-auth .illustration-compass,
+[data-bs-theme="dark"] .archive-page-user .illustration-compass {
+    height: 180px;
+    left: 1rem;
+    top: 1rem;
+    width: 180px;
+}
+
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-books,
+[data-bs-theme="dark"] .archive-page-user .illustration-books {
+    bottom: 0;
+    height: 160px;
+    left: 0;
+    width: 240px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-compass,
+[data-bs-theme="dark"] .archive-page-user .illustration-compass {
+    height: 180px;
+    left: 1rem;
+    top: 1rem;
+    width: 180px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-sextant,
+[data-bs-theme="dark"] .archive-page-user .illustration-sextant {
+    height: 200px;
+    right: 1rem;
+    top: 24%;
+    width: 200px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-scholar,
+[data-bs-theme="dark"] .archive-page-user .illustration-scholar {
+    height: 150px;
+    right: 1rem;
+    top: 1rem;
+    width: 150px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-telescope,
+[data-bs-theme="dark"] .archive-page-user .illustration-telescope {
+    height: 140px;
+    left: 32%;
+    top: 1rem;
+    width: 220px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-armillary-sphere,
+[data-bs-theme="dark"] .archive-page-user .illustration-armillary-sphere {
+    height: 160px;
+    right: 14rem;
+    top: 1rem;
+    width: 160px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-victorian-man,
+[data-bs-theme="dark"] .archive-page-user .illustration-victorian-man {
+    height: 220px;
+    left: 1rem;
+    top: 13rem;
+    width: 180px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-candlestick,
+[data-bs-theme="dark"] .archive-page-user .illustration-candlestick {
+    bottom: 0;
+    height: 200px;
+    right: 0;
+    width: 100px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-oil-lamp,
+[data-bs-theme="dark"] .archive-page-user .illustration-oil-lamp {
+    bottom: 0;
+    height: 180px;
+    left: 20%;
+    width: 120px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-hourglass,
+[data-bs-theme="dark"] .archive-page-user .illustration-hourglass {
+    bottom: 0;
+    height: 160px;
+    right: 30%;
+    width: 100px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-sextant,
+[data-bs-theme="dark"] .archive-page-user .illustration-sextant {
+    height: 200px;
+    right: 1rem;
+    top: 24%;
+    width: 200px;
+}
+
+[data-bs-theme="dark"] .archive-page-auth .illustration-books,
+[data-bs-theme="dark"] .archive-page-user .illustration-books {
+    bottom: 0;
+    height: 160px;
+    left: 0;
+    width: 240px;
+}
+
+[data-bs-theme="dark"] .illustration-telescope {
+    --illustration-image: url("/static/img/illustrations/telescope.svg");
+}
+
+[data-bs-theme="dark"] .illustration-hourglass {
+    --illustration-image: url("/static/img/illustrations/hourglass.svg");
+}
+
+[data-bs-theme="dark"] .illustration-armillary-sphere {
+    --illustration-image: url("/static/img/illustrations/armillary-sphere.svg");
+}
+
+[data-bs-theme="dark"] .illustration-oil-lamp {
+    --illustration-image: url("/static/img/illustrations/oil-lamp.svg");
+}
+
+[data-bs-theme="dark"] .illustration-scholar {
+    --illustration-image: url("/static/img/illustrations/browse-scholar.svg");
+}
+
+[data-bs-theme="dark"] .illustration-victorian-man {
+    --illustration-image: url("/static/img/illustrations/victorian-man.svg");
+}
+
     [data-bs-theme="dark"] .chat-message {
         max-width: 88%;
-    }
-
-    [data-bs-theme="dark"] .chat-message-agent {
-        max-width: calc(88% - 2.9rem);
     }
 }
 
