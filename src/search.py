@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import math
@@ -230,6 +231,21 @@ def _browse_result_image_url(item):
     )
 
 
+def _make_search_cache_key(query, source_or_scope, filters_dict, num_results):
+    parts = [
+        str(query).strip().lower(),
+        str(source_or_scope).strip().lower(),
+    ]
+    if filters_dict:
+        for key in sorted(filters_dict.keys()):
+            val = filters_dict[key]
+            if val is not None:
+                parts.append(f"{key}:{str(val).strip().lower()}")
+    parts.append(str(num_results))
+    raw = "|".join(parts)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def browse_serpapi_search(query, num_results, source, filters, *, user_id):
     """Return whitelisted SerpAPI results for one Browse source group."""
     if not SERP_API_KEY:
@@ -239,6 +255,22 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
     scope, fixed_source_name = _browse_source_scope(source)
     if target == 0 or not scope:
         return []
+
+    cache_key = _make_search_cache_key(query, source, filters, target)
+    cached = db.get_search_cache(cache_key)
+    if cached is not None:
+        item_ids = json.loads(cached["item_ids"])
+        results = []
+        for item_id in item_ids:
+            item = db.get_item_by_id(item_id, user_id, True)
+            if item:
+                response_item = dict(item)
+                response_item["google_books_volume_id"] = _browse_google_books_volume_id({
+                    "link": item["source_url"],
+                    "source_id": item["source_id"],
+                })
+                results.append(response_item)
+        return results
 
     scoped_query = _browse_serp_query(query, scope, filters)
     results = []
@@ -319,6 +351,10 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
         if len(page_items) < page_size:
             break
         start += CUSTOM_SEARCH_PAGE_SIZE
+
+    if results:
+        item_ids = json.dumps([r["id"] for r in results])
+        db.set_search_cache(cache_key, item_ids)
 
     return results
 
@@ -611,6 +647,18 @@ def _search_serpapi(query, num_results, scope, *, user_id):
 
     try:
         target = _bounded_search_count(num_results)
+
+        cache_key = _make_search_cache_key(query, scope, {}, target)
+        cached = db.get_search_cache(cache_key)
+        if cached is not None:
+            item_ids = json.loads(cached["item_ids"])
+            results = []
+            for item_id in item_ids:
+                item = db.get_item_by_id(item_id, user_id, True)
+                if item:
+                    results.append(item)
+            return results
+
         q = f"{query} ({scope})".strip()
         results = []
         start = 0
@@ -681,6 +729,9 @@ def _search_serpapi(query, num_results, scope, *, user_id):
             if len(page_items) < page_size:
                 break
             start += page_size
+        if results:
+            item_ids = json.dumps([r["id"] for r in results])
+            db.set_search_cache(cache_key, item_ids)
         return results
     except Exception:
         return []

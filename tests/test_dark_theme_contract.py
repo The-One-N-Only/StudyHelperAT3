@@ -48,12 +48,17 @@ SERVER_IDENTITY_METADATA_VECTORS = (
     },
 )
 SVG_NAMES = (
+    "armillary-sphere.svg",
+    "browse-scholar.svg",
+    "candlestick.svg",
     "compass-rose.svg",
-    "sextant.svg",
-    "stacked-books.svg",
+    "hourglass.svg",
+    "oil-lamp.svg",
     "open-book.svg",
     "scrollwork-flourish.svg",
-    "browse-scholar.svg",
+    "sextant.svg",
+    "stacked-books.svg",
+    "telescope.svg",
     "victorian-man.svg",
 )
 VALID_RESULT_FALLBACKS = frozenset(
@@ -592,6 +597,9 @@ globalThis.document = {
   },
   getElementById(id) {
     return elements.get(id) ?? null;
+  },
+  querySelector() {
+    return null;
   },
   addEventListener(type, callback) {
     const callbacks = documentListeners.get(type) || [];

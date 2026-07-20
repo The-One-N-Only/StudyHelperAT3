@@ -1,6 +1,6 @@
 import json
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, ForeignKey, JSON, func, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 import time
 
@@ -153,6 +153,13 @@ class UploadedFile(Base):
     user = relationship("User", back_populates="uploaded_files")
     in_workspaces = relationship("WorkspaceItem", back_populates="uploaded_file")
 
+class SearchCache(Base):
+    __tablename__ = "search_cache"
+
+    cache_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    item_ids: Mapped[str] = mapped_column(Text, nullable=False)
+    time_cached: Mapped[int] = mapped_column(nullable=False)
+
 class Note(Base):
     __tablename__ = "notes"
 
@@ -205,6 +212,18 @@ def setup_db():
         columns = [row[1] for row in result]
         if 'workspace_id' not in columns:
             conn.execute(text("ALTER TABLE notes ADD COLUMN workspace_id INTEGER"))
+
+        # Add search_cache table if missing
+        result = conn.execute(text("PRAGMA table_info(search_cache)"))
+        columns = [row[1] for row in result]
+        if not columns:
+            conn.execute(text("""
+                CREATE TABLE search_cache (
+                    cache_key VARCHAR(64) PRIMARY KEY,
+                    item_ids TEXT NOT NULL,
+                    time_cached INTEGER NOT NULL
+                )
+            """))
 
         conn.commit()
 
@@ -366,6 +385,39 @@ def get_or_create_item_by_source_id(item_data, user_id, add_to_recent_search):
         if existing:
             return existing
         raise
+
+def get_item_by_id(item_id, user_id, add_to_recent_search):
+    with SessionLocal() as session:
+        item = session.query(Item).filter_by(id=item_id).first()
+        if not item:
+            return None
+        if add_to_recent_search:
+            append_to_recently_searched(user_id, item.id)
+        return _item_to_dict(item)
+
+def get_search_cache(cache_key):
+    try:
+        with SessionLocal() as session:
+            row = session.query(SearchCache).filter_by(cache_key=cache_key).first()
+            if row:
+                return {"cache_key": row.cache_key, "item_ids": row.item_ids, "time_cached": row.time_cached}
+            return None
+    except OperationalError:
+        return None
+
+def set_search_cache(cache_key, item_ids):
+    try:
+        with SessionLocal() as session:
+            existing = session.query(SearchCache).filter_by(cache_key=cache_key).first()
+            if existing:
+                existing.item_ids = item_ids
+                existing.time_cached = int(time.time())
+            else:
+                row = SearchCache(cache_key=cache_key, item_ids=item_ids, time_cached=int(time.time()))
+                session.add(row)
+            session.commit()
+    except OperationalError:
+        pass
 
 def get_saved_items(user_id):
     with SessionLocal() as session:

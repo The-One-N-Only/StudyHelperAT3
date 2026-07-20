@@ -529,7 +529,7 @@ function renderSearchLoader(intentGeneration) {
             <source media="(prefers-reduced-motion: reduce)" srcset="/static/img/loaders/bible-page-turn-still.png">
             <img class="browse-loader-art" src="/static/img/loaders/bible-page-turn.gif" alt="" aria-hidden="true">
         </picture>
-        <p class="browse-loader-status mb-0" role="status" aria-live="polite">Searching...</p>
+        <p class="browse-loader-status mb-0" role="status" aria-live="polite">Researching...</p>
     `;
     resultsContainer.appendChild(loader);
     searchLoaders.set(intentGeneration, {
@@ -549,6 +549,10 @@ export function initBrowse(root) {
     cancelOverviewRequest();
     currentOverview = overviewState();
     pageRoot = root;
+    if (sessionStorage.getItem('browse_from_sidebar') === 'true') {
+        localStorage.removeItem(BROWSE_STORAGE_KEY);
+        sessionStorage.removeItem('browse_from_sidebar');
+    }
     whitelistDomains = [];
     whitelistSourcesRendered = false;
     pendingMasterSourceSelection = null;
