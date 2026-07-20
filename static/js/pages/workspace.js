@@ -2,6 +2,14 @@
 
 import { showToast } from '../toast.js';
 import { studyHelperAI } from '../ai-prompt.js';
+import {
+    isGoogleBooksResult,
+    googleBooksVolumeId,
+    loadGoogleBooksApi,
+    resetGoogleBooksViewerState,
+    renderGoogleBooksFallback,
+    renderViewerNotice,
+} from '../viewer.js';
 
 const WORKSPACE_IFRAME_SANDBOX = 'allow-popups allow-popups-to-escape-sandbox';
 const ALEXANDER_WELCOME_MESSAGE = 'Hi, I’m Alexander. Ask a question and I’ll answer using your workspace and available AI sources.';
@@ -55,8 +63,20 @@ function renderWorkspaceDetail() {
             </div>
 
             <div class="row g-4">
-                <div class="col-lg-7">
-                    <div class="card h-100 surface-leather workspace-main-panel">
+                <div class="col-lg-7 d-flex flex-column gap-4">
+                    <div class="card surface-leather source-preview-box">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">Selected source preview</h5>
+                                <small class="text-muted">Choose a source from the studio and review it inline.</small>
+                            </div>
+                            <span id="sourceBadge" class="badge bg-secondary archive-count-badge">${currentWorkspaceItems.length} sources</span>
+                        </div>
+                        <div class="card-body">
+                            <div id="selectedSourceViewer" class="border rounded p-2 source-preview-shell" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                    <div class="card surface-leather notes-box">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <div>
                                 <h5 class="mb-1">Workspace Notes</h5>
@@ -64,20 +84,8 @@ function renderWorkspaceDetail() {
                             </div>
                             <button class="btn btn-sm btn-outline-primary btn-secondary-wood" id="saveQuickNoteBtn">Save quick note</button>
                         </div>
-                        <div class="card-body d-flex flex-column gap-4">
-                            <div>
-                                <div class="d-flex align-items-center justify-content-between mb-2">
-                                    <div>
-                                        <h6 class="mb-0">Selected source preview</h6>
-                                        <small class="text-muted">Choose a source from the studio and review it inline.</small>
-                                    </div>
-                                    <span id="sourceBadge" class="badge bg-secondary archive-count-badge">${currentWorkspaceItems.length} sources</span>
-                                </div>
-                                <div id="selectedSourceViewer" class="border rounded p-2 bg-body-secondary source-preview-shell" style="min-height: 320px;"></div>
-                            </div>
-                            <div>
-                                <textarea id="quickNoteInput" class="form-control quick-note-input h-100" rows="10" placeholder="Write your thoughts, outline key ideas, or summarise the selected source..."></textarea>
-                            </div>
+                        <div class="card-body">
+                            <textarea id="quickNoteInput" class="form-control quick-note-input" rows="10" placeholder="Write your thoughts, outline key ideas, or summarise the selected source..."></textarea>
                         </div>
                     </div>
                 </div>
@@ -350,6 +358,10 @@ function renderPreviewNotice(container, message, linkUrl = '') {
     container.innerHTML = `<div class="p-4 text-muted">${escapeHtml(message)}${link}</div>`;
 }
 
+function textValue(value) {
+    return value === null || value === undefined ? '' : String(value);
+}
+
 function renderSelectedSourcePreview(item) {
     const previewContainer = pageRoot.querySelector('#selectedSourcePreview');
     if (!previewContainer) return;
@@ -359,6 +371,51 @@ function renderSelectedSourcePreview(item) {
     const previewUrl = localUploadUrl || remoteUrl;
     if (!previewUrl) {
         renderPreviewNotice(previewContainer, 'No preview available for this source.');
+        return;
+    }
+
+    // Source-type detection matching browse sidebar viewer behavior
+    if (isGoogleBooksResult(item)) {
+        renderWorkspaceGoogleBooksPreview(previewContainer, item);
+        return;
+    }
+
+    const sourceName = textValue(item?.source_name).toLowerCase();
+    const sourceUrl = textValue(item?.source_url).toLowerCase();
+
+    const isPubMed = sourceName === 'pubmed' || sourceUrl.includes('pubmed.ncbi.nlm.nih.gov');
+    if (isPubMed) {
+        renderPreviewNotice(previewContainer, 'PubMed pages are not displayed inside StudyHelper because NCBI blocks proxy access.', sourceUrl);
+        return;
+    }
+
+    const isScholar = sourceName === 'scholar' || sourceName === 'google scholar' || sourceUrl.includes('scholar.google.com');
+    if (isScholar) {
+        renderPreviewNotice(previewContainer, 'Google Scholar blocks proxy access.', sourceUrl);
+        return;
+    }
+
+    const isJSTOR = sourceUrl.includes('jstor.org');
+    if (isJSTOR) {
+        renderPreviewNotice(previewContainer, 'JSTOR content is subscription-based and cannot be previewed here.', sourceUrl);
+        return;
+    }
+
+    const isScienceDirect = sourceUrl.includes('sciencedirect.com');
+    if (isScienceDirect) {
+        renderPreviewNotice(previewContainer, 'ScienceDirect content requires a subscription.', sourceUrl);
+        return;
+    }
+
+    const isSpringer = sourceUrl.includes('link.springer.com');
+    if (isSpringer) {
+        renderPreviewNotice(previewContainer, 'Springer content requires a subscription.', sourceUrl);
+        return;
+    }
+
+    const isNationalGeo = sourceUrl.includes('nationalgeographic.com');
+    if (isNationalGeo) {
+        renderPreviewNotice(previewContainer, 'National Geographic content requires a subscription.', sourceUrl);
         return;
     }
 
@@ -393,6 +450,68 @@ function renderSelectedSourcePreview(item) {
         .catch(() => {
             renderPreviewNotice(previewContainer, 'Failed to load preview.', remoteUrl);
         });
+}
+
+async function renderWorkspaceGoogleBooksPreview(container, item) {
+    const generation = Date.now();
+    const volumeId = googleBooksVolumeId(item);
+    if (!volumeId) {
+        renderPreviewNotice(container, 'This result does not include a Google Books volume ID.');
+        return;
+    }
+
+    let booksApi;
+    try {
+        booksApi = await loadGoogleBooksApi();
+    } catch {
+        renderPreviewNotice(container, 'The Google Books preview service could not be loaded.');
+        return;
+    }
+
+    const accessInfo = item?.accessInfo && typeof item.accessInfo === 'object' ? item.accessInfo : {};
+    if (accessInfo.embeddable === false) {
+        renderPreviewNotice(container, 'An embedded preview is not available for this book.');
+        return;
+    }
+
+    const viewerShell = document.createElement('div');
+    viewerShell.className = 'google-books-viewer';
+    const canvas = document.createElement('div');
+    canvas.className = 'google-books-viewer-canvas';
+    viewerShell.appendChild(canvas);
+    container.replaceChildren(viewerShell);
+
+    let viewer;
+    try {
+        viewer = new booksApi.DefaultViewer(canvas);
+    } catch {
+        renderPreviewNotice(container, 'The embedded preview could not be started.');
+        return;
+    }
+
+    await new Promise((resolve) => {
+        try {
+            viewer.load(
+                volumeId,
+                () => {
+                    renderPreviewNotice(container, 'No embedded preview is available for this volume.');
+                    resolve();
+                },
+                () => {
+                    if (typeof ResizeObserver === 'function') {
+                        const observer = new ResizeObserver(() => {
+                            viewer.resize();
+                        });
+                        observer.observe(canvas);
+                    }
+                    resolve();
+                },
+            );
+        } catch {
+            renderPreviewNotice(container, 'The embedded preview could not be loaded.');
+            resolve();
+        }
+    });
 }
 
 function loadWorkspaceNotes() {

@@ -8129,7 +8129,7 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     workspace = read_text("static/js/pages/workspace.js")
     css = read_text("static/css/custom.css")
     for marker in (
-        "archive-page archive-page-workspace", "surface-leather workspace-main-panel",
+        "archive-page archive-page-workspace", "surface-leather source-preview-box",
         "surface-leather workspace-right-panel", "workspace-source-item", "chat-messages",
         '<i class="bi bi-file-earmark-text note-icon-dark d-none me-2" aria-hidden="true"></i><span class="note-icon-light">📝 </span>',
     ):
@@ -8142,7 +8142,7 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     ):
         assert preserved in workspace
     exact_rules = (
-        ((('[data-bs-theme="dark"] .archive-page-workspace .workspace-main-panel', '[data-bs-theme="dark"] .archive-page-workspace .workspace-right-panel')), {"min-height": "680px"}),
+        ((('[data-bs-theme="dark"] .archive-page-workspace .workspace-right-panel',)), {"min-height": "680px"}),
         ((('[data-bs-theme="dark"] .quick-note-input:focus',)), {"background": "transparent", "border-color": "var(--gold-500)", "box-shadow": "var(--shadow-warm-glow)"}),
         ((('[data-bs-theme="dark"] .workspace-tabs .nav-link.active',)), {"background": "hsl(35 70% 55% / 0.14)", "color": "var(--gold-100)"}),
         ((('[data-bs-theme="dark"] .workspace-source-item.active',)), {"background": "hsl(35 70% 55% / 0.1)", "border-left": "3px solid var(--gold-300)", "box-shadow": "var(--shadow-warm-glow)", "color": "var(--text-primary)"}),
@@ -8161,7 +8161,7 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     assert_task_selectors_are_dark_scoped(
         css,
         (
-            "archive-page-workspace", "workspace-main-panel", "workspace-right-panel",
+            "archive-page-workspace", "source-preview-box", "notes-box", "workspace-right-panel",
             "quick-note-input", "source-preview-shell", "source-preview-content",
             "workspace-tabs", "workspace-source-item", "workspace-source-name",
             "note-item", "note-icon-light", "note-icon-dark", "chat-messages",
@@ -8170,11 +8170,11 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
         frozenset({
             (".workspace-tabs .nav-link",),
             (
-                f"{LIGHT_GUARD} .workspace-main-panel",
                 f"{LIGHT_GUARD} .workspace-right-panel",
             ),
             (
-                f"{LIGHT_GUARD} .workspace-main-panel .card-header",
+                f"{LIGHT_GUARD} .source-preview-box .card-header",
+                f"{LIGHT_GUARD} .notes-box .card-header",
                 f"{LIGHT_GUARD} .workspace-right-panel .card-header",
             ),
             (f"{LIGHT_GUARD} .quick-note-input",),
@@ -8208,7 +8208,6 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
                 f"{LIGHT_GUARD} .archive-page-workspace .illustration-flourish",
             ),
             (
-                f"{LIGHT_GUARD} .archive-page-workspace .workspace-main-panel",
                 f"{LIGHT_GUARD} .archive-page-workspace .workspace-right-panel",
             ),
             (f"{LIGHT_GUARD} .archive-page-workspace .resizable-panel",),
@@ -8221,7 +8220,7 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     desktop_header, mobile_header = "@media (max-width: 991.98px)", "@media (max-width: 575.98px)"
     assert (css.count(desktop_header), css.count(mobile_header)) == (1, 1)
     desktop, mobile = css_block_body(css, desktop_header), css_block_body(css, mobile_header)
-    panel_group = ('[data-bs-theme="dark"] .archive-page-workspace .workspace-main-panel', '[data-bs-theme="dark"] .archive-page-workspace .workspace-right-panel')
+    panel_group = ('[data-bs-theme="dark"] .archive-page-workspace .workspace-right-panel',)
     assert css_rule_group_declarations(desktop, panel_group) == {"min-height": "auto"}
     assert css_rule_group_declarations(desktop, ('[data-bs-theme="dark"] .archive-page-workspace .resizable-panel',)) == {"max-width": "none", "min-width": "0", "resize": "none", "width": "100%"}
     assert css_rule_group_declarations(mobile, ('[data-bs-theme="dark"] .chat-message',)) == {"max-width": "88%"}

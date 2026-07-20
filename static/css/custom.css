@@ -159,6 +159,30 @@ button, .btn, a, input, select, textarea {
     background-color: var(--bs-primary-bg-subtle);
 }
 
+/* Offcanvas backdrop blur — matches nav-sidebar-overlay */
+.offcanvas-backdrop {
+    backdrop-filter: blur(8px);
+}
+
+/* Viewer offcanvas wood texture */
+#viewerOffcanvas.surface-leather {
+    background: var(--surface-600);
+    background-image: var(--texture-leather);
+}
+
+:root:not([data-bs-theme="dark"]) #viewerOffcanvas.surface-leather {
+    background: var(--paper-100);
+}
+
+.site-info-box {
+    background: var(--bs-tertiary-bg);
+}
+
+.source-preview-box,
+.notes-box {
+    border-radius: var(--radius-panel);
+}
+
 /* Viewer offcanvas iframe */
 .viewer-iframe {
     width: 100%;
@@ -1191,12 +1215,12 @@ p {
 }
 
 /* Workspace studio, sources, notes, and preview */
-:root:not([data-bs-theme="dark"]) .workspace-main-panel,
 :root:not([data-bs-theme="dark"]) .workspace-right-panel {
     min-height: 680px;
 }
 
-:root:not([data-bs-theme="dark"]) .workspace-main-panel .card-header,
+:root:not([data-bs-theme="dark"]) .source-preview-box .card-header,
+:root:not([data-bs-theme="dark"]) .notes-box .card-header,
 :root:not([data-bs-theme="dark"]) .workspace-right-panel .card-header {
     background: transparent;
     border-color: hsl(33 30% 60% / 0.30);
@@ -1464,7 +1488,6 @@ p {
         display: none;
     }
 
-    :root:not([data-bs-theme="dark"]) .archive-page-workspace .workspace-main-panel,
     :root:not([data-bs-theme="dark"]) .archive-page-workspace .workspace-right-panel {
         min-height: auto;
     }
@@ -2567,12 +2590,12 @@ p {
 }
 
 /* Candlelit Archive: workspace studio and parchment chat */
-[data-bs-theme="dark"] .archive-page-workspace .workspace-main-panel,
 [data-bs-theme="dark"] .archive-page-workspace .workspace-right-panel {
     min-height: 680px;
 }
 
-[data-bs-theme="dark"] .workspace-main-panel .card-header,
+[data-bs-theme="dark"] .source-preview-box .card-header,
+[data-bs-theme="dark"] .notes-box .card-header,
 [data-bs-theme="dark"] .workspace-right-panel .card-header {
     background: transparent;
     border-color: hsl(35 40% 45% / 0.14);
@@ -2744,7 +2767,6 @@ p {
         display: none;
     }
 
-    [data-bs-theme="dark"] .archive-page-workspace .workspace-main-panel,
     [data-bs-theme="dark"] .archive-page-workspace .workspace-right-panel {
         min-height: auto;
     }

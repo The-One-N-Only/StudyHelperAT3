@@ -1953,14 +1953,14 @@ def test_light_workspace_panels_tabs_sources_notes_and_preview_match_contract():
     expected_rules = (
         (
             (
-                f"{LIGHT_GUARD} .workspace-main-panel",
                 f"{LIGHT_GUARD} .workspace-right-panel",
             ),
             {"min-height": "680px"},
         ),
         (
             (
-                f"{LIGHT_GUARD} .workspace-main-panel .card-header",
+                f"{LIGHT_GUARD} .source-preview-box .card-header",
+                f"{LIGHT_GUARD} .notes-box .card-header",
                 f"{LIGHT_GUARD} .workspace-right-panel .card-header",
             ),
             {
@@ -2184,7 +2184,6 @@ def test_light_component_layouts_stack_cleanly_at_existing_breakpoints():
     assert css_rule_group_declarations(
         tablet[0],
         (
-            f"{LIGHT_GUARD} .archive-page-workspace .workspace-main-panel",
             f"{LIGHT_GUARD} .archive-page-workspace .workspace-right-panel",
         ),
     ) == {"min-height": "auto"}

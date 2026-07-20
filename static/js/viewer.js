@@ -70,7 +70,7 @@ function createExternalLink(url, label, className = '') {
     return link;
 }
 
-function resetGoogleBooksViewerState() {
+export function resetGoogleBooksViewerState() {
     if (googleBooksResizeObserver) {
         googleBooksResizeObserver.disconnect();
         googleBooksResizeObserver = undefined;
@@ -80,6 +80,9 @@ function resetGoogleBooksViewerState() {
 
 function renderViewerHeader(header, item) {
     header.replaceChildren();
+
+    const infoBox = document.createElement('div');
+    infoBox.className = 'border rounded p-2 mb-2 site-info-box';
 
     const summary = document.createElement('div');
     summary.className = 'd-flex align-items-center gap-2';
@@ -116,7 +119,8 @@ function renderViewerHeader(header, item) {
     }
     details.appendChild(metadata);
     summary.appendChild(details);
-    header.appendChild(summary);
+    infoBox.appendChild(summary);
+    header.appendChild(infoBox);
 
     const actionRow = document.createElement('div');
     actionRow.className = 'mb-2 d-flex align-items-center gap-2';
@@ -141,7 +145,7 @@ function renderLoading(body) {
     body.appendChild(loading);
 }
 
-function renderViewerNotice(body, message, variant, linkUrl = '', linkLabel = '') {
+export function renderViewerNotice(body, message, variant, linkUrl = '', linkLabel = '') {
     body.replaceChildren();
     const panel = document.createElement('div');
     panel.className = `alert alert-${variant} m-3`;
@@ -156,7 +160,7 @@ function renderViewerNotice(body, message, variant, linkUrl = '', linkLabel = ''
     body.appendChild(panel);
 }
 
-function isGoogleBooksResult(item) {
+export function isGoogleBooksResult(item) {
     const sourceName = textValue(item?.source_name).trim().toLowerCase();
     if (sourceName === 'gbooks' || sourceName === 'google books') return true;
 
@@ -176,7 +180,7 @@ function safeHttpUrl(value) {
     }
 }
 
-function googleBooksVolumeId(item) {
+export function googleBooksVolumeId(item) {
     const explicitVolumeId = normalizedGoogleBooksVolumeId(
         item?.google_books_volume_id
     );
@@ -220,7 +224,7 @@ function normalizedGoogleBooksVolumeId(value) {
         : '';
 }
 
-function loadGoogleBooksApi() {
+export function loadGoogleBooksApi() {
     const readyApi = window.google?.books;
     if (readyApi?.DefaultViewer) return Promise.resolve(readyApi);
     if (googleBooksApiPromise) return googleBooksApiPromise;
@@ -330,7 +334,7 @@ function googleBooksRenderTimeoutLabel() {
     return `${numberAsEnglishWords(seconds)} ${unit}`;
 }
 
-function renderGoogleBooksFallback(body, item, reason) {
+export function renderGoogleBooksFallback(body, item, reason) {
     body.replaceChildren();
     const fallback = document.createElement('div');
     fallback.className = 'google-books-fallback';
@@ -529,7 +533,7 @@ async function renderGoogleBooksViewerWithTimeout(body, item, generation) {
     }
 }
 
-function renderProxyContent(body, result) {
+export function renderProxyContent(body, result) {
     body.replaceChildren();
     const mode = result.mode || 'iframe';
     if (mode === 'reader') {
