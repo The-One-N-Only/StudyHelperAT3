@@ -327,6 +327,7 @@ def create_local_user(email, username, password_hash, name=None, gender="gentlem
             "email": new_user.email,
             "name": new_user.name,
             "username": new_user.username,
+            "gender": new_user.gender,
             "platform": new_user.login_platform,
             "platform_id": new_user.platform_id
         }

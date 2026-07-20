@@ -5,53 +5,31 @@
     document.documentElement.setAttribute("data-bs-theme", theme);
 
     const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
-    let candleLayer = null;
-    let targetX = window.innerWidth / 2;
-    let targetY = window.innerHeight * 0.3;
-    let currentX = targetX;
-    let currentY = targetY;
-    let animationFrame = null;
+    let cursorGlow = null;
     let isTracking = false;
 
-    function animateCandle() {
-        currentX += (targetX - currentX) * 0.15;
-        currentY += (targetY - currentY) * 0.15;
-        candleLayer.style.setProperty("--candle-x", `${currentX}px`);
-        candleLayer.style.setProperty("--candle-y", `${currentY}px`);
-
-        const isMoving = Math.abs(targetX - currentX) > 0.5 || Math.abs(targetY - currentY) > 0.5;
-        animationFrame = isMoving ? requestAnimationFrame(animateCandle) : null;
-    }
-
     function trackPointer(event) {
-        targetX = event.clientX;
-        targetY = event.clientY;
-        if (animationFrame === null) {
-            animationFrame = requestAnimationFrame(animateCandle);
-        }
+        cursorGlow.style.left = `${event.clientX}px`;
+        cursorGlow.style.top = `${event.clientY}px`;
     }
 
-    function startCandle() {
-        if (!candleLayer || isTracking || !finePointer.matches) return;
+    function startGlow() {
+        if (!cursorGlow || isTracking || !finePointer.matches) return;
         isTracking = true;
         window.addEventListener("pointermove", trackPointer, { passive: true });
     }
 
-    function stopCandle() {
+    function stopGlow() {
         if (!isTracking) return;
         window.removeEventListener("pointermove", trackPointer);
-        if (animationFrame !== null) {
-            cancelAnimationFrame(animationFrame);
-            animationFrame = null;
-        }
         isTracking = false;
     }
 
-    function syncCandle() {
+    function syncGlow() {
         const shouldTrack = document.documentElement.getAttribute("data-bs-theme") === "dark"
             && finePointer.matches;
-        if (shouldTrack) startCandle();
-        else stopCandle();
+        if (shouldTrack) startGlow();
+        else stopGlow();
     }
 
     function toggleTheme() {
@@ -60,7 +38,7 @@
         document.documentElement.setAttribute("data-bs-theme", newTheme);
         localStorage.setItem("theme", newTheme);
         updateThemeButton();
-        syncCandle();
+        syncGlow();
     }
 
     function updateThemeButton() {
@@ -76,13 +54,13 @@
     }
 
     document.addEventListener("DOMContentLoaded", () => {
-        candleLayer = document.querySelector(".candle-glow");
+        cursorGlow = document.querySelector(".candle-glow");
         const themeBtn = document.getElementById("themeToggle");
         if (themeBtn) {
             themeBtn.addEventListener("click", toggleTheme);
             updateThemeButton();
         }
-        finePointer.addEventListener("change", syncCandle);
-        syncCandle();
+        finePointer.addEventListener("change", syncGlow);
+        syncGlow();
     });
 })();

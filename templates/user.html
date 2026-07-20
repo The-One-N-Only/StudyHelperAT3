@@ -18,7 +18,7 @@
             <div class="col-md-6">
                 <div class="card shadow-sm">
                     <div class="card-header text-center">
-                        <img src="{{ profile_picture }}" alt="Profile picture" class="rounded-circle" style="width: 96px; height: 96px; object-fit: cover; border: 3px solid var(--bs-card-border-color, currentColor);">
+                        <img src="{{ profile_picture }}" alt="Profile" class="rounded-circle" style="width: 96px; height: 96px; object-fit: cover; border: 3px solid var(--bs-card-border-color, currentColor);" onerror="this.style.display='none'">
                         <h4 class="mb-0 mt-2">{{ user.name or user.username }}</h4>
                     </div>
                     <div class="card-body">

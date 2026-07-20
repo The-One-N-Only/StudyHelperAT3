@@ -42,7 +42,7 @@
                 </button>
                 {% if logged_in %}
                     <a class="d-flex align-items-center gap-2 text-decoration-none text-reset" href="{{ url_for('user') }}" aria-label="User profile">
-                        <img src="{{ profile_picture }}" alt="" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover;">
+                        <img src="{{ profile_picture }}" alt="Profile" class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover;" onerror="this.style.display='none'">
                         <span class="text-muted d-none d-lg-inline">Welcome, {{ current_username }}</span>
                     </a>
                     <a class="btn btn-outline-secondary btn-ghost btn-sm" href="{{ url_for('logout') }}">LOGOUT</a>
@@ -70,7 +70,7 @@
 
     <div id="toastContainer" class="position-fixed top-0 end-0 p-3" style="z-index:1200;"></div>
 
-    <div class="offcanvas offcanvas-start" tabindex="-1" id="navSidebarOffcanvas" aria-labelledby="navSidebarTitle">
+    <div class="offcanvas offcanvas-start surface-wood" tabindex="-1" id="navSidebarOffcanvas" aria-labelledby="navSidebarTitle">
         <div class="offcanvas-header">
             <div>
                 <h5 id="navSidebarTitle" class="mb-0">Menu</h5>

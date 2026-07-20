@@ -638,7 +638,7 @@ export function initBrowse(root) {
             </div>
         </div>
         <div class="d-flex browse-results-layout" style="height: calc(100vh - 200px);">
-            <div class="border-end p-3 flex-shrink-0 browse-sidebar" style="width: 320px; min-width: 320px; overflow-y: auto;" id="sidebarContainer"></div>
+            <div class="border-end p-3 flex-shrink-0 browse-sidebar surface-wood" style="width: 320px; min-width: 320px; overflow-y: auto;" id="sidebarContainer"></div>
             <div class="flex-grow-1 p-3 overflow-y-auto browse-results-pane">
                 <div id="resultsContainer" aria-busy="false"></div>
             </div>

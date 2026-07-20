@@ -347,12 +347,12 @@ button, .btn, a, input, select, textarea {
 #navSidebarOffcanvas {
     --bs-offcanvas-width: 320px;
 }
-#navSidebarOffcanvas .offcanvas-header {
+#navSidebarOffcanvas.surface-wood .offcanvas-header {
     border-bottom: 1px solid var(--bs-border-color);
-    background: var(--bs-body-bg);
+    background: transparent;
 }
-#navSidebarOffcanvas .offcanvas-body {
-    background: var(--bs-body-bg);
+#navSidebarOffcanvas.surface-wood .offcanvas-body {
+    background: transparent;
 }
 #navSidebarOffcanvas .list-group-item {
     border: none;
@@ -1765,10 +1765,6 @@ p {
     --shadow-warm-raised: 0 2px 10px 0 hsl(28 60% 4% / 0.55), 0 0 0 1px hsl(35 40% 40% / 0.06);
     --shadow-warm-glow: 0 0 0 1px var(--gold-500), 0 0 18px 2px hsl(35 70% 55% / 0.25);
 
-    --candle-x: 50%;
-    --candle-y: 30%;
-    --candle-radius: 200px;
-
     --z-bg-base: 0;
     --z-bg-illustration: 1;
     --z-content: 10;
@@ -1800,6 +1796,21 @@ p {
         var(--bg-950);
     background-attachment: fixed;
     font-family: var(--font-body);
+    cursor: none;
+}
+
+@media (hover: none), (pointer: coarse) {
+    [data-bs-theme="dark"] .archive-illustration {
+        opacity: 0.10;
+    }
+
+    [data-bs-theme="dark"] .candle-glow {
+        display: none;
+    }
+
+    [data-bs-theme="dark"] body {
+        cursor: auto;
+    }
 }
 
 [data-bs-theme="dark"] h1,
@@ -2125,53 +2136,17 @@ p {
 }
 
 [data-bs-theme="dark"] .candle-glow {
-    animation: candle-flicker 4.2s ease-in-out infinite;
-    background: radial-gradient(circle var(--candle-radius) at var(--candle-x) var(--candle-y),
-        hsl(35 80% 68% / 0.30),
-        hsl(35 80% 68% / 0.08) 35%,
-        transparent 60%);
-    inset: 0;
-    mix-blend-mode: soft-light;
-    pointer-events: none;
     position: fixed;
-    z-index: var(--z-candle-glow);
-}
-
-@keyframes candle-flicker {
-    0%, 100% { opacity: 1; }
-    8% { opacity: 0.94; }
-    17% { opacity: 1; }
-    26% { opacity: 0.9; }
-    35% { opacity: 0.98; }
-    50% { opacity: 0.93; }
-    68% { opacity: 1; }
-    82% { opacity: 0.95; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    [data-bs-theme="dark"] *,
-    [data-bs-theme="dark"] *::before,
-    [data-bs-theme="dark"] *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        scroll-behavior: auto !important;
-        transition-delay: 0s !important;
-        transition-duration: 0.01ms !important;
-    }
-
-    [data-bs-theme="dark"] .candle-glow {
-        animation: none;
-    }
-}
-
-@media (hover: none), (pointer: coarse) {
-    [data-bs-theme="dark"] .archive-illustration {
-        opacity: 0.10;
-    }
-
-    [data-bs-theme="dark"] .candle-glow {
-        display: none;
-    }
+    top: 0;
+    left: 0;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 70%);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 9999;
+    will-change: transform;
 }
 
 [data-bs-theme="dark"] .archive-navbar {
@@ -2199,9 +2174,29 @@ p {
     outline: 0;
 }
 
-[data-bs-theme="dark"] #navSidebarOffcanvas .offcanvas-header,
-[data-bs-theme="dark"] #navSidebarOffcanvas .offcanvas-body {
-    background: var(--bg-primary);
+[data-bs-theme="dark"] #navSidebarOffcanvas.surface-wood,
+[data-bs-theme="dark"] #navSidebarOffcanvas.surface-wood .offcanvas-body {
+    background-color: var(--surface-700);
+    background-image:
+        linear-gradient(hsl(31 51% 12% / 0.38), hsl(31 51% 12% / 0.38)),
+        url("/static/img/textures/wood-texture.png");
+    background-blend-mode: normal;
+    background-position: 0 0;
+    background-repeat: repeat, repeat;
+    background-size: auto, 200px;
+    border: 1px solid hsl(35 40% 45% / 0.18);
+}
+
+[data-bs-theme="dark"] #navSidebarOffcanvas.surface-wood .offcanvas-header {
+    background-color: var(--surface-700);
+    background-image:
+        linear-gradient(hsl(31 51% 12% / 0.38), hsl(31 51% 12% / 0.38)),
+        url("/static/img/textures/wood-texture.png");
+    background-blend-mode: normal;
+    background-position: 0 0;
+    background-repeat: repeat, repeat;
+    background-size: auto, 200px;
+    border-bottom: 1px solid hsl(35 40% 45% / 0.18);
 }
 
 [data-bs-theme="dark"] #navSidebarOffcanvas .list-group-item {
