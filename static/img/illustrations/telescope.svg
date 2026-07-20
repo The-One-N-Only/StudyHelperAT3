@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="400" viewBox="0 0 700 400" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2">
+  <circle cx="80" cy="200" r="60"/>
+  <ellipse cx="80" cy="200" rx="60" ry="20" transform="rotate(-30 80 200)"/>
+  <path d="M120 160 L350 60"/>
+  <path d="M120 240 L350 140"/>
+  <path d="M350 60 L350 140"/>
+  <path d="M350 80 L620 200"/>
+  <path d="M350 120 L620 200"/>
+  <circle cx="620" cy="200" r="40"/>
+  <ellipse cx="620" cy="200" rx="40" ry="12"/>
+  <path d="M660 200 L690 200" stroke-width="3"/>
+  <path d="M350 60 L350 50 M350 140 L350 150" stroke-width="1.5"/>
+  <!-- Tripod legs -->
+  <path d="M350 100 L300 360 M350 100 L400 380 M350 100 L380 390"/>
+  <!-- Hatching -->
+  <line x1="160" y1="210" x2="300" y2="130" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="180" y1="220" x2="310" y2="140" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="400" y1="120" x2="560" y2="180" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="410" y1="140" x2="570" y2="190" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="60" y1="180" x2="60" y2="220" stroke-width="0.5"/>
+  <line x1="50" y1="190" x2="50" y2="210" stroke-width="0.5"/>
+</svg>

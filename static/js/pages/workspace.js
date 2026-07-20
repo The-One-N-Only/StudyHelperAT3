@@ -35,6 +35,13 @@ function renderWorkspaceDetail() {
         <div class="container-fluid py-4 archive-page archive-page-workspace">
             <span class="archive-illustration illustration-books" aria-hidden="true"></span>
             <span class="archive-illustration illustration-flourish" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-oil-lamp" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-armillary-sphere" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-hourglass" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-telescope" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-candlestick" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-victorian-man" aria-hidden="true"></span>
+            <span class="archive-illustration illustration-scholar" aria-hidden="true"></span>
             <div class="archive-content">
             <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-4">
                 <div>

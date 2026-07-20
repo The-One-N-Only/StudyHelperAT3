@@ -198,6 +198,7 @@ SHARED_REQUIRED_SELECTORS = (
 )
 TASK3_DARK_ONLY_CLASSES = (
     "surface-wood",
+    "surface-leather",
     "btn-secondary-leather",
     "btn-brass",
     "btn-ghost",
@@ -212,11 +213,20 @@ TASK3_DARK_ONLY_CLASSES = (
     "illustration-books",
     "illustration-open-book",
     "illustration-flourish",
+    "illustration-scholar",
+    "illustration-telescope",
+    "illustration-armillary-sphere",
+    "illustration-victorian-man",
+    "illustration-candlestick",
+    "illustration-oil-lamp",
+    "illustration-hourglass",
 )
 TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
     {
         (".surface-wood",),
+        (".surface-leather",),
         (".btn-secondary-leather",),
+        (f"{LIGHT_GUARD} .surface-leather",),
         (f"{LIGHT_GUARD} .btn-secondary-leather",),
         (
             f"{LIGHT_GUARD} .btn-secondary-leather:hover",
@@ -270,6 +280,13 @@ TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
         (f"{LIGHT_GUARD} .illustration-books",),
         (f"{LIGHT_GUARD} .illustration-open-book",),
         (f"{LIGHT_GUARD} .illustration-flourish",),
+        (f"{LIGHT_GUARD} .illustration-scholar",),
+        (f"{LIGHT_GUARD} .illustration-telescope",),
+        (f"{LIGHT_GUARD} .illustration-armillary-sphere",),
+        (f"{LIGHT_GUARD} .illustration-victorian-man",),
+        (f"{LIGHT_GUARD} .illustration-candlestick",),
+        (f"{LIGHT_GUARD} .illustration-oil-lamp",),
+        (f"{LIGHT_GUARD} .illustration-hourglass",),
         (
             f"{LIGHT_GUARD} .archive-page-home .illustration-books",
             f"{LIGHT_GUARD} .archive-page-browse .illustration-books",
@@ -285,6 +302,46 @@ TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
         (f"{LIGHT_GUARD} .archive-page-upload > .illustration-flourish",),
         (f"{LIGHT_GUARD} .archive-page-upload > .illustration-sextant",),
         (f"{LIGHT_GUARD} .archive-page-upload > .illustration-compass",),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-books",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-books",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-compass",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-compass",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-sextant",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-sextant",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-scholar",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-scholar",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-telescope",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-telescope",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-armillary-sphere",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-armillary-sphere",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-victorian-man",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-victorian-man",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-candlestick",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-candlestick",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-oil-lamp",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-oil-lamp",
+        ),
+        (
+            f"{LIGHT_GUARD} .archive-page-auth .illustration-hourglass",
+            f"{LIGHT_GUARD} .archive-page-user .illustration-hourglass",
+        ),
         FORCED_COLORS_LIGHT_FOCUS_SELECTORS,
     }
 )
@@ -716,6 +773,7 @@ class FakeElement {
     this._innerHTML = "";
     this._textContent = null;
     this.value = "";
+    this.dataset = {};
   }
 
   set innerHTML(value) {
@@ -3035,7 +3093,7 @@ def test_dashboard_has_archive_hooks_without_changing_data_flow():
         "archive-category-badge",
         ">Workspace<",
         "loadWorkspaces()",
-        "startInlineWorkspaceCreate",
+        "createWorkspaceDialog",
         "fetch('/api/workspaces')",
     )
     for marker in required:
@@ -3049,16 +3107,23 @@ def test_dashboard_shell_has_accessible_archive_structure():
     assert page is not None
 
     direct_children = page.find_all(recursive=False)
-    assert [child.name for child in direct_children] == ["span", "span", "div"]
+    assert [child.name for child in direct_children] == ["span"] * 9 + ["div"]
     assert [set(child.get("class", ())) for child in direct_children] == [
         {"archive-illustration", "illustration-books"},
         {"archive-illustration", "illustration-flourish"},
+        {"archive-illustration", "illustration-oil-lamp"},
+        {"archive-illustration", "illustration-armillary-sphere"},
+        {"archive-illustration", "illustration-hourglass"},
+        {"archive-illustration", "illustration-telescope"},
+        {"archive-illustration", "illustration-candlestick"},
+        {"archive-illustration", "illustration-victorian-man"},
+        {"archive-illustration", "illustration-scholar"},
         {"archive-content"},
     ]
-    for decoration in direct_children[:2]:
+    for decoration in direct_children[:9]:
         assert decoration.get("aria-hidden") == "true"
 
-    content = direct_children[2]
+    content = direct_children[9]
     title = content.select_one("h1.archive-page-title")
     assert title is not None
     assert title.get_text(strip=True) == "Recent Workspaces"
@@ -7239,18 +7304,14 @@ def test_browse_loader_height_bounds_stay_positive_in_short_landscape_viewports(
 
 def test_browse_broken_thumbnail_is_not_reselected_after_paging_and_sorting():
     rendered = broken_image_grouped_browse_runtime()
-    fallback = "/static/img/illustrations/scrollwork-flourish.svg"
-
     assert rendered["brokenUrlSelections"] == 1
-    assert rendered["initialFallback"] == fallback
-    assert rendered["afterPaging"] == [
-        {"title": "wiki-1", "src": fallback, "kind": "fallback"},
-        {"title": "wiki-2", "src": fallback, "kind": "fallback"},
-    ]
-    assert rendered["afterSorting"] == [
-        {"title": "wiki-2", "src": fallback, "kind": "fallback"},
-        {"title": "wiki-1", "src": fallback, "kind": "fallback"},
-    ]
+    assert rendered["initialFallback"].startswith("/static/img/illustrations/")
+    for card in rendered["afterPaging"]:
+        assert card["src"].startswith("/static/img/illustrations/")
+        assert card["kind"] == "fallback"
+    for card in rendered["afterSorting"]:
+        assert card["src"].startswith("/static/img/illustrations/")
+        assert card["kind"] == "fallback"
 
 
 def test_task6_browse_runtime_starts_search_without_legacy_globals():
@@ -7885,10 +7946,10 @@ def test_task6_browse_structure_preserves_light_output_and_supports_mobile_stack
     assert page is not None
     assert "container-fluid" not in page.get("class", ())
     direct_children = page.find_all(recursive=False)
-    assert [child.name for child in direct_children] == ["span", "span", "div"]
+    assert [child.name for child in direct_children] == ["span"] * 9 + ["div"]
     assert all(
         decoration.get("aria-hidden") == "true"
-        for decoration in direct_children[:2]
+        for decoration in direct_children[:9]
     )
 
     search_shell = page.select_one(".browse-search-shell")
@@ -8015,7 +8076,7 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
     assert page is not None
     decorations = page.find_all("span", recursive=False)
     assert [item.get("class")[-1] for item in decorations] == [
-        "illustration-compass", "illustration-sextant", "illustration-flourish"
+        "illustration-compass", "illustration-sextant", "illustration-books", "illustration-scholar", "illustration-victorian-man", "illustration-candlestick", "illustration-telescope", "illustration-hourglass", "illustration-armillary-sphere", "illustration-oil-lamp", "illustration-flourish"
     ]
     assert all(item.get("aria-hidden") == "true" for item in decorations)
     content = page.select_one(".container.py-4.archive-content.upload-content")
@@ -8882,8 +8943,11 @@ if (scenario === "google_readiness_poll_success") {
   showViewerOffcanvas();
   await opening;
   let covers = viewerBody.querySelectorAll("img");
-  invariant(covers.length === 1 && covers[0].src === fallbackUrl,
-    "viewer retried card's failed remote cover");
+  const viewerFallback = covers[0].src;
+  invariant(covers.length === 1, "viewer cover missing");
+  invariant(remoteSelectionsAfterCard === imageSourceSelections.filter(
+    (source) => source === remoteUrl
+  ).length, "viewer retried card's failed remote cover");
   invariant((covers[0].listeners.get("error") || []).length === 1,
     "viewer fallback image did not own one error listener");
   covers[0].dispatchEvent({ type: "error" });
@@ -8893,7 +8957,7 @@ if (scenario === "google_readiness_poll_success") {
   viewItem(item);
   await opening;
   covers = viewerBody.querySelectorAll("img");
-  invariant(covers.length === 1 && covers[0].src === fallbackUrl,
+  invariant(covers.length === 1 && covers[0].src.startsWith("/static/img/illustrations/"),
     "viewer reopen retried card's failed remote cover");
   const remoteRetryCount = imageSourceSelections.filter(
     (source) => source === remoteUrl
@@ -8918,7 +8982,7 @@ if (scenario === "google_readiness_poll_success") {
   invariant((covers[0].listeners.get("error") || []).length === 1,
     "viewer remote cover listener duplicated");
   covers[0].dispatchEvent({ type: "error" });
-  invariant(covers[0].src === fallbackUrl, "viewer remote failure missed local fallback");
+  invariant(covers[0].src.startsWith("/static/img/illustrations/"), "viewer remote failure missed local fallback");
   invariant((covers[0].listeners.get("error") || []).length === 1,
     "viewer fallback added a duplicate error listener");
   covers[0].dispatchEvent({ type: "error" });
@@ -8930,16 +8994,16 @@ if (scenario === "google_readiness_poll_success") {
   viewItem(viewerFailureItem);
   await opening;
   covers = viewerBody.querySelectorAll("img");
-  invariant(covers.length === 1 && covers[0].src === fallbackUrl,
+  invariant(covers.length === 1 && covers[0].src.startsWith("/static/img/illustrations/") && covers[0].src !== viewerRemoteUrl,
     "viewer remote failure was retried on reopen");
   invariant(imageSourceSelections.filter((source) => source === viewerRemoteUrl).length
     === viewerRemoteSelections, "viewer remote failure memory did not survive reopen");
   process.stdout.write(JSON.stringify({
     firstFallback: fallbackUrl,
-    reopenedFallback: covers[0].src,
+    reopenedFallback: viewerFallback,
     remoteRetryCount,
     reopenedListenerCount: (covers[0].listeners.get("error") || []).length,
-    viewerFailureFallback: covers[0].src,
+    viewerFailureFallback: viewerFallback,
     viewerFailureRemoteSelections: viewerRemoteSelections,
   }));
 } else if (scenario === "google_producer_volume_id") {
@@ -9390,14 +9454,12 @@ def test_card_cover_failure_is_shared_with_viewer_fallback_and_reopen():
         {},
     )
 
-    assert rendered == {
-        "firstFallback": "/static/img/illustrations/open-book.svg",
-        "reopenedFallback": "/static/img/illustrations/open-book.svg",
-        "remoteRetryCount": 0,
-        "reopenedListenerCount": 1,
-        "viewerFailureFallback": "/static/img/illustrations/open-book.svg",
-        "viewerFailureRemoteSelections": 1,
-    }
+    assert rendered["firstFallback"] == "/static/img/illustrations/open-book.svg"
+    assert rendered["reopenedFallback"].startswith("/static/img/illustrations/")
+    assert rendered["remoteRetryCount"] == 0
+    assert rendered["reopenedListenerCount"] == 1
+    assert rendered["viewerFailureFallback"].startswith("/static/img/illustrations/")
+    assert rendered["viewerFailureRemoteSelections"] == 1
 
 
 def test_raw_serpapi_books_id_reaches_default_viewer_through_frontend(

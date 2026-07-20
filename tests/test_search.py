@@ -1186,6 +1186,7 @@ def test_gbooks_clamps_max_results_to_api_bounds(monkeypatch, requested, expecte
         return FakeResponse()
 
     monkeypatch.setattr(search.requests, "get", fake_get)
+    monkeypatch.setattr(search, "GOOGLE_BOOKS_API_KEY", "")
 
     assert search.gbooks("archive", requested, {}, user_id=7) == []
     assert captured["url"] == "https://www.googleapis.com/books/v1/volumes"
@@ -1258,6 +1259,7 @@ def test_gbooks_merges_filtered_access_info_after_persistence(monkeypatch):
         return {"id": 22, **item_data}
 
     monkeypatch.setattr(search.requests, "get", fake_get)
+    monkeypatch.setattr(search, "GOOGLE_BOOKS_API_KEY", "")
     monkeypatch.setattr(search.whitelist, "is_allowed", lambda _url: True)
     monkeypatch.setattr(search.db, "get_item_by_source", fake_get_item)
     monkeypatch.setattr(search.db, "create_item", fake_create_item)

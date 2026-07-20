@@ -18,6 +18,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(254), nullable=True)
     username: Mapped[str] = mapped_column(String(254), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=True)
+    gender: Mapped[str] = mapped_column(String(16), nullable=False, default="gentleman")
     login_platform: Mapped[str] = mapped_column(String(16), nullable=False, default='local')
     platform_id: Mapped[dict] = mapped_column(JSON, nullable=False, default={})
 
@@ -183,6 +184,10 @@ def setup_db():
         if 'password_hash' not in columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
 
+        # Add gender if missing (default 'gentleman' for existing users)
+        if 'gender' not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN gender VARCHAR(16) NOT NULL DEFAULT 'gentleman'"))
+
         # Add PubMed metadata columns if missing
         result = conn.execute(text("PRAGMA table_info(items)"))
         columns = [row[1] for row in result]
@@ -254,8 +259,32 @@ def get_or_create_user(email, platform, platform_id, *, name=None, username=None
             "email": new_user.email,
             "name": new_user.name,
             "username": new_user.username,
+            "gender": new_user.gender,
             "platform": new_user.login_platform,
             "platform_id": new_user.platform_id
+        }
+
+
+def update_user(user_id, name, username, email, gender, password_hash=None):
+    with SessionLocal() as session:
+        user = session.query(User).filter_by(id=user_id).first()
+        if not user:
+            return None
+        user.name = name
+        user.username = username
+        user.email = email
+        user.gender = gender
+        if password_hash:
+            user.password_hash = password_hash
+        session.commit()
+        session.refresh(user)
+        return {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "username": user.username,
+            "gender": user.gender,
+            "platform": user.login_platform,
         }
 
 def get_user_by_username(username):
@@ -270,13 +299,23 @@ def get_user_by_id(user_id):
     with SessionLocal() as session:
         return session.query(User).filter_by(id=user_id).first()
 
-def create_local_user(email, username, password_hash, name=None):
+GENDER_PROFILE_PICTURES = {
+    'gentleman': '/static/img/profilePictures/victorian-man.jpg',
+    'lady': '/static/img/profilePictures/victorian-woman.jpg',
+    'secret': '/static/img/profilePictures/quill.jpg',
+}
+
+def get_profile_picture_path(gender):
+    return GENDER_PROFILE_PICTURES.get(gender, GENDER_PROFILE_PICTURES['secret'])
+
+def create_local_user(email, username, password_hash, name=None, gender="gentleman"):
     with SessionLocal() as session:
         new_user = User(
             email=email,
             name=name,
             username=username,
             password_hash=password_hash,
+            gender=gender,
             login_platform='local',
             platform_id={}
         )

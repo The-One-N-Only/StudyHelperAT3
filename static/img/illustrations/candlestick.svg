@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2">
+  <path d="M200 20 L200 80 M180 80 L220 80 L220 100 L180 100 Z"/>
+  <rect x="170" y="100" width="60" height="10" rx="2"/>
+  <path d="M185 110 L185 200 M215 110 L215 200"/>
+  <rect x="165" y="200" width="70" height="15" rx="3"/>
+  <path d="M175 215 L175 350 M225 215 L225 350"/>
+  <rect x="150" y="350" width="100" height="20" rx="4"/>
+  <path d="M160 370 L160 450 M240 370 L240 450"/>
+  <rect x="140" y="450" width="120" height="25" rx="5"/>
+  <path d="M155 475 L155 520 M245 475 L245 520"/>
+  <rect x="130" y="520" width="140" height="30" rx="6"/>
+  <circle cx="200" cy="40" r="12"/>
+  <path d="M192 40 L208 40 M200 32 L200 48"/>
+  <path d="M170 80 L175 85 M230 80 L225 85" stroke-width="1.5"/>
+  <!-- Hatching lines for shading -->
+  <line x1="180" y1="120" x2="180" y2="190" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="190" y1="120" x2="190" y2="190" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="210" y1="120" x2="210" y2="190" stroke-width="0.5" stroke-dasharray="2,4"/>
+</svg>
