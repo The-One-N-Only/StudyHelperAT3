@@ -69,7 +69,7 @@ function initNavigation() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
-    const sidebarBrowseLink = document.querySelector('#navSidebarOverlay a[href="/browse"]');
+    const sidebarBrowseLink = document.querySelector('#navSidebarOffcanvas a[href="/browse"]');
     if (sidebarBrowseLink) {
         sidebarBrowseLink.addEventListener('click', () => {
             sessionStorage.setItem('browse_from_sidebar', 'true');

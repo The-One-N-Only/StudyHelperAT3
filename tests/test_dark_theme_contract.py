@@ -624,7 +624,7 @@ const brandMenuButton = new FakeElement(
   },
 );
 const navOverlay = new FakeElement(
-  "navSidebarOverlay",
+  "navSidebarOffcanvas",
   ["nav-sidebar-overlay", "d-none"],
   { "aria-hidden": "true" },
 );
@@ -1932,7 +1932,7 @@ def assert_navigation_markup_contract(layout: str) -> None:
     assert menu_button is not None
     assert menu_button.get("type") == "button"
     assert menu_button.get("aria-label") == "Open navigation menu"
-    assert menu_button.get("aria-controls") == "navSidebarOverlay"
+    assert menu_button.get("aria-controls") == "navSidebarOffcanvas"
     assert menu_button.get("aria-expanded") == "false"
     assert set(menu_button.get("class", ())) == {
         "archive-menu-button",
@@ -2857,33 +2857,27 @@ def test_navigation_markup_has_accessible_dialog_relationships():
     assert_navigation_markup_contract(layout)
     soup = BeautifulSoup(layout, "html.parser")
 
-    overlay = soup.select_one("#navSidebarOverlay")
+    overlay = soup.select_one("#navSidebarOffcanvas")
     assert overlay is not None
-    assert "d-none" in overlay.get("class", ())
-    assert overlay.get("aria-hidden") == "true"
+    assert "offcanvas" in overlay.get("class", ())
+    assert "offcanvas-start" in overlay.get("class", ())
+    assert overlay.get("tabindex") == "-1"
+    assert overlay.get("aria-labelledby") == "navSidebarTitle"
 
-    dialog = overlay.select_one(".nav-sidebar")
-    assert dialog is not None
-    assert dialog.get("role") == "dialog"
-    assert dialog.get("aria-modal") == "true"
-    assert dialog.get("aria-labelledby") == "navSidebarTitle"
-    assert dialog.get("tabindex") == "-1"
-    assert dialog.select_one("#navSidebarTitle") is not None
+    header = overlay.select_one(".offcanvas-header")
+    assert header is not None
+    assert header.select_one("#navSidebarTitle") is not None
 
-    close_button = dialog.select_one("button#closeNavSidebarBtn")
+    close_button = header.select_one("button#closeNavSidebarBtn")
     assert close_button is not None
     assert close_button.get("type") == "button"
-    assert close_button.get("aria-label") == "Close menu"
-    assert set(close_button.get("class", ())) == {
-        "btn",
-        "btn-link",
-        "text-reset",
-        "icon-button",
-    }
+    assert close_button.get("aria-label") == "Close"
+    assert "btn-close" in close_button.get("class", ())
+    assert close_button.get("data-bs-dismiss") == "offcanvas"
 
     links = [
         (link.get("href"), link.get_text(strip=True))
-        for link in dialog.select(".list-group > a.list-group-item-action")
+        for link in overlay.select(".list-group > a.list-group-item-action")
     ]
     assert links == [("/", "Home"), ("/browse", "Browse"), ("/upload", "Upload")]
 
