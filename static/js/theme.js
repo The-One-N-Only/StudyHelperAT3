@@ -27,8 +27,8 @@
         }
         var isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
         document.body.style.cursor = isDark
-            ? emojiCursor('\uD83D\uDD6F\uFE0F', 16, 6)
-            : emojiCursor('\u2702\uFE0F', 4, 28);
+            ? emojiCursor('\uD83E\uDEB6', 16, 28)
+            : emojiCursor('\u2712\uFE0F', 4, 28);
     }
 
     function animateGlow() {
