@@ -360,6 +360,51 @@ button, .btn, a, input, select, textarea {
     margin-bottom: 0.375rem;
 }
 
+.workspaces-dropdown-toggle .workspaces-chevron {
+    transition: transform 0.2s ease;
+}
+.workspaces-dropdown-toggle[aria-expanded="true"] .workspaces-chevron {
+    transform: rotate(180deg);
+}
+.workspaces-dropdown-menu {
+    display: none;
+    padding: 0 0.75rem 0.25rem;
+}
+.workspaces-dropdown-menu.show {
+    display: block;
+}
+.workspace-link {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.25rem;
+    border-radius: 0.5rem;
+    color: var(--bs-body-color);
+    text-decoration: none;
+    transition: background-color 150ms ease;
+    border: 1px solid transparent;
+}
+.workspace-link:hover,
+.workspace-link:focus-visible {
+    background: var(--bs-tertiary-bg);
+}
+
+:root:not([data-bs-theme="dark"]) .workspace-link {
+    color: var(--ink-900);
+}
+:root:not([data-bs-theme="dark"]) .workspace-link:hover,
+:root:not([data-bs-theme="dark"]) .workspace-link:focus-visible {
+    background: hsl(33 30% 72% / 0.35);
+}
+
+[data-bs-theme="dark"] .workspace-link {
+    color: var(--text-primary);
+}
+[data-bs-theme="dark"] .workspace-link:hover,
+[data-bs-theme="dark"] .workspace-link:focus-visible {
+    background: hsl(35 70% 55% / 0.1);
+    color: var(--gold-100);
+}
+
 /* Studio tabs */
 .workspace-tabs .nav-link {
     border-radius: 999rem;
