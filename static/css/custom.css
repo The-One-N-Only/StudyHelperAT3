@@ -1796,7 +1796,6 @@ p {
         var(--bg-950);
     background-attachment: fixed;
     font-family: var(--font-body);
-    cursor: none;
 }
 
 @media (hover: none), (pointer: coarse) {
@@ -1806,10 +1805,6 @@ p {
 
     [data-bs-theme="dark"] .candle-glow {
         display: none;
-    }
-
-    [data-bs-theme="dark"] body {
-        cursor: auto;
     }
 }
 
@@ -2141,7 +2136,7 @@ p {
     left: 0;
     width: 400px;
     height: 400px;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 70%);
+    background: radial-gradient(circle, hsl(35 80% 68% / 0.28) 0%, hsl(35 80% 68% / 0.06) 35%, transparent 65%);
     border-radius: 50%;
     transform: translate(-50%, -50%);
     pointer-events: none;
