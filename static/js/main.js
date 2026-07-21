@@ -37,6 +37,7 @@ function initNavigation() {
 
     navOffcanvasElement.addEventListener('show.bs.offcanvas', () => {
         makeOutsideContentInert();
+        document.body.classList.add('offcanvas-push');
         brandMenuButton.setAttribute("aria-label", "Navigation menu open.");
     });
 
@@ -53,6 +54,7 @@ function initNavigation() {
 
     navOffcanvasElement.addEventListener('hidden.bs.offcanvas', () => {
         restoreOutsideContent();
+        document.body.classList.remove('offcanvas-push');
         brandMenuButton.focus();
     });
 

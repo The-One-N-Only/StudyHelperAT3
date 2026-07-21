@@ -164,6 +164,11 @@ button, .btn, a, input, select, textarea {
     backdrop-filter: blur(8px);
 }
 
+body.offcanvas-push {
+    transform: translateX(var(--bs-offcanvas-width));
+    transition: transform 0.3s ease;
+}
+
 /* Viewer offcanvas wood texture */
 #viewerOffcanvas.surface-wood {
     background: var(--surface-600);
