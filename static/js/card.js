@@ -8,7 +8,7 @@ const RESULT_IMAGE_FALLBACKS_LIST = [
     '/static/img/illustrations/scrollwork-flourish.svg',
     '/static/img/illustrations/stacked-books.svg',
     '/static/img/illustrations/compass-rose.svg',
-    '/static/img/illustrations/browse-scholar.svg',
+    '/static/img/illustrations/victorian-man.svg',
     '/static/img/illustrations/sextant.svg',
     '/static/img/illustrations/victorian-man.svg',
 ];
@@ -56,7 +56,7 @@ export function enhanceResultCardImages(root = document) {
         .forEach((image) => enhanceResultImage(image));
 }
 
-export function createCard(item) {
+export function createCard(item, query = '') {
     const card = document.createElement('div');
     card.className = 'card card-fixed shadow-sm surface-wood result-card rounded-3 h-100';
     card.innerHTML = `
@@ -74,7 +74,7 @@ export function createCard(item) {
         </div>
         <div class="card-footer bg-transparent border-top p-2 result-card-actions">
             <button class="btn btn-outline-secondary btn-secondary-leather btn-sm w-50 view-btn" type="button">View</button>
-            <button class="btn btn-primary btn-secondary-leather btn-sm w-50 add-btn" type="button">Add</button>
+            <button class="btn btn-primary btn-secondary-leather btn-sm px-1 w-50 add-btn" type="button">Add to workspace</button>
         </div>
         <div class="d-flex align-items-center gap-2 mt-2">
             <select class="form-select form-select-sm archive-dropdown workspace-select" aria-label="Choose workspace"></select>
@@ -104,6 +104,7 @@ export function createCard(item) {
     for (const button of [saveButton, viewButton, addButton]) {
         button.dataset.itemId = itemId;
     }
+    saveButton.dataset.query = query;
     updateSaveButton(saveButton, Boolean(item.saved));
 
     const workspaceSelect = card.querySelector('.workspace-select');
@@ -189,16 +190,23 @@ function updateSaveButton(button, saved) {
 
 async function toggleSave(item, button) {
     try {
-        const response = await fetch('/api/item/save', {
+        const isSaved = item.saved;
+        const endpoint = isSaved ? '/api/item/unsave' : '/api/item/save';
+        const query = button.dataset.query || '';
+        const body = isSaved ? {item_id: item.id} : {item_id: item.id, query: query};
+        const response = await fetch(endpoint, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({item_id: item.id})
+            body: JSON.stringify(body)
         });
         const result = await response.json();
         if (result.status) {
-            item.saved = true;
-            updateSaveButton(button, true);
-            showToast('Saved', 'success');
+            item.saved = !isSaved;
+            updateSaveButton(button, item.saved);
+            showToast(item.saved ? 'Saved' : 'Removed from saved', 'success');
+            if (!item.saved && typeof window.onItemUnsaved === 'function') {
+                window.onItemUnsaved(item.id);
+            }
         } else {
             showToast('Already saved', 'info');
         }

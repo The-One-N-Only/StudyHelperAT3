@@ -81,8 +81,16 @@
         <div class="offcanvas-body">
             <div class="list-group">
                 <a class="list-group-item list-group-item-action" href="/">Home</a>
+                <div class="workspaces-dropdown">
+                    <button class="list-group-item list-group-item-action workspaces-dropdown-toggle w-100 text-start d-flex align-items-center justify-content-between" type="button" aria-expanded="false">
+                        Workspaces <i class="bi bi-chevron-down workspaces-chevron"></i>
+                    </button>
+                    <div class="workspaces-dropdown-menu" id="workspacesDropdownMenu">
+                        <div class="text-muted small px-3 py-2 text-center">No workspaces yet.</div>
+                    </div>
+                </div>
                 <a class="list-group-item list-group-item-action" href="/browse">Browse</a>
-                <a class="list-group-item list-group-item-action" href="/upload">Upload</a>
+                <a class="list-group-item list-group-item-action" href="/saved">Saved Sources</a>
             </div>
         </div>
     </div>

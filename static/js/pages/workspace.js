@@ -24,6 +24,7 @@ let alexanderMessages = [{ role: 'agent', text: ALEXANDER_WELCOME_MESSAGE }];
 let alexanderAIConfigured = true;
 let alexanderRequestPending = false;
 let alexanderConversationVersion = 0;
+let workspaceUploadSelectedFile = null;
 
 export function initWorkspace(root) {
     pageRoot = root;
@@ -107,6 +108,10 @@ function renderWorkspaceDetail() {
                             <div class="tab-content flex-grow-1 overflow-hidden" id="studioTabContent">
                                 <div class="tab-pane fade show active h-100" id="studio-sources" role="tabpanel">
                                     <div class="h-100 d-flex flex-column">
+                                        <div class="d-flex gap-2 p-2 border-bottom">
+                                            <button class="btn btn-outline-secondary btn-secondary-wood btn-sm flex-grow-1" id="searchNewBtn">Search new</button>
+                                            <button class="btn btn-outline-primary btn-secondary-wood btn-sm flex-grow-1" id="uploadNewBtn">Upload new</button>
+                                        </div>
                                         <div id="sourcesListContainer" class="list-group list-group-flush overflow-auto"></div>
                                     </div>
                                 </div>
@@ -153,12 +158,16 @@ function attachWorkspaceDetailListeners() {
     const refreshWorkspaceBtn = pageRoot.querySelector('#refreshWorkspaceBtn');
     const alexanderSendBtn = pageRoot.querySelector('#alexanderSendBtn');
     const renameWorkspaceBtn = pageRoot.querySelector('#renameWorkspaceBtn');
+    const searchNewBtn = pageRoot.querySelector('#searchNewBtn');
+    const uploadNewBtn = pageRoot.querySelector('#uploadNewBtn');
 
     if (saveQuickNoteBtn) saveQuickNoteBtn.addEventListener('click', saveQuickNote);
     if (createNoteBtn) createNoteBtn.addEventListener('click', createNote);
     if (refreshWorkspaceBtn) refreshWorkspaceBtn.addEventListener('click', loadWorkspaceDetails);
     if (alexanderSendBtn) alexanderSendBtn.addEventListener('click', sendAlexanderMessage);
     if (renameWorkspaceBtn) renameWorkspaceBtn.addEventListener('click', renameWorkspaceDialog);
+    if (searchNewBtn) searchNewBtn.addEventListener('click', () => { window.location.href = '/browse'; });
+    if (uploadNewBtn) uploadNewBtn.addEventListener('click', showUploadModal);
 
     const chatInput = pageRoot.querySelector('#alexanderChatInput');
     if (chatInput) {
@@ -456,7 +465,13 @@ async function renderWorkspaceGoogleBooksPreview(container, item) {
     const generation = Date.now();
     const volumeId = googleBooksVolumeId(item);
     if (!volumeId) {
-        renderPreviewNotice(container, 'This result does not include a Google Books volume ID.');
+        renderGoogleBooksFallback(container, item, 'This result does not include a Google Books volume ID.');
+        return;
+    }
+
+    const accessInfo = item?.accessInfo && typeof item.accessInfo === 'object' ? item.accessInfo : {};
+    if (accessInfo.embeddable === false) {
+        renderGoogleBooksFallback(container, item, 'An embedded preview is not available for this book.');
         return;
     }
 
@@ -464,13 +479,7 @@ async function renderWorkspaceGoogleBooksPreview(container, item) {
     try {
         booksApi = await loadGoogleBooksApi();
     } catch {
-        renderPreviewNotice(container, 'The Google Books preview service could not be loaded.');
-        return;
-    }
-
-    const accessInfo = item?.accessInfo && typeof item.accessInfo === 'object' ? item.accessInfo : {};
-    if (accessInfo.embeddable === false) {
-        renderPreviewNotice(container, 'An embedded preview is not available for this book.');
+        renderGoogleBooksFallback(container, item, 'The Google Books preview service could not be loaded.');
         return;
     }
 
@@ -485,7 +494,7 @@ async function renderWorkspaceGoogleBooksPreview(container, item) {
     try {
         viewer = new booksApi.DefaultViewer(canvas);
     } catch {
-        renderPreviewNotice(container, 'The embedded preview could not be started.');
+        renderGoogleBooksFallback(container, item, 'The embedded preview could not be started.');
         return;
     }
 
@@ -494,7 +503,7 @@ async function renderWorkspaceGoogleBooksPreview(container, item) {
             viewer.load(
                 volumeId,
                 () => {
-                    renderPreviewNotice(container, 'No embedded preview is available for this volume.');
+                    renderGoogleBooksFallback(container, item, 'No embedded preview is available for this volume.');
                     resolve();
                 },
                 () => {
@@ -508,7 +517,7 @@ async function renderWorkspaceGoogleBooksPreview(container, item) {
                 },
             );
         } catch {
-            renderPreviewNotice(container, 'The embedded preview could not be loaded.');
+            renderGoogleBooksFallback(container, item, 'The embedded preview could not be loaded.');
             resolve();
         }
     });
@@ -761,4 +770,162 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function showUploadModal() {
+    workspaceUploadSelectedFile = null;
+    const modal = pageRoot.querySelector('#noteEditorModal');
+    modal.innerHTML = `
+        <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Upload to Workspace</h5>
+                        <button type="button" class="btn-close" id="closeUploadModalBtn"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="text-center p-4 mb-3 border rounded upload-zone bg-light" id="wsUploadZone" style="cursor: pointer;">
+                            <i class="bi bi-cloud-upload display-4 text-muted" aria-hidden="true"></i>
+                            <h6 class="mt-3">Drag files here or click to browse</h6>
+                            <p class="small text-muted mb-0">Maximum 10MB</p>
+                            <input type="file" id="wsFileInput" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.gif,.webp,.xlsx,.xls" style="display: none;">
+                        </div>
+                        <div class="mb-3">
+                            <p class="mb-2"><strong>Selected:</strong> <span id="wsSelectedFile">No file selected</span></p>
+                        </div>
+                        <div class="progress mb-3" style="display: none;" id="wsProgressBar">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="cancelUploadBtn">Cancel</button>
+                        <button type="button" class="btn btn-primary btn-brass" id="confirmUploadBtn" disabled>Upload</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    setupUploadModalListeners();
+}
+
+function setupUploadModalListeners() {
+    const uploadZone = pageRoot.querySelector('#wsUploadZone');
+    const fileInput = pageRoot.querySelector('#wsFileInput');
+    const confirmBtn = pageRoot.querySelector('#confirmUploadBtn');
+    const closeBtn = pageRoot.querySelector('#closeUploadModalBtn');
+    const cancelBtn = pageRoot.querySelector('#cancelUploadBtn');
+
+    if (closeBtn) closeBtn.addEventListener('click', closeUploadModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeUploadModal);
+
+    if (uploadZone) {
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length) handleWorkspaceFile(files[0]);
+        });
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleWorkspaceFile(e.target.files[0]);
+        });
+    }
+
+    if (confirmBtn) confirmBtn.addEventListener('click', uploadWorkspaceFile);
+}
+
+function handleWorkspaceFile(file) {
+    const allowedTypes = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain',
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'application/x-msexcel',
+        'application/x-excel'
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+        showToast('Invalid file type', 'danger');
+        return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('File too large (max 10MB)', 'danger');
+        return;
+    }
+
+    workspaceUploadSelectedFile = file;
+    const selectedLabel = pageRoot.querySelector('#wsSelectedFile');
+    if (selectedLabel) selectedLabel.textContent = file.name;
+    const confirmBtn = pageRoot.querySelector('#confirmUploadBtn');
+    if (confirmBtn) confirmBtn.disabled = false;
+}
+
+function uploadWorkspaceFile() {
+    if (!workspaceUploadSelectedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', workspaceUploadSelectedFile);
+
+    const progressBar = pageRoot.querySelector('#wsProgressBar');
+    if (progressBar) progressBar.style.display = 'block';
+
+    const confirmBtn = pageRoot.querySelector('#confirmUploadBtn');
+    if (confirmBtn) confirmBtn.disabled = true;
+
+    fetch('/api/files/upload', {
+        method: 'POST',
+        body: formData
+    })
+        .then((r) => r.json())
+        .then((result) => {
+            if (progressBar) progressBar.style.display = 'none';
+            if (result.status) {
+                return fetch(`/api/workspaces/${currentWorkspaceId}/add-file`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_id: result.file_id })
+                }).then((r) => r.json());
+            } else {
+                showToast(result.error || 'Upload failed', 'danger');
+                if (confirmBtn) confirmBtn.disabled = false;
+                throw new Error('Upload failed');
+            }
+        })
+        .then((addResult) => {
+            if (addResult && addResult.status) {
+                showToast('Uploaded successfully', 'success');
+                closeUploadModal();
+                loadWorkspaceDetails();
+            } else {
+                showToast(addResult?.error || 'Failed to add to workspace', 'danger');
+                if (confirmBtn) confirmBtn.disabled = false;
+            }
+        })
+        .catch((err) => {
+            if (progressBar) progressBar.style.display = 'none';
+            if (err.message !== 'Upload failed') {
+                showToast('Upload failed', 'danger');
+                if (confirmBtn) confirmBtn.disabled = false;
+            }
+        });
+}
+
+function closeUploadModal() {
+    workspaceUploadSelectedFile = null;
+    const modal = pageRoot.querySelector('#noteEditorModal');
+    if (modal) modal.innerHTML = '';
 }

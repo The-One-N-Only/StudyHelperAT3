@@ -444,12 +444,9 @@ button, .btn, a, input, select, textarea {
 
 .surface-wood {
     background-color: var(--paper-100);
-    background-image:
-        linear-gradient(var(--paper-100), var(--paper-100)),
-        url("/static/img/textures/wood-texture-light.png");
-    background-blend-mode: multiply;
+    background-image: url("/static/img/textures/wood-texture-light.png");
     background-repeat: repeat;
-    background-size: auto, 180px;
+    background-size: auto;
     border: 1px solid hsl(33 30% 65% / 0.45);
     border-radius: var(--radius-panel);
     box-shadow: var(--shadow-parchment-raised);
@@ -457,12 +454,9 @@ button, .btn, a, input, select, textarea {
 
 :root:not([data-bs-theme="dark"]) .surface-leather {
     background-color: var(--paper-100);
-    background-image:
-        linear-gradient(hsl(33 28% 82% / 0.78), hsl(33 28% 82% / 0.78)),
-        url("/static/img/textures/wood-texture-light.png");
-    background-blend-mode: normal;
+    background-image: url("/static/img/textures/wood-texture-light.png");
     background-repeat: repeat;
-    background-size: auto, 180px;
+    background-size: auto;
     border: 1px solid hsl(33 30% 65% / 0.45);
     border-radius: var(--radius-panel);
     box-shadow: var(--shadow-parchment-raised);
@@ -507,12 +501,9 @@ button, .btn, a, input, select, textarea {
 
 .btn-secondary-wood {
     background-color: var(--paper-200);
-    background-image:
-        linear-gradient(rgb(226 213 198 / 0.72), rgb(226 213 198 / 0.72)),
-        url("/static/img/textures/wood-texture-light.png");
-    background-blend-mode: normal;
-    background-repeat: repeat, repeat;
-    background-size: auto, 180px;
+    background-image: url("/static/img/textures/wood-texture-light.png");
+    background-repeat: repeat;
+    background-size: auto;
     border: 1px solid hsl(33 30% 60% / 0.50);
     border-radius: var(--radius-button);
     color: var(--ink-900);
@@ -617,6 +608,25 @@ p {
 :root:not([data-bs-theme="dark"]) #navSidebarOffcanvas .list-group-item:focus-visible {
     background: hsl(33 30% 72% / 0.35);
     color: var(--ink-900);
+}
+
+:root:not([data-bs-theme="dark"]) #navSidebarOffcanvas.surface-wood,
+:root:not([data-bs-theme="dark"]) #navSidebarOffcanvas.surface-wood .offcanvas-body {
+    background-color: var(--paper-100);
+    background-image: url("/static/img/textures/wood-texture-light.png");
+    background-repeat: repeat;
+    background-size: auto;
+    border: 1px solid hsl(33 30% 65% / 0.45);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-parchment-raised);
+}
+
+:root:not([data-bs-theme="dark"]) #navSidebarOffcanvas.surface-wood .offcanvas-header {
+    background-color: var(--paper-100);
+    background-image: url("/static/img/textures/wood-texture-light.png");
+    background-repeat: repeat;
+    background-size: auto;
+    border-bottom: 1px solid hsl(33 30% 65% / 0.45);
 }
 
 /* Old Book: controls */
@@ -977,12 +987,9 @@ p {
 
 :root:not([data-bs-theme="dark"]) .browse-search-shell {
     background-color: var(--paper-100);
-    background-image:
-        linear-gradient(hsl(33 28% 82% / 0.65), hsl(33 28% 82% / 0.65)),
-        url("/static/img/textures/wood-texture-light.png");
-    background-blend-mode: normal;
+    background-image: url("/static/img/textures/wood-texture-light.png");
     background-repeat: repeat;
-    background-size: auto, 180px;
+    background-size: auto;
     border-bottom: 1px solid hsl(33 30% 60% / 0.30) !important;
     position: relative;
     z-index: calc(var(--z-content) + 1);
@@ -1845,13 +1852,10 @@ p {
 
 [data-bs-theme="dark"] .surface-wood {
     background-color: var(--surface-700);
-    background-image:
-        linear-gradient(hsl(31 51% 12% / 0.38), hsl(31 51% 12% / 0.38)),
-        url("/static/img/textures/wood-texture.png");
-    background-blend-mode: normal;
+    background-image: url("/static/img/textures/wood-texture.png");
     background-position: 0 0;
-    background-repeat: repeat, repeat;
-    background-size: auto, 200px;
+    background-repeat: repeat;
+    background-size: auto;
     border: 1px solid hsl(35 40% 45% / 0.18);
     border-radius: var(--radius-panel);
     box-shadow: var(--shadow-warm-raised);
@@ -1859,13 +1863,10 @@ p {
 
 [data-bs-theme="dark"] .surface-leather {
     background-color: var(--surface-700);
-    background-image:
-        linear-gradient(hsl(31 51% 12% / 0.38), hsl(31 51% 12% / 0.38)),
-        url("/static/img/textures/wood-texture.png");
-    background-blend-mode: normal;
+    background-image: url("/static/img/textures/wood-texture.png");
     background-position: 0 0;
-    background-repeat: repeat, repeat;
-    background-size: auto, 200px;
+    background-repeat: repeat;
+    background-size: auto;
     border: 1px solid hsl(35 40% 45% / 0.18);
     border-radius: var(--radius-panel);
     box-shadow: var(--shadow-warm-raised);
@@ -1893,13 +1894,10 @@ p {
 
 [data-bs-theme="dark"] .btn-secondary-wood {
     background-color: var(--surface-800);
-    background-image:
-        linear-gradient(hsl(30 43% 12% / 0.52), hsl(30 43% 12% / 0.52)),
-        url("/static/img/textures/wood-texture.png");
-    background-blend-mode: normal;
+    background-image: url("/static/img/textures/wood-texture.png");
     background-position: 0 0;
-    background-repeat: repeat, repeat;
-    background-size: auto, 180px;
+    background-repeat: repeat;
+    background-size: auto;
     border: 1px solid hsl(35 40% 45% / 0.22);
     border-radius: var(--radius-button);
     color: var(--gold-300);
@@ -2172,25 +2170,19 @@ p {
 [data-bs-theme="dark"] #navSidebarOffcanvas.surface-wood,
 [data-bs-theme="dark"] #navSidebarOffcanvas.surface-wood .offcanvas-body {
     background-color: var(--surface-700);
-    background-image:
-        linear-gradient(hsl(31 51% 12% / 0.38), hsl(31 51% 12% / 0.38)),
-        url("/static/img/textures/wood-texture.png");
-    background-blend-mode: normal;
+    background-image: url("/static/img/textures/wood-texture.png");
     background-position: 0 0;
-    background-repeat: repeat, repeat;
-    background-size: auto, 200px;
+    background-repeat: repeat;
+    background-size: auto;
     border: 1px solid hsl(35 40% 45% / 0.18);
 }
 
 [data-bs-theme="dark"] #navSidebarOffcanvas.surface-wood .offcanvas-header {
     background-color: var(--surface-700);
-    background-image:
-        linear-gradient(hsl(31 51% 12% / 0.38), hsl(31 51% 12% / 0.38)),
-        url("/static/img/textures/wood-texture.png");
-    background-blend-mode: normal;
+    background-image: url("/static/img/textures/wood-texture.png");
     background-position: 0 0;
-    background-repeat: repeat, repeat;
-    background-size: auto, 200px;
+    background-repeat: repeat;
+    background-size: auto;
     border-bottom: 1px solid hsl(35 40% 45% / 0.18);
 }
 
@@ -2279,12 +2271,9 @@ p {
 
 [data-bs-theme="dark"] .browse-search-shell {
     background-color: var(--surface-700);
-    background-image:
-        linear-gradient(hsl(31 51% 12% / 0.55), hsl(31 51% 12% / 0.55)),
-        url("/static/img/textures/wood-texture.png");
-    background-blend-mode: normal;
+    background-image: url("/static/img/textures/wood-texture.png");
     background-repeat: repeat;
-    background-size: auto, 200px;
+    background-size: auto;
     border-bottom: 1px solid hsl(35 40% 45% / 0.12) !important;
     position: relative;
     z-index: calc(var(--z-content) + 1);

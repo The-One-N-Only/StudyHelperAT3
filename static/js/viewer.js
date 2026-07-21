@@ -349,6 +349,15 @@ export function renderGoogleBooksFallback(body, item, reason) {
     }
     appendTextElement(metadata, 'p', reason, 'google-books-fallback-reason');
 
+    const linkUrl = safeHttpUrl(item?.accessInfo?.webReaderLink)
+        || safeHttpUrl(item?.source_url);
+    const link = createExternalLink(
+        linkUrl,
+        'Open Google Books',
+        'btn btn-primary btn-sm',
+    );
+    if (link) metadata.appendChild(link);
+
     const accessInfo = item?.accessInfo && typeof item.accessInfo === 'object'
         ? item.accessInfo
         : {};
@@ -359,18 +368,9 @@ export function renderGoogleBooksFallback(body, item, reason) {
     appendTextElement(
         metadata,
         'p',
-        `Preview status: ${previewStatus || 'UNKNOWN'}`,
+        previewStatus ? `Preview status: ${previewStatus}` : 'Preview status not available from this search result.',
         'google-books-preview-status',
     );
-
-    const linkUrl = safeHttpUrl(accessInfo.webReaderLink)
-        || safeHttpUrl(item?.source_url);
-    const link = createExternalLink(
-        linkUrl,
-        'Open Google Books',
-        'btn btn-primary btn-sm',
-    );
-    if (link) metadata.appendChild(link);
     fallback.appendChild(metadata);
     body.appendChild(fallback);
 }

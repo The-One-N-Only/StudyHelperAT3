@@ -781,6 +781,7 @@ class FakeElement {
     this._textContent = null;
     this.children = [];
     this.cardTarget = null;
+    this._cardBody = null;
   }
 
   get innerHTML() {
@@ -794,6 +795,9 @@ class FakeElement {
   get textContent() {
     return this._textContent ?? "";
   }
+
+  focus() {}
+  remove() {}
 
   addEventListener(type, callback) {
     const callbacks = this.listeners.get(type) || [];
@@ -817,10 +821,22 @@ class FakeElement {
       const hasCardClass = [...this._innerHTML.matchAll(/\bclass=(["'])([^"']*)\1/g)]
         .some(([, , classes]) => classes.split(/\s+/).includes("card"));
       if (!hasCardClass) return null;
-      this.cardTarget ||= new FakeElement("workspaceCardTarget");
-      return this.cardTarget;
+      this._cardTarget ||= new FakeElement("workspaceCardTarget");
+      return this._cardTarget;
     }
+    if (selector === ".card-body") return this._ensureCardBody();
+    // All inline workspace create elements must be globally shared
+    if (selector === "#inlineWorkspaceName") return inlineWorkspaceName;
+    if (selector === "#inlineCreateBtn") return inlineCreateBtn;
+    if (selector === "#inlineCancelBtn") return inlineCancelBtn;
     return null;
+  }
+
+  _ensureCardBody() {
+    if (!this._cardBody) {
+      this._cardBody = new FakeElement("cardBody");
+    }
+    return this._cardBody;
   }
 
   appendChild(child) {
@@ -833,11 +849,15 @@ const root = new FakeElement("root");
 const searchInput = new FakeElement("workspaceSearch");
 const searchButton = new FakeElement("homeSearchBtn");
 const workspaceCards = new FakeElement("workspaceCards");
+const inlineWorkspaceName = new FakeElement("inlineWorkspaceName");
+const inlineCreateBtn = new FakeElement("inlineCreateBtn");
+const inlineCancelBtn = new FakeElement("inlineCancelBtn");
 const fetchCalls = [];
 const promptResponses = [null, null, "New Workspace"];
 let promptCalls = 0;
 globalThis.toastCalls = [];
 globalThis.window = { location: { href: "" } };
+globalThis.requestAnimationFrame = (fn) => fn();
 globalThis.prompt = (message, defaultValue) => {
   invariant(message === "Enter a name for the new workspace:", "prompt message changed");
   invariant(defaultValue === "New Workspace", "prompt default changed");
@@ -901,11 +921,21 @@ let addCardTarget = addCard.querySelector(".card");
 invariant(addCardTarget.listeners.get("click")?.length === 1, "add listener missing");
 invariant(addCardTarget.listeners.get("keydown")?.length === 1, "add keyboard listener missing");
 
+// Inline create: Enter opens inline form
 await addCardTarget.dispatch("keydown", { key: "Enter" });
-invariant(promptCalls === 1, "Enter did not open create dialog");
+invariant(addCardTarget.dataset.editing === "true", "Enter did not start inline create");
+invariant(addCardTarget.querySelector(".card-body").innerHTML.includes("inlineWorkspaceName"), "inline form missing");
+
+// Reset and test Space
+addCardTarget.dataset.editing = "false";
+addCardTarget.querySelector(".card-body").innerHTML = "";
+inlineWorkspaceName.listeners = new Map();
+inlineCreateBtn.listeners = new Map();
+inlineCancelBtn.listeners = new Map();
 const spaceEvent = await addCardTarget.dispatch("keydown", { key: " " });
-invariant(promptCalls === 2, "Space did not open create dialog");
+invariant(addCardTarget.dataset.editing === "true", "Space did not start inline create");
 invariant(spaceEvent.defaultPrevented, "Space did not prevent page scroll");
+invariant(addCardTarget.querySelector(".card-body").innerHTML.includes("inlineWorkspaceName"), "Space inline form missing");
 
 let renderedCard = workspaceCards.children[1].innerHTML;
 invariant(renderedCard.includes('&lt;unsafe "quoted" &amp; name&gt;'), "workspace title not escaped");
@@ -937,7 +967,21 @@ invariant(window.location.href === "/browse?q=archives", "search button did not 
 
 addCard = workspaceCards.children[0];
 addCardTarget = addCard.querySelector(".card");
+// Reset state to get a fresh inline form (clear accumulated listeners)
+addCardTarget.dataset.editing = "false";
+addCardTarget.querySelector(".card-body").innerHTML = "";
+inlineWorkspaceName.listeners = new Map();
+inlineCreateBtn.listeners = new Map();
+inlineCancelBtn.listeners = new Map();
+// Click the add card to open inline form
 await addCardTarget.dispatch("click");
+invariant(addCardTarget.dataset.editing === "true", "click did not start inline create");
+// Fill in the workspace name
+const inlineInput = addCardTarget.querySelector("#inlineWorkspaceName");
+inlineInput.value = "New Workspace";
+// Click the Create button
+const createBtn = addCardTarget.querySelector("#inlineCreateBtn");
+await createBtn.dispatch("click");
 invariant(fetchCalls.length === 2, "create did not issue one request");
 const createCall = fetchCalls[1];
 invariant(createCall.url === "/api/workspaces", "create API URL changed");
@@ -3087,7 +3131,7 @@ def test_dashboard_has_archive_hooks_without_changing_data_flow():
         "archive-category-badge",
         ">Workspace<",
         "loadWorkspaces()",
-        "createWorkspaceDialog",
+        "startInlineWorkspaceCreate",
         "fetch('/api/workspaces')",
     )
     for marker in required:
@@ -3355,7 +3399,7 @@ function makeCard() {
     [".save-icon-light", new FakeElement("light icon")],
     [".save-icon-dark", new FakeElement("dark icon")],
     [".view-btn", new FakeElement("view", "btn btn-outline-secondary btn-secondary-leather btn-sm w-50 view-btn")],
-    [".add-btn", new FakeElement("add", "btn btn-primary btn-secondary-leather btn-sm w-50 add-btn")],
+    [".add-btn", new FakeElement("add", "btn btn-primary btn-secondary-leather btn-sm px-1 w-50 add-btn")],
     [".workspace-select", new FakeElement("workspace", "form-select form-select-sm archive-dropdown workspace-select")],
   ]);
   for (const selector of [".save-btn", ".view-btn", ".add-btn"]) {
@@ -6038,6 +6082,10 @@ WORKSPACE_IMPORT_REPLACEMENTS = (
     (
         "let pageRoot = null;",
         "let pageRoot = globalThis.__workspaceRoot;",
+    ),
+    (
+        "import {\n    isGoogleBooksResult,\n    googleBooksVolumeId,\n    loadGoogleBooksApi,\n    resetGoogleBooksViewerState,\n    renderGoogleBooksFallback,\n    renderViewerNotice,\n} from '../viewer.js';",
+        "const isGoogleBooksResult = () => false;\nconst googleBooksVolumeId = () => '';\nconst loadGoogleBooksApi = async () => { throw new Error('no google books in preview'); };\nconst resetGoogleBooksViewerState = () => {};\nconst renderGoogleBooksFallback = (body, item, reason) => { body.replaceChildren(); body.textContent = reason; };\nconst renderViewerNotice = () => {};",
     ),
 )
 WORKSPACE_PREVIEW_RUNTIME_HARNESS = TASK6_RUNTIME_BASE + r"""

@@ -24,9 +24,9 @@ async function bootstrapPage() {
                 module.initWorkspace(root);
                 break;
             }
-            case 'upload': {
-                const module = await import('./pages/upload.js');
-                module.initUpload(root);
+            case 'saved': {
+                const module = await import('./pages/saved.js');
+                module.initSaved(root);
                 break;
             }
             default:

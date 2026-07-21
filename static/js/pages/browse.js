@@ -1486,7 +1486,7 @@ function renderResults(results) {
     results.forEach((item) => {
         const col = document.createElement('div');
         col.className = 'col';
-        col.appendChild(createCard(item));
+        col.appendChild(createCard(item, lastSearchQuery || ''));
         row.appendChild(col);
     });
     resultsContainer.appendChild(row);

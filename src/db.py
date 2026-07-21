@@ -65,6 +65,7 @@ class UserToSaved(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), primary_key=True)
     time_inserted: Mapped[int] = mapped_column(nullable=False)
+    query: Mapped[str] = mapped_column(String(1023), nullable=True)
 
     user = relationship("User", back_populates="saved_items")
     item = relationship("Item", back_populates="saved_by")
@@ -217,6 +218,12 @@ def setup_db():
         columns = [row[1] for row in result]
         if 'workspace_id' not in columns:
             conn.execute(text("ALTER TABLE notes ADD COLUMN workspace_id INTEGER"))
+
+        # Add query column to user_to_saved if missing
+        result = conn.execute(text("PRAGMA table_info(user_to_saved)"))
+        columns = [row[1] for row in result]
+        if 'query' not in columns:
+            conn.execute(text("ALTER TABLE user_to_saved ADD COLUMN query VARCHAR(1023)"))
 
         # Add search_cache table if missing
         result = conn.execute(text("PRAGMA table_info(search_cache)"))
@@ -481,15 +488,51 @@ def get_saved_items(user_id):
             "volume": item.volume,
             "issue": item.issue,
             "doi": item.doi,
-            "saved_at": uts.time_inserted
+            "saved_at": uts.time_inserted,
+            "query": uts.query
         } for uts, item in saved]
 
-def save_item(item_id, user_id):
+def get_saved_items_grouped(user_id):
+    with SessionLocal() as session:
+        saved = session.query(UserToSaved, Item).join(Item).filter(UserToSaved.user_id == user_id).order_by(UserToSaved.time_inserted.desc()).all()
+        if not saved:
+            return []
+
+        groups = {}
+        for uts, item in saved:
+            query = (uts.query or '').strip() or 'Unsorted'
+            if query not in groups:
+                groups[query] = []
+            groups[query].append({
+                "id": item.id,
+                "title": item.title,
+                "description": item.description,
+                "thumb_url": item.thumb_url,
+                "thumb_mime": item.thumb_mime,
+                "thumb_height": item.thumb_height,
+                "source_url": item.source_url,
+                "source_name": item.source_name,
+                "source_id": item.source_id,
+                "abstract": item.abstract,
+                "authors": item.authors,
+                "journal": item.journal,
+                "year": item.year,
+                "volume": item.volume,
+                "issue": item.issue,
+                "doi": item.doi,
+                "saved_at": uts.time_inserted,
+                "query": query,
+                "saved": True
+            })
+
+        return [{"query": q, "items": items} for q, items in groups.items()]
+
+def save_item(item_id, user_id, query=''):
     with SessionLocal() as session:
         existing = session.query(UserToSaved).filter_by(user_id=user_id, item_id=item_id).first()
         if existing:
             return None  # Already saved
-        new_save = UserToSaved(user_id=user_id, item_id=item_id, time_inserted=int(time.time() * 1000000))
+        new_save = UserToSaved(user_id=user_id, item_id=item_id, time_inserted=int(time.time() * 1000000), query=query)
         session.add(new_save)
         session.commit()
         return "Saved"
@@ -935,39 +978,73 @@ def delete_workspace(workspace_id, user_id):
 def get_workspace_items(user_id, workspace_id=None):
     """Get items from a workspace, or default workspace if workspace_id is None"""
     with SessionLocal() as session:
-        query = session.query(WorkspaceItem, Item).join(Item).filter(WorkspaceItem.user_id == user_id)
+        query = session.query(WorkspaceItem, Item, UploadedFile).outerjoin(Item).outerjoin(UploadedFile).filter(WorkspaceItem.user_id == user_id)
         if workspace_id:
             query = query.filter(WorkspaceItem.workspace_id == workspace_id)
-        items = query.order_by(WorkspaceItem.position).all()
-        return [{
-            "id": wi.id,
-            "item_id": wi.item_id,
-            "file_id": wi.file_id,
-            "workspace_id": wi.workspace_id,
-            "summary": wi.summary,
-            "bullets": json.loads(wi.bullets) if wi.bullets else [],
-            "relevance": wi.relevance,
-            "atn_used": wi.atn_used,
-            "citation_apa": wi.citation_apa,
-            "citation_harvard": wi.citation_harvard,
-            "position": wi.position,
-            "time_added": wi.time_added,
-            "title": item.title,
-            "description": item.description,
-            "thumb_url": item.thumb_url,
-            "thumb_mime": item.thumb_mime,
-            "thumb_height": item.thumb_height,
-            "source_url": item.source_url,
-            "source_name": item.source_name,
-            "source_id": item.source_id,
-            "abstract": item.abstract,
-            "authors": item.authors,
-            "journal": item.journal,
-            "year": item.year,
-            "volume": item.volume,
-            "issue": item.issue,
-            "doi": item.doi
-        } for wi, item in items]
+        rows = query.order_by(WorkspaceItem.position).all()
+        items = []
+        for wi, item, file_ in rows:
+            if file_:
+                items.append({
+                    "id": wi.id,
+                    "item_id": wi.item_id,
+                    "file_id": wi.file_id,
+                    "workspace_id": wi.workspace_id,
+                    "summary": wi.summary,
+                    "bullets": json.loads(wi.bullets) if wi.bullets else [],
+                    "relevance": wi.relevance,
+                    "atn_used": wi.atn_used,
+                    "citation_apa": wi.citation_apa,
+                    "citation_harvard": wi.citation_harvard,
+                    "position": wi.position,
+                    "time_added": wi.time_added,
+                    "title": file_.filename,
+                    "description": "",
+                    "thumb_url": "",
+                    "thumb_mime": "",
+                    "thumb_height": None,
+                    "source_url": f"/{file_.stored_path}",
+                    "source_name": f"Uploaded {file_.file_type.upper()}",
+                    "source_id": "",
+                    "abstract": (file_.extracted_text or "")[:200],
+                    "authors": "",
+                    "journal": "",
+                    "year": None,
+                    "volume": "",
+                    "issue": "",
+                    "doi": ""
+                })
+            elif item:
+                items.append({
+                    "id": wi.id,
+                    "item_id": wi.item_id,
+                    "file_id": wi.file_id,
+                    "workspace_id": wi.workspace_id,
+                    "summary": wi.summary,
+                    "bullets": json.loads(wi.bullets) if wi.bullets else [],
+                    "relevance": wi.relevance,
+                    "atn_used": wi.atn_used,
+                    "citation_apa": wi.citation_apa,
+                    "citation_harvard": wi.citation_harvard,
+                    "position": wi.position,
+                    "time_added": wi.time_added,
+                    "title": item.title,
+                    "description": item.description,
+                    "thumb_url": item.thumb_url,
+                    "thumb_mime": item.thumb_mime,
+                    "thumb_height": item.thumb_height,
+                    "source_url": item.source_url,
+                    "source_name": item.source_name,
+                    "source_id": item.source_id,
+                    "abstract": item.abstract,
+                    "authors": item.authors,
+                    "journal": item.journal,
+                    "year": item.year,
+                    "volume": item.volume,
+                    "issue": item.issue,
+                    "doi": item.doi
+                })
+        return items
 
 def add_to_workspace(user_id, item_id, summary, bullets, relevance, atn_used, citation_apa, citation_harvard, workspace_id=None):
     """Add an item to workspace"""
@@ -1008,6 +1085,40 @@ def add_to_workspace(user_id, item_id, summary, bullets, relevance, atn_used, ci
             "atn_used": new_item.atn_used,
             "citation_apa": new_item.citation_apa,
             "citation_harvard": new_item.citation_harvard,
+            "position": new_item.position,
+            "time_added": new_item.time_added
+        }
+
+def add_file_to_workspace(user_id, file_id, workspace_id=None):
+    """Add an uploaded file to a workspace"""
+    with SessionLocal() as session:
+        if workspace_id is None:
+            default = session.query(Workspace).filter_by(user_id=user_id).first()
+            if not default:
+                default = Workspace(user_id=user_id, name="My Collection", time_created=int(time.time()))
+                session.add(default)
+                session.flush()
+            workspace_id = default.id
+
+        max_pos = session.query(func.max(WorkspaceItem.position)).filter_by(workspace_id=workspace_id).scalar() or 0
+        new_item = WorkspaceItem(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            file_id=file_id,
+            summary="",
+            bullets="[]",
+            citation_apa="",
+            citation_harvard="",
+            position=max_pos + 1,
+            time_added=int(time.time())
+        )
+        session.add(new_item)
+        session.commit()
+        session.refresh(new_item)
+        return {
+            "id": new_item.id,
+            "file_id": new_item.file_id,
+            "workspace_id": new_item.workspace_id,
             "position": new_item.position,
             "time_added": new_item.time_added
         }

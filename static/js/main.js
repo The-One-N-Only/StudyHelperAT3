@@ -67,8 +67,53 @@ function initNavigation() {
     });
 }
 
+function initWorkspacesDropdown() {
+    const dropdownContainer = document.querySelector('#navSidebarOffcanvas .workspaces-dropdown');
+    const toggle = dropdownContainer?.querySelector('.workspaces-dropdown-toggle');
+    const menu = document.getElementById('workspacesDropdownMenu');
+
+    if (!toggle || !menu) return;
+
+    fetch('/api/workspaces')
+        .then((r) => r.json())
+        .then((data) => {
+            if (!data.status || !data.workspaces || data.workspaces.length === 0) return;
+
+            menu.innerHTML = '';
+            data.workspaces.forEach((ws) => {
+                const link = document.createElement('a');
+                link.className = 'workspace-link';
+                link.href = `/workspace/${ws.id}`;
+                link.textContent = ws.name;
+                menu.appendChild(link);
+            });
+        })
+        .catch(() => {});
+
+    toggle.addEventListener('click', () => {
+        const expanded = toggle.getAttribute('aria-expanded') === 'true';
+        toggle.setAttribute('aria-expanded', String(!expanded));
+        menu.classList.toggle('show', !expanded);
+    });
+
+    menu.addEventListener('click', (e) => {
+        if (e.target.classList.contains('workspace-link')) {
+            toggle.setAttribute('aria-expanded', 'false');
+            menu.classList.remove('show');
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!dropdownContainer.contains(e.target)) {
+            toggle.setAttribute('aria-expanded', 'false');
+            menu.classList.remove('show');
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
+    initWorkspacesDropdown();
     const sidebarBrowseLink = document.querySelector('#navSidebarOffcanvas a[href="/browse"]');
     if (sidebarBrowseLink) {
         sidebarBrowseLink.addEventListener('click', () => {

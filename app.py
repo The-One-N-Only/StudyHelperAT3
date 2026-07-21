@@ -96,13 +96,6 @@ def workspace(workspace_id):
     logging.info(f"User {user_id} accessed workspace {workspace_id}")
     return render_template('workspace.html', workspace_id=workspace_id, workspace_name=workspace['name'])
 
-@app.route('/upload')
-def upload():
-    if not session.get('user_id'):
-        return redirect('/')
-    logging.info(f"User {session['user_id']} accessed upload page")
-    return render_template('upload.html')
-
 def get_csrf_token():
     token = session.get('_csrf_token')
     if not token:
@@ -572,6 +565,25 @@ def workspace_add():
         logging.error(f"Error adding to workspace: {str(e)}")
         return jsonify({'status': False, 'error': 'Failed to add item'}), 500
 
+@app.route('/api/workspaces/<int:workspace_id>/add-file', methods=['POST'])
+def add_file_to_workspace(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
+    data = request.json
+    file_id = data.get('file_id')
+    if not file_id:
+        return jsonify({'status': False, 'error': 'file_id required'}), 400
+    
+    try:
+        result = db.add_file_to_workspace(user_id, file_id, workspace_id)
+        logging.info(f"User {user_id} added file {file_id} to workspace {workspace_id}")
+        return jsonify({'status': True, 'item': result})
+    except Exception as e:
+        logging.error(f"Error adding file to workspace: {str(e)}")
+        return jsonify({'status': False, 'error': 'Failed to add file to workspace'}), 500
+
 @app.route('/api/workspaces', methods=['GET'])
 def get_workspaces():
     user_id = session.get('user_id')
@@ -707,6 +719,26 @@ def workspace_items():
     
     workspace_id = request.args.get('workspace_id', type=int)
     items = db.get_workspace_items(user_id, workspace_id) or []
+    for item in items:
+        source_name = (item.get('source_name') or '').lower()
+        source_url = item.get('source_url') or ''
+        if source_name in ('gbooks', 'google books') or 'books.google.com' in source_url:
+            volume_id = search._google_books_volume_id(source_url)
+            if not volume_id:
+                source_id = item.get('source_id', '')
+                volume_id = search._google_books_volume_id(source_id)
+            if not volume_id:
+                source_id = item.get('source_id', '')
+                if search.GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(source_id):
+                    volume_id = source_id
+            if volume_id:
+                item['google_books_volume_id'] = volume_id
+            item['accessInfo'] = {
+                'embeddable': True,
+                'webReaderLink': source_url,
+                'viewability': 'UNKNOWN',
+                'accessViewStatus': 'NONE',
+            }
     logging.info(f"User {user_id} viewed workspace items for workspace {workspace_id or 'default'}")
     return jsonify({'status': True, 'items': items})
 
@@ -862,8 +894,9 @@ def save_item():
     
     data = request.json
     item_id = data['item_id']
-    result = db.save_item(item_id, user_id)
-    logging.info(f"User {user_id} saved item {item_id}")
+    query = data.get('query', '')
+    result = db.save_item(item_id, user_id, query=query)
+    logging.info(f"User {user_id} saved item {item_id} with query '{query}'")
     return jsonify({'status': result is not None})
 
 @app.route('/api/item/unsave', methods=['POST'])
@@ -877,6 +910,23 @@ def unsave_item():
     result = db.unsave_item(item_id, user_id)
     logging.info(f"User {user_id} unsaved item {item_id}")
     return jsonify({'status': result is not None})
+
+@app.route('/saved')
+def saved_page():
+    if not session.get('user_id'):
+        return redirect(url_for('login'))
+    logging.info(f"User {session['user_id']} accessed saved sources page")
+    return render_template('saved.html')
+
+@app.route('/api/saved')
+def api_saved():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    
+    grouped = db.get_saved_items_grouped(user_id)
+    logging.info(f"User {user_id} fetched saved items")
+    return jsonify({'status': True, 'groups': grouped})
 
 @app.route('/api/recent/viewed', methods=['POST'])
 def add_recent_viewed():

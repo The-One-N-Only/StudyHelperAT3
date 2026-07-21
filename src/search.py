@@ -265,10 +265,18 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
             item = db.get_item_by_id(item_id, user_id, True)
             if item:
                 response_item = dict(item)
-                response_item["google_books_volume_id"] = _browse_google_books_volume_id({
+                google_books_volume_id = _browse_google_books_volume_id({
                     "link": item["source_url"],
                     "source_id": item["source_id"],
                 })
+                response_item["google_books_volume_id"] = google_books_volume_id
+                if google_books_volume_id:
+                    response_item["accessInfo"] = {
+                        "embeddable": True,
+                        "webReaderLink": item["source_url"],
+                        "viewability": "UNKNOWN",
+                        "accessViewStatus": "NONE",
+                    }
                 results.append(response_item)
         return results
 
@@ -344,6 +352,13 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
             )
             response_item = dict(stored_item)
             response_item["google_books_volume_id"] = google_books_volume_id
+            if google_books_volume_id:
+                response_item["accessInfo"] = {
+                    "embeddable": True,
+                    "webReaderLink": link,
+                    "viewability": "UNKNOWN",
+                    "accessViewStatus": "NONE",
+                }
             results.append(response_item)
             if len(results) >= target:
                 break

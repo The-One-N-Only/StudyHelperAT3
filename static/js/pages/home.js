@@ -79,7 +79,7 @@ function renderWorkspaceCards() {
         </div>
     `;
     const addCardTarget = addCard.querySelector('.card');
-    addCardTarget.addEventListener('click', createWorkspaceDialog);
+    addCardTarget.addEventListener('click', () => startInlineWorkspaceCreate(addCardTarget));
     addCardTarget.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') {
             return;
@@ -87,7 +87,7 @@ function renderWorkspaceCards() {
         if (event.key === ' ') {
             event.preventDefault();
         }
-        createWorkspaceDialog();
+        startInlineWorkspaceCreate(addCardTarget);
     });
     container.appendChild(addCard);
 
@@ -124,35 +124,76 @@ function renderWorkspaceCards() {
     });
 }
 
-async function createWorkspaceDialog() {
-    const name = prompt('Enter a name for the new workspace:', 'New Workspace');
-    if (!name) {
-        return;
-    }
+function startInlineWorkspaceCreate(cardElement) {
+    if (cardElement.dataset.editing === 'true') return;
+    cardElement.dataset.editing = 'true';
 
-    try {
-        const response = await fetch('/api/workspaces', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-        });
-        const data = await response.json();
-        if (!data.status) {
-            throw new Error('Create failed');
+    const cardBody = cardElement.querySelector('.card-body');
+    const originalHTML = cardBody.innerHTML;
+    cardBody.innerHTML = `
+        <div class="d-flex flex-column justify-content-center align-items-center gap-3 w-100">
+            <label for="inlineWorkspaceName" class="h5 mb-0">Create new workspace</label>
+            <input type="text" id="inlineWorkspaceName" class="form-control text-center" placeholder="Enter workspace name..." autocomplete="off" maxlength="120">
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary btn-sm" id="inlineCreateBtn" type="button">Create</button>
+                <button class="btn btn-outline-secondary btn-sm" id="inlineCancelBtn" type="button">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    const input = cardBody.querySelector('#inlineWorkspaceName');
+    const createBtn = cardBody.querySelector('#inlineCreateBtn');
+    const cancelBtn = cardBody.querySelector('#inlineCancelBtn');
+
+    const submitCreate = async () => {
+        const name = input.value.trim();
+        if (!name) return;
+
+        try {
+            const response = await fetch('/api/workspaces', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const data = await response.json();
+            if (!data.status) {
+                throw new Error('Create failed');
+            }
+            showToast('Workspace created', 'success');
+            allWorkspaces.unshift({
+                id: data.workspace.id,
+                name: data.workspace.name,
+                time_created: data.workspace.time_created,
+                item_count: 0,
+                note_count: 0
+            });
+            renderWorkspaceCards();
+            openWorkspace(data.workspace.id);
+        } catch (error) {
+            showToast('Unable to create workspace', 'danger');
+            cardBody.innerHTML = originalHTML;
+            cardElement.dataset.editing = 'false';
         }
-        showToast('Workspace created', 'success');
-        allWorkspaces.unshift({
-            id: data.workspace.id,
-            name: data.workspace.name,
-            time_created: data.workspace.time_created,
-            item_count: 0,
-            note_count: 0
-        });
-        renderWorkspaceCards();
-        openWorkspace(data.workspace.id);
-    } catch (error) {
-        showToast('Unable to create workspace', 'danger');
-    }
+    };
+
+    const cancelEdit = () => {
+        cardBody.innerHTML = originalHTML;
+        cardElement.dataset.editing = 'false';
+    };
+
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            submitCreate();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            cancelEdit();
+        }
+    });
+    createBtn.addEventListener('click', submitCreate);
+    cancelBtn.addEventListener('click', cancelEdit);
+
+    requestAnimationFrame(() => input.focus());
 }
 
 function openWorkspace(workspaceId) {
