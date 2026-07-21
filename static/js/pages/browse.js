@@ -812,7 +812,7 @@ function renderOverviewCard() {
     }
 
     return `
-        <section class="card surface-leather ai-overview-panel mb-3" aria-labelledby="browseOverviewTitle">
+        <section class="card surface-wood ai-overview-panel mb-3" aria-labelledby="browseOverviewTitle">
             <div class="card-header">
                 <h2 class="card-title h5 mb-0" id="browseOverviewTitle">Alexander says...</h2>
             </div>
@@ -836,7 +836,7 @@ function renderSidebar(sourceCounts = {}, results = []) {
     let html = renderOverviewCard();
 
     if (selectedSources.length) {
-        html += '<div class="card surface-leather source-summary-panel mb-3">';
+        html += '<div class="card surface-wood source-summary-panel mb-3">';
         html += '<div class="card-header"><h5 class="card-title mb-0">Search sources</h5></div>';
         html += '<div class="list-group list-group-flush">';
 

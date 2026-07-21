@@ -65,7 +65,7 @@ function renderWorkspaceDetail() {
 
             <div class="row g-4">
                 <div class="col-lg-7 d-flex flex-column gap-4">
-                    <div class="card surface-leather source-preview-box">
+                    <div class="card surface-wood source-preview-box">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <div>
                                 <h5 class="mb-1">Selected source preview</h5>
@@ -77,7 +77,7 @@ function renderWorkspaceDetail() {
                             <div id="selectedSourceViewer" class="border rounded p-2 source-preview-shell" style="min-height: 320px;"></div>
                         </div>
                     </div>
-                    <div class="card surface-leather notes-box">
+                    <div class="card surface-wood notes-box">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <div>
                                 <h5 class="mb-1">Workspace Notes</h5>
@@ -91,7 +91,7 @@ function renderWorkspaceDetail() {
                     </div>
                 </div>
                 <div class="col-lg-5">
-                    <div class="card h-100 surface-leather workspace-right-panel resizable-panel">
+                    <div class="card h-100 surface-wood workspace-right-panel resizable-panel">
                         <div class="card-body d-flex flex-column h-100">
                             <div class="d-flex align-items-center justify-content-between mb-3">
                                 <div>

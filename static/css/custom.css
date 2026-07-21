@@ -165,12 +165,12 @@ button, .btn, a, input, select, textarea {
 }
 
 /* Viewer offcanvas wood texture */
-#viewerOffcanvas.surface-leather {
+#viewerOffcanvas.surface-wood {
     background: var(--surface-600);
     background-image: var(--texture-leather);
 }
 
-:root:not([data-bs-theme="dark"]) #viewerOffcanvas.surface-leather {
+:root:not([data-bs-theme="dark"]) #viewerOffcanvas.surface-wood {
     background: var(--paper-100);
 }
 
@@ -443,16 +443,6 @@ button, .btn, a, input, select, textarea {
 }
 
 .surface-wood {
-    background-color: var(--paper-100);
-    background-image: url("/static/img/textures/wood-texture-light.png");
-    background-repeat: repeat;
-    background-size: auto;
-    border: 1px solid hsl(33 30% 65% / 0.45);
-    border-radius: var(--radius-panel);
-    box-shadow: var(--shadow-parchment-raised);
-}
-
-:root:not([data-bs-theme="dark"]) .surface-leather {
     background-color: var(--paper-100);
     background-image: url("/static/img/textures/wood-texture-light.png");
     background-repeat: repeat;
@@ -1851,17 +1841,6 @@ p {
 }
 
 [data-bs-theme="dark"] .surface-wood {
-    background-color: var(--surface-700);
-    background-image: url("/static/img/textures/wood-texture.png");
-    background-position: 0 0;
-    background-repeat: repeat;
-    background-size: auto;
-    border: 1px solid hsl(35 40% 45% / 0.18);
-    border-radius: var(--radius-panel);
-    box-shadow: var(--shadow-warm-raised);
-}
-
-[data-bs-theme="dark"] .surface-leather {
     background-color: var(--surface-700);
     background-image: url("/static/img/textures/wood-texture.png");
     background-position: 0 0;

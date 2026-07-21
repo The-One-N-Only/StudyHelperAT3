@@ -198,7 +198,7 @@ SHARED_REQUIRED_SELECTORS = (
 )
 TASK3_DARK_ONLY_CLASSES = (
     "surface-wood",
-    "surface-leather",
+    "surface-wood",
     "btn-secondary-leather",
     "btn-brass",
     "btn-ghost",
@@ -224,9 +224,9 @@ TASK3_DARK_ONLY_CLASSES = (
 TASK3_ALLOWED_LIGHT_SELECTOR_GROUPS = frozenset(
     {
         (".surface-wood",),
-        (".surface-leather",),
+        (".surface-wood",),
         (".btn-secondary-leather",),
-        (f"{LIGHT_GUARD} .surface-leather",),
+        (f"{LIGHT_GUARD} .surface-wood",),
         (f"{LIGHT_GUARD} .btn-secondary-leather",),
         (
             f"{LIGHT_GUARD} .btn-secondary-leather:hover",
@@ -8080,7 +8080,7 @@ def test_task6_dynamic_panels_pagination_and_dark_contract_remain_intact():
         returned_template_markup(browse, "renderOverviewCard"),
         "html.parser",
     )
-    assert {"card", "mb-3", "surface-leather", "ai-overview-panel"}.issubset(
+    assert {"card", "mb-3", "surface-wood", "ai-overview-panel"}.issubset(
         overview.select_one(".ai-overview-panel").get("class", ())
     )
     pagination = BeautifulSoup(
@@ -8123,12 +8123,12 @@ def test_upload_view_uses_leather_file_components_and_safe_decorations():
     assert all(item.get("aria-hidden") == "true" for item in decorations)
     content = page.select_one(".container.py-4.archive-content.upload-content")
     assert content.get("style") == "max-width: 700px;"
-    zone = content.select_one("#uploadZone.surface-leather.upload-zone")
+    zone = content.select_one("#uploadZone.surface-wood.upload-zone")
     assert {"card-body", "text-center", "p-5"}.issubset(zone.get("class", ()))
     assert zone.select_one("#fileInput").get("style") == "display: none;"
     upload_button = content.select_one("#uploadBtn")
     assert {"btn", "btn-primary", "btn-brass", "w-100"}.issubset(upload_button.get("class", ()))
-    file_panel = content.select_one(".card.surface-leather.file-list-panel")
+    file_panel = content.select_one(".card.surface-wood.file-list-panel")
     assert {"badge", "bg-primary", "archive-count-badge"}.issubset(file_panel.select_one("#fileCountBadge").get("class", ()))
     for marker in (
         "file-icon file-icon-${file.file_type} text-muted",
@@ -8177,8 +8177,8 @@ def test_workspace_has_archive_panels_tabs_sources_notes_and_chat():
     workspace = read_text("static/js/pages/workspace.js")
     css = read_text("static/css/custom.css")
     for marker in (
-        "archive-page archive-page-workspace", "surface-leather source-preview-box",
-        "surface-leather workspace-right-panel", "workspace-source-item", "chat-messages",
+        "archive-page archive-page-workspace", "surface-wood source-preview-box",
+        "surface-wood workspace-right-panel", "workspace-source-item", "chat-messages",
         '<i class="bi bi-file-earmark-text note-icon-dark d-none me-2" aria-hidden="true"></i><span class="note-icon-light">📝 </span>',
     ):
         assert marker in workspace

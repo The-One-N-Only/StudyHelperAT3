@@ -1611,7 +1611,7 @@ def test_light_dashboard_and_page_header_use_old_book_hierarchy():
 def test_light_browse_search_overview_and_results_match_component_contract():
     css = light_css()
     browse = read_text("static/js/pages/browse.js")
-    assert 'class="card surface-leather source-summary-panel mb-3"' in browse
+    assert 'class="card surface-wood source-summary-panel mb-3"' in browse
     assert 'class="list-group-item"' in browse
     assert f"{LIGHT_GUARD} .source-summary-panel .card-body" not in css
     expected_rules = (
