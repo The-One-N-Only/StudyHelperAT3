@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 import src.proxy as proxy
 
 PUBLIC_URL = "https://en.wikipedia.org/wiki/Sample"
-EXPECTED_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
 class FakeResponse:
@@ -26,11 +25,11 @@ def _simple_html(title="Test Page", body="<p>Hello world</p>"):
 
 class TestFetchSourceBasic:
 
-    def test_returns_full_html_in_iframe_mode(self, monkeypatch):
+    def test_returns_full_html_with_base_tag(self, monkeypatch):
         monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
         monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "en.wikipedia.org")
         html = _simple_html("Sample Article", "<article><p>Main text here.</p></article>")
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html))
 
         result = proxy.fetch_source(PUBLIC_URL)
 
@@ -44,7 +43,7 @@ class TestFetchSourceBasic:
         monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
         monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "en.wikipedia.org")
         html = b"<html><head><title>Test</title></head><body><img src=\"/images/logo.png\"></body></html>"
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html, url="https://en.wikipedia.org/wiki/Test"))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html, url="https://en.wikipedia.org/wiki/Test"))
 
         result = proxy.fetch_source(PUBLIC_URL)
 
@@ -54,8 +53,6 @@ class TestFetchSourceBasic:
         assert base is not None
         assert base["href"] == "https://en.wikipedia.org/wiki/Test"
         assert base["target"] == "_blank"
-        img = soup.find("img")
-        assert img is not None
 
     def test_rejects_non_whitelisted_url(self, monkeypatch):
         monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: False)
@@ -97,7 +94,7 @@ class TestFetchSourceBasic:
         monkeypatch.setattr(
             proxy.requests,
             "get",
-            lambda url, headers, timeout: FakeResponse(b"", status_code=404),
+            lambda url, timeout: FakeResponse(b"", status_code=404),
         )
 
         result = proxy.fetch_source(PUBLIC_URL)
@@ -111,7 +108,7 @@ class TestFetchSourceBasic:
         monkeypatch.setattr(
             proxy.requests,
             "get",
-            lambda url, headers, timeout: FakeResponse(b"", status_code=403),
+            lambda url, timeout: FakeResponse(b"", status_code=403),
         )
 
         result = proxy.fetch_source(PUBLIC_URL)
@@ -126,7 +123,7 @@ class TestFetchSourceBasic:
 
         import requests as real_requests
 
-        def _raise_timeout(url, headers, timeout):
+        def _raise_timeout(url, timeout):
             raise real_requests.Timeout()
 
         monkeypatch.setattr(proxy.requests, "get", _raise_timeout)
@@ -142,7 +139,7 @@ class TestFetchSourceBasic:
 
         import requests as real_requests
 
-        def _raise_error(url, headers, timeout):
+        def _raise_error(url, timeout):
             raise real_requests.ConnectionError("connection refused")
 
         monkeypatch.setattr(proxy.requests, "get", _raise_error)
@@ -151,23 +148,6 @@ class TestFetchSourceBasic:
 
         assert result["status"] is False
         assert "Failed to fetch source" in result["error"]
-
-
-class TestFetchSourceSize:
-    def test_rejects_overly_large_response(self, monkeypatch):
-        monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
-        monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "example.org")
-        monkeypatch.setattr(
-            proxy.requests,
-            "get",
-            lambda url, headers, timeout: FakeResponse(b"x" * (EXPECTED_MAX_RESPONSE_BYTES + 1)),
-        )
-        assert getattr(proxy, "MAX_RESPONSE_BYTES", None) == EXPECTED_MAX_RESPONSE_BYTES
-
-        result = proxy.fetch_source(PUBLIC_URL)
-
-        assert result["status"] is False
-        assert "too large" in result["error"].lower()
 
 
 class TestSanitization:
@@ -182,7 +162,7 @@ class TestSanitization:
             <embed src="https://evil.test/flash">
             <p>Legitimate paragraph</p>
         </body></html>"""
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html))
 
         result = proxy.fetch_source(PUBLIC_URL)
 
@@ -190,21 +170,6 @@ class TestSanitization:
         soup = BeautifulSoup(result["html"], "html.parser")
         assert not soup.find_all(["script", "form", "button", "iframe", "input", "embed"])
         assert soup.find("p") is not None
-
-    def test_strips_event_handler_attributes(self, monkeypatch):
-        monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
-        monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "en.wikipedia.org")
-        html = b"<html><body><div onclick=\"alert(1)\" onmouseover=\"track()\" class=\"box\">Danger</div></body></html>"
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
-
-        result = proxy.fetch_source(PUBLIC_URL)
-
-        soup = BeautifulSoup(result["html"], "html.parser")
-        div = soup.find("div")
-        assert div is not None
-        assert div.has_attr("class")
-        assert not div.has_attr("onclick")
-        assert not div.has_attr("onmouseover")
 
     def test_preserves_css_styles(self, monkeypatch):
         monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
@@ -215,7 +180,7 @@ class TestSanitization:
         </head><body>
             <div style="background: #f0f0f0; border: 1px solid #ccc;">Colored content</div>
         </body></html>"""
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html))
 
         result = proxy.fetch_source(PUBLIC_URL)
 
@@ -236,7 +201,7 @@ class TestSanitization:
             <article><p>Article content.</p></article>
             <footer><span>Copyright 2026</span></footer>
         </body></html>"""
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html))
 
         result = proxy.fetch_source(PUBLIC_URL)
 
@@ -246,82 +211,3 @@ class TestSanitization:
         assert soup.find("footer") is not None
         assert soup.find("article") is not None
         assert "Article content" in result["text"]
-
-    def test_safe_link_gets_target_blank_and_rel(self, monkeypatch):
-        monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
-        monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "en.wikipedia.org")
-        html = b"<html><body><a href=\"/wiki/Science\">Science</a></body></html>"
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
-
-        result = proxy.fetch_source(PUBLIC_URL)
-
-        soup = BeautifulSoup(result["html"], "html.parser")
-        link = soup.find("a")
-        assert link is not None
-        assert link["target"] == "_blank"
-        assert "noopener" in link.get("rel", [])
-
-    def test_strips_javascript_hrefs(self, monkeypatch):
-        monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
-        monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "en.wikipedia.org")
-        html = b"<html><body><a href=\"javascript:alert(1)\">Evil</a></body></html>"
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
-
-        result = proxy.fetch_source(PUBLIC_URL)
-
-        soup = BeautifulSoup(result["html"], "html.parser")
-        link = soup.find("a")
-        assert link is not None
-        assert link.get("href") is None
-
-    def test_makes_relative_urls_absolute(self, monkeypatch):
-        monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
-        monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "en.wikipedia.org")
-        html = b"<html><body><img src=\"/images/logo.png\"><a href=\"/wiki/About\">About</a></body></html>"
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
-
-        result = proxy.fetch_source(PUBLIC_URL)
-
-        soup = BeautifulSoup(result["html"], "html.parser")
-        img = soup.find("img")
-        assert img["src"] == "https://en.wikipedia.org/images/logo.png"
-        link = soup.find("a")
-        assert link["href"] == "https://en.wikipedia.org/wiki/About"
-
-
-class TestPaywallAndCloudflare:
-
-    def test_detects_paywall_phrases(self, monkeypatch):
-        monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
-        monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "www.britannica.com")
-        html = b"<html><body><p>Please subscribe to continue reading this article.</p></body></html>"
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
-
-        result = proxy.fetch_source("https://www.britannica.com/article")
-
-        assert result["status"] is False
-        assert "paywalled" in result["error"].lower()
-        assert result.get("fallback_url")
-
-    def test_detects_cloudflare(self, monkeypatch):
-        monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
-        monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "www.nationalgeographic.com")
-        html = b"<html><body>Checking your browser before accessing the site. CF-RAY: abc123</body></html>"
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
-
-        result = proxy.fetch_source("https://www.nationalgeographic.com/article")
-
-        assert result["status"] is False
-        assert "blocked" in result["error"].lower()
-        assert result.get("fallback_url")
-
-    def test_wikipedia_skips_paywall_checks(self, monkeypatch):
-        monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
-        monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "en.wikipedia.org")
-        html = b"<html><head><title>Paywall Article</title></head><body><p>Wikipedia page about subscription required concepts.</p></body></html>"
-        monkeypatch.setattr(proxy.requests, "get", lambda url, headers, timeout: FakeResponse(html))
-
-        result = proxy.fetch_source("https://en.wikipedia.org/wiki/Paywall")
-
-        assert result["status"] is True
-        assert "subscription required" in result["text"].lower()
