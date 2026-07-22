@@ -2,7 +2,6 @@ from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
-from readability import Document
 
 import src.whitelist as whitelist
 
@@ -22,7 +21,7 @@ SKIP_DOMAINS = frozenset({
     "link.springer.com",
 })
 
-_STRIP_TAGS = (
+_EXECUTABLE_TAGS = frozenset({
     "script",
     "noscript",
     "iframe",
@@ -37,14 +36,7 @@ _STRIP_TAGS = (
     "embed",
     "applet",
     "template",
-    "meta",
-    "style",
-    "svg",
-    "math",
-    "nav",
-    "header",
-    "footer",
-)
+})
 
 _STRIP_ATTRS = frozenset({
     "action",
@@ -54,7 +46,6 @@ _STRIP_ATTRS = frozenset({
     "ping",
     "srcdoc",
     "srcset",
-    "style",
     "xlink:href",
 })
 
@@ -88,7 +79,8 @@ def _make_absolute(raw_value, base_url):
     if not isinstance(raw_value, str) or not raw_value.strip():
         return None
     value = raw_value.strip()
-    if value.lower().startswith("javascript:") or value.lower().startswith("data:"):
+    lower = value.lower()
+    if lower.startswith("javascript:") or lower.startswith("data:"):
         return None
     try:
         absolute = urljoin(base_url, value)
@@ -100,7 +92,7 @@ def _make_absolute(raw_value, base_url):
 
 
 def _sanitize_soup(soup, base_url):
-    for tag in soup(_STRIP_TAGS):
+    for tag in soup(_EXECUTABLE_TAGS):
         if tag.parent is not None:
             tag.decompose()
 
@@ -145,7 +137,7 @@ def fetch_source(url):
             "title": display_name,
             "url": url,
             "domain": domain,
-            "mode": "reader",
+            "mode": "iframe",
             "fallback_url": url,
         }
 
@@ -172,26 +164,21 @@ def fetch_source(url):
     final_domain = whitelist.get_domain(final_url)
 
     try:
-        doc = Document(resp.text)
-        readable_html = doc.summary()
-        title = doc.title() or ""
+        soup = BeautifulSoup(resp.text, "html.parser")
     except Exception:
         return {"status": False, "error": "Failed to parse source content"}
 
-    soup = BeautifulSoup(readable_html, "html.parser")
     _sanitize_soup(soup, final_url)
 
-    base_tag = soup.new_tag("base", href=final_url, target="_blank")
-    html_parts = [str(base_tag)]
-    if soup.body:
-        html_parts.extend(str(child) for child in soup.body.contents)
-    else:
-        html_parts.append(str(soup))
-    html = "".join(html_parts)
+    title = soup.title.string if soup.title else ""
 
+    if soup.head:
+        base_tag = soup.new_tag("base", href=final_url, target="_blank")
+        soup.head.insert(0, base_tag)
+
+    html = str(soup)
     text = soup.get_text(separator=" ", strip=True)
 
-    # Wikipedia pages are never paywalled / Cloudflare-blocked — skip those checks.
     if final_domain and not final_domain.endswith("wikipedia.org"):
         cleaned = text.lower()
         if any(phrase in cleaned for phrase in _CLOUDFLARE_PHRASES):
@@ -214,5 +201,5 @@ def fetch_source(url):
         "title": title,
         "url": final_url,
         "domain": final_domain,
-        "mode": "reader",
+        "mode": "iframe",
     }
