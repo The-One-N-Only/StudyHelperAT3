@@ -360,25 +360,6 @@ def _item_to_dict(item):
         "doi": item.doi,
     }
 
-def get_item_by_source(source_name, source_id, user_id, add_to_recent_search):
-    with SessionLocal() as session:
-        item = session.query(Item).filter_by(source_name=source_name, source_id=source_id).first()
-        if item:
-            if add_to_recent_search:
-                append_to_recently_searched(user_id, item.id)
-            return _item_to_dict(item)
-        return None
-
-def get_item_by_source_id(source_id, user_id, add_to_recent_search):
-    """Find URL-backed items regardless of historical display-name casing."""
-    with SessionLocal() as session:
-        item = session.query(Item).filter_by(source_id=source_id).first()
-        if not item:
-            return None
-        if add_to_recent_search:
-            append_to_recently_searched(user_id, item.id)
-        return _item_to_dict(item)
-
 def create_item(item_data, user_id, add_to_recent_search):
     with SessionLocal() as session:
         new_item = Item(**item_data)
@@ -389,49 +370,55 @@ def create_item(item_data, user_id, add_to_recent_search):
             append_to_recently_searched(user_id, new_item.id)
         return _item_to_dict(new_item)
 
-def _get_and_sync_item_by_source_id(item_data, user_id, add_to_recent_search):
-    """Return an existing URL row after applying security-sensitive fields."""
+def get_or_create_item(item_data, user_id, add_to_recent_search):
+    """Find an existing item by source_id (or source_name+source_id fallback),
+    sync thumb metadata, create a row if needed, and recover from insert races."""
+    source_id = item_data.get("source_id", "")
+    source_name = item_data.get("source_name", "")
+
     with SessionLocal() as session:
-        item = session.query(Item).filter_by(source_id=item_data["source_id"]).first()
-        if not item:
-            return None
+        item = None
+        if source_id:
+            item = session.query(Item).filter_by(source_id=source_id).first()
+        if not item and source_name and source_id:
+            item = session.query(Item).filter_by(source_name=source_name, source_id=source_id).first()
 
-        expected_thumb_url = item_data.get("thumb_url")
-        if expected_thumb_url is not None and item.thumb_url != expected_thumb_url:
-            item.thumb_url = expected_thumb_url
-            item.thumb_mime = item_data.get("thumb_mime", item.thumb_mime)
-            item.thumb_height = item_data.get("thumb_height", item.thumb_height)
-            session.commit()
-            session.refresh(item)
-
-        result = _item_to_dict(item)
+        if item:
+            expected_thumb_url = item_data.get("thumb_url")
+            if expected_thumb_url is not None and item.thumb_url != expected_thumb_url:
+                item.thumb_url = expected_thumb_url
+                item.thumb_mime = item_data.get("thumb_mime", item.thumb_mime)
+                item.thumb_height = item_data.get("thumb_height", item.thumb_height)
+                session.commit()
+                session.refresh(item)
+            result = _item_to_dict(item)
+        else:
+            try:
+                new_item = Item(**item_data)
+                session.add(new_item)
+                session.commit()
+                session.refresh(new_item)
+                result = _item_to_dict(new_item)
+            except IntegrityError:
+                session.rollback()
+                if source_id:
+                    item = session.query(Item).filter_by(source_id=source_id).first()
+                if not item and source_name and source_id:
+                    item = session.query(Item).filter_by(source_name=source_name, source_id=source_id).first()
+                if not item:
+                    raise
+                expected_thumb_url = item_data.get("thumb_url")
+                if expected_thumb_url is not None and item.thumb_url != expected_thumb_url:
+                    item.thumb_url = expected_thumb_url
+                    item.thumb_mime = item_data.get("thumb_mime", item.thumb_mime)
+                    item.thumb_height = item_data.get("thumb_height", item.thumb_height)
+                    session.commit()
+                    session.refresh(item)
+                result = _item_to_dict(item)
 
     if add_to_recent_search:
         append_to_recently_searched(user_id, result["id"])
     return result
-
-def get_or_create_item_by_source_id(item_data, user_id, add_to_recent_search):
-    """Reuse URL-backed rows and recover cleanly from concurrent insert races."""
-    existing = _get_and_sync_item_by_source_id(
-        item_data,
-        user_id,
-        add_to_recent_search,
-    )
-    if existing:
-        return existing
-
-    try:
-        return create_item(item_data, user_id, add_to_recent_search)
-    except IntegrityError:
-        # Another source worker may have inserted the same Serp URL first.
-        existing = _get_and_sync_item_by_source_id(
-            item_data,
-            user_id,
-            add_to_recent_search,
-        )
-        if existing:
-            return existing
-        raise
 
 def get_item_by_id(item_id, user_id, add_to_recent_search):
     with SessionLocal() as session:

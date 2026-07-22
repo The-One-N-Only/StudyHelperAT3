@@ -96,72 +96,81 @@ def _host_matches_suffix(hostname, suffix):
     return hostname == suffix or hostname.endswith(f".{suffix}")
 
 
-def _safe_browse_image_url(value):
-    """Return a bounded HTTPS image URL from an approved host, else empty."""
-    if not isinstance(value, str) or not value or len(value) > ITEM_THUMB_URL_MAX_LENGTH:
-        return ""
+def _validate_url(value, max_length):
+    """Return a parsed urlsplit result if `value` is a safe-looking HTTPs URL;
+    otherwise None.  Only applies universal safety checks — no host whitelist."""
+    if not isinstance(value, str) or not value or len(value) > max_length:
+        return None
     if value != value.strip() or "\\" in value or any(char.isspace() for char in value):
-        return ""
-
+        return None
     try:
         parsed = urlsplit(value)
-        port = parsed.port
     except (TypeError, ValueError):
-        return ""
-
+        return None
     hostname = (parsed.hostname or "").lower()
     if (
         parsed.scheme.lower() != "https"
         or not hostname
         or parsed.username is not None
         or parsed.password is not None
-        or port not in (None, 443)
-        or parsed.fragment
-    ):
-        return ""
-
-    normalized = urlunsplit(("https", parsed.netloc.lower(), parsed.path, parsed.query, ""))
-    if len(normalized) > ITEM_THUMB_URL_MAX_LENGTH:
-        return ""
-    provider_host = any(
-        _host_matches_suffix(hostname, suffix)
-        for suffix in BROWSE_IMAGE_PROVIDER_SUFFIXES
-    )
-    if not provider_host and not whitelist.is_allowed(normalized):
-        return ""
-    return normalized
-
-
-def _safe_google_books_url(source_url):
-    if not isinstance(source_url, str) or not source_url:
-        return None
-    if (
-        source_url != source_url.strip()
-        or "\\" in source_url
-        or any(char.isspace() for char in source_url)
-    ):
-        return None
-    try:
-        parsed = urlsplit(source_url)
-        port = parsed.port
-    except (TypeError, ValueError):
-        return None
-
-    hostname = (parsed.hostname or "").lower()
-    if (
-        parsed.scheme.lower() != "https"
-        or not _host_matches_suffix(hostname, "books.google.com")
-        or parsed.username is not None
-        or parsed.password is not None
-        or port not in (None, 443)
+        or parsed.port not in (None, 443)
         or parsed.fragment
     ):
         return None
     return parsed
 
 
-def _google_books_volume_id(source_url):
-    parsed = _safe_google_books_url(source_url)
+def _safe_browse_image_url(value):
+    """Return a bounded HTTPS image URL from an approved host, else empty."""
+    parsed = _validate_url(value, ITEM_THUMB_URL_MAX_LENGTH)
+    if parsed is None:
+        return ""
+    normalized = urlunsplit(("https", parsed.netloc.lower(), parsed.path, parsed.query, ""))
+    if len(normalized) > ITEM_THUMB_URL_MAX_LENGTH:
+        return ""
+    hostname = (parsed.hostname or "").lower()
+    is_provider = any(
+        _host_matches_suffix(hostname, suffix)
+        for suffix in BROWSE_IMAGE_PROVIDER_SUFFIXES
+    )
+    if not is_provider and not whitelist.is_allowed(normalized):
+        return ""
+    return normalized
+
+
+def _safe_google_books_url(source_url):
+    """Return a parsed urlsplit of a safe Books URL, or None."""
+    parsed = _validate_url(source_url, ITEM_THUMB_URL_MAX_LENGTH)
+    if parsed is None:
+        return None
+    if not _host_matches_suffix((parsed.hostname or "").lower(), "books.google.com"):
+        return None
+    return parsed
+
+
+def _google_books_volume_id(value):
+    """Extract a valid Google Books volume ID from a URL string or item dict.
+    For dict items only trusts a raw source_id when the link proves Books origin.
+    For bare strings only performs URL-parsing extraction (no raw-ID guesswork)."""
+    if isinstance(value, dict):
+        link = value.get("link", "")
+        source_id = value.get("source_id", "")
+        for candidate in (link, source_id):
+            volume_id = _google_books_volume_id(candidate)
+            if volume_id:
+                return volume_id
+        if (
+            _safe_google_books_url(link) is not None
+            and isinstance(source_id, str)
+            and GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(source_id)
+        ):
+            return source_id
+        return ""
+
+    if not isinstance(value, str) or not value:
+        return ""
+
+    parsed = _safe_google_books_url(value)
     if parsed is None:
         return ""
 
@@ -171,45 +180,24 @@ def _google_books_volume_id(source_url):
     if edition_match:
         candidates.append(edition_match.group(1))
     return next(
-        (
-            candidate
-            for candidate in candidates
-            if GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(candidate)
-        ),
+        (c for c in candidates if GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(c)),
         "",
     )
 
 
-def _browse_google_books_volume_id(item):
-    """Return a bounded Books ID only when provider data proves Books origin."""
-    link = item.get("link", "")
-    source_id = item.get("source_id", "")
-    for candidate in (link, source_id):
-        volume_id = _google_books_volume_id(candidate)
-        if volume_id:
-            return volume_id
+def _google_books_cover_url(value):
+    """Build a Google Books cover URL from a URL string (volume-ID extraction) or item dict."""
+    if isinstance(value, dict):
+        volume_id = _google_books_volume_id(value)
+        return _google_books_cover_url(volume_id) if volume_id else ""
 
-    if (
-        _safe_google_books_url(link) is not None
-        and isinstance(source_id, str)
-        and GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(source_id)
-    ):
-        return source_id
-    return ""
-
-
-def _google_books_cover_url(source_url):
-    volume_id = _google_books_volume_id(source_url)
-    return _google_books_cover_url_from_id(volume_id)
-
-
-def _google_books_cover_url_from_id(volume_id):
-    if not isinstance(volume_id, str) or not GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(
-        volume_id
-    ):
+    if not isinstance(value, str) or not value:
         return ""
+
+    volume_id = _google_books_volume_id(value)
     if not volume_id:
         return ""
+
     return _safe_browse_image_url(
         "https://books.google.com/books/content"
         f"?id={volume_id}&printsec=frontcover&img=1&zoom=1"
@@ -217,14 +205,25 @@ def _google_books_cover_url_from_id(volume_id):
 
 
 def _browse_result_image_url(item):
+    """Return the best available image URL for a search result item."""
     source_id = item.get("source_id", "")
     cover_url = (
         _google_books_cover_url(item.get("link", ""))
         or _google_books_cover_url(source_id)
-        or _google_books_cover_url_from_id(source_id)
     )
     if cover_url:
         return cover_url
+    if (
+        isinstance(source_id, str)
+        and source_id
+        and GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(source_id)
+    ):
+        cover_url = _safe_browse_image_url(
+            "https://books.google.com/books/content"
+            f"?id={source_id}&printsec=frontcover&img=1&zoom=1"
+        )
+        if cover_url:
+            return cover_url
     return (
         _safe_browse_image_url(item.get("thumbnail", ""))
         or _safe_browse_image_url(item.get("favicon", ""))
@@ -265,7 +264,7 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
             item = db.get_item_by_id(item_id, user_id, True)
             if item:
                 response_item = dict(item)
-                google_books_volume_id = _browse_google_books_volume_id({
+                google_books_volume_id = _google_books_volume_id({
                     "link": item["source_url"],
                     "source_id": item["source_id"],
                 })
@@ -334,7 +333,7 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
                 if domain
                 else "Whitelisted Source"
             )
-            google_books_volume_id = _browse_google_books_volume_id(item)
+            google_books_volume_id = _google_books_volume_id(item)
             item_data = {
                 "title": item.get("title", ""),
                 "description": item.get("snippet", ""),
@@ -345,11 +344,7 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
                 "source_name": source_name,
                 "source_id": link,
             }
-            stored_item = db.get_or_create_item_by_source_id(
-                item_data,
-                user_id,
-                True,
-            )
+            stored_item = db.get_or_create_item(item_data, user_id, True)
             response_item = dict(stored_item)
             response_item["google_books_volume_id"] = google_books_volume_id
             if google_books_volume_id:
@@ -593,7 +588,7 @@ def wikipedia(query, num_results, *, user_id):
                 "source_id": pageid
             }
             if item_data["source_url"] and whitelist.is_allowed(item_data["source_url"]):
-                results.append(db.get_item_by_source("wikipedia", item_data["source_id"], user_id, True) or db.create_item(item_data, user_id, True))
+                results.append(db.get_or_create_item(item_data, user_id, True))
         return results
     except Exception:
         return []
@@ -635,12 +630,7 @@ def gbooks(query, num_results, filters, *, user_id):
                     "source_id": item.get("id", "")
                 }
                 if item_data["source_url"] and whitelist.is_allowed(item_data["source_url"]):
-                    persisted_item = (
-                        db.get_item_by_source(
-                            "gbooks", item_data["source_id"], user_id, True
-                        )
-                        or db.create_item(item_data, user_id, True)
-                    )
+                    persisted_item = db.get_or_create_item(item_data, user_id, True)
                     response_item = dict(persisted_item)
                     response_item["accessInfo"] = {
                         "embeddable": access.get("embeddable") is True,
@@ -731,9 +721,7 @@ def _search_serpapi(query, num_results, scope, *, user_id):
                         "source_id": link
                     }
                     page_results.append(
-                        db.get_item_by_source(
-                            item_data["source_name"], item_data["source_id"], user_id, True
-                        ) or db.create_item(item_data, user_id, True)
+                        db.get_or_create_item(item_data, user_id, True)
                     )
                     if len(results) + len(page_results) >= target:
                         break

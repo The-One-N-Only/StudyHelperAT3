@@ -130,7 +130,7 @@ def _fetch_articles(pmids, user_id):
             article_data = _parse_article(article)
             if article_data:
                 # Create or get item from database
-                item = db.get_item_by_source("pubmed", article_data["source_id"], user_id, True) or db.create_item(article_data, user_id, True)
+                item = db.get_or_create_item(article_data, user_id, True)
                 results.append(item)
 
         return results

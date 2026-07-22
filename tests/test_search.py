@@ -440,8 +440,9 @@ def test_whitelist_search_uses_serpapi_when_key_set(monkeypatch):
     monkeypatch.setattr(search.whitelist, "is_allowed", lambda url: True)
     monkeypatch.setattr(search.whitelist, "get_display_name_for_domain", lambda domain: "Wikipedia")
     monkeypatch.setattr(search.whitelist, "get_domain", lambda url: "en.wikipedia.org")
-    monkeypatch.setattr(search.db, "get_item_by_source", lambda source_name, source_id, user_id, add_to_recent_search: None)
-    monkeypatch.setattr(search.db, "create_item", lambda item_data, user_id, add_to_recent_search: item_data)
+    monkeypatch.setattr(search.whitelist, "get_whitelist_search_scope", lambda: "site:en.wikipedia.org")
+    monkeypatch.setattr(search.db, "get_search_cache", lambda key: None)
+    monkeypatch.setattr(search.db, "get_or_create_item", lambda item_data, user_id, add_to_recent_search: {"id": 0, **item_data})
 
     results = search.whitelist_search("test query", 1, user_id=1)
 
@@ -479,12 +480,12 @@ def _run_browse_serpapi_image_results(
     monkeypatch.setattr(search, "SERP_API_KEY", "serp-test-key")
     monkeypatch.setattr(search.requests, "get", fake_get)
     monkeypatch.setattr(search.whitelist, "is_allowed", is_allowed)
+    monkeypatch.setattr(search.db, "get_search_cache", lambda key: None)
     monkeypatch.setattr(
         search.db,
-        "get_or_create_item_by_source_id",
-        lambda item_data, _user_id, _recent: dict(item_data),
+        "get_or_create_item",
+        lambda item_data, _user_id, _recent: {"id": 0, **item_data},
     )
-
     results = search.browse_serpapi_search(
         "archive",
         len(organic_results),
@@ -643,8 +644,8 @@ def test_browse_serpapi_preserves_raw_books_id_after_source_id_normalization(
         },
     ),
 )
-def test_browse_google_books_volume_id_rejects_untrusted_ids_and_hosts(item):
-    assert search._browse_google_books_volume_id(item) == ""
+def test_google_books_volume_id_rejects_untrusted_ids_and_hosts(item):
+    assert search._google_books_volume_id(item) == ""
 
 
 @pytest.mark.parametrize(
@@ -837,10 +838,11 @@ def test_browse_serpapi_search_scopes_every_dedicated_source(
         "is_allowed",
         lambda url: url.startswith(f"https://{domain}/"),
     )
+    monkeypatch.setattr(search.db, "get_search_cache", lambda key: None)
     monkeypatch.setattr(
         search.db,
-        "get_or_create_item_by_source_id",
-        lambda item_data, _user_id, _add_to_recent_search: item_data,
+        "get_or_create_item",
+        lambda item_data, _user_id, _add_to_recent_search: {"id": 0, **item_data},
     )
 
     results = search.browse_serpapi_search(
@@ -908,10 +910,11 @@ def test_browse_serpapi_search_supports_checked_wildcard_domain_pattern(monkeypa
         raising=False,
     )
     monkeypatch.setattr(search.whitelist, "is_allowed", lambda _url: True)
+    monkeypatch.setattr(search.db, "get_search_cache", lambda key: None)
     monkeypatch.setattr(
         search.db,
-        "get_or_create_item_by_source_id",
-        lambda item_data, _user_id, _recent: item_data,
+        "get_or_create_item",
+        lambda item_data, _user_id, _recent: {"id": 0, **item_data},
         raising=False,
     )
 
@@ -943,9 +946,7 @@ def test_browse_serpapi_search_requires_key_before_network_or_database(monkeypat
         raise AssertionError("provider and database work must not start")
 
     monkeypatch.setattr(search.requests, "get", unexpected)
-    monkeypatch.setattr(search.db, "get_item_by_source", unexpected)
-    monkeypatch.setattr(search.db, "create_item", unexpected)
-    monkeypatch.setattr(search.db, "get_or_create_item_by_source_id", unexpected)
+    monkeypatch.setattr(search.db, "get_or_create_item", unexpected)
 
     with pytest.raises(search.SerpApiConfigurationError):
         search.browse_serpapi_search(
@@ -1249,20 +1250,17 @@ def test_gbooks_merges_filtered_access_info_after_persistence(monkeypatch):
         assert timeout == 10
         return FakeResponse()
 
-    def fake_get_item(source_name, source_id, user_id, add_to_recent_search):
-        assert (source_name, user_id, add_to_recent_search) == ("gbooks", 9, True)
-        return existing_record if source_id == "existing-volume" else None
-
-    def fake_create_item(item_data, user_id, add_to_recent_search):
+    def fake_get_or_create_item(item_data, user_id, add_to_recent_search):
         assert (user_id, add_to_recent_search) == (9, True)
+        if item_data.get("source_id") == "existing-volume":
+            return dict(existing_record)
         created_payloads.append(dict(item_data))
         return {"id": 22, **item_data}
 
     monkeypatch.setattr(search.requests, "get", fake_get)
     monkeypatch.setattr(search, "GOOGLE_BOOKS_API_KEY", "")
     monkeypatch.setattr(search.whitelist, "is_allowed", lambda _url: True)
-    monkeypatch.setattr(search.db, "get_item_by_source", fake_get_item)
-    monkeypatch.setattr(search.db, "create_item", fake_create_item)
+    monkeypatch.setattr(search.db, "get_or_create_item", fake_get_or_create_item)
 
     results = search.gbooks(
         "viewer",
@@ -1320,12 +1318,8 @@ def _install_search_result_persistence(monkeypatch):
         "get_display_name_for_domain",
         lambda domain: domain,
     )
-    monkeypatch.setattr(search.db, "get_item_by_source", lambda *_args: None)
-    monkeypatch.setattr(
-        search.db,
-        "create_item",
-        lambda item_data, _user_id, _add_to_recent_search: item_data,
-    )
+    monkeypatch.setattr(search.db, "get_search_cache", lambda key: None)
+    monkeypatch.setattr(search.db, "get_or_create_item", lambda item_data, _user_id, _add_to_recent_search: {"id": 0, **item_data})
 
 
 def _custom_search_items(domain, start, count):

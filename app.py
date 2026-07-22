@@ -729,7 +729,7 @@ def workspace_items():
                 volume_id = search._google_books_volume_id(source_id)
             if not volume_id:
                 source_id = item.get('source_id', '')
-                if search.GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(source_id):
+                if isinstance(source_id, str) and search.GOOGLE_BOOKS_VOLUME_ID_PATTERN.fullmatch(source_id):
                     volume_id = source_id
             if volume_id:
                 item['google_books_volume_id'] = volume_id
@@ -754,10 +754,22 @@ def generate_citations():
     
     citations_list = []
     for item in items:
+        kwargs = dict(
+            title=item['title'],
+            source_name=item['source_name'],
+            url=item['url'],
+            author=item.get('author'),
+            year=item.get('year'),
+            authors=item.get('authors'),
+            journal=item.get('journal'),
+            volume=item.get('volume'),
+            issue=item.get('issue'),
+            doi=item.get('doi'),
+        )
         if format_type == 'apa':
-            cit = citations.format_apa(item['title'], item['source_name'], item['url'], item.get('author'), item.get('year'))
+            cit = citations.format_apa(**kwargs)
         else:
-            cit = citations.format_harvard(item['title'], item['source_name'], item['url'], item.get('author'), item.get('year'))
+            cit = citations.format_harvard(**kwargs)
         citations_list.append(cit)
     
     logging.info(f"User {user_id} generated {len(items)} citations in {format_type} format")

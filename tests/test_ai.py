@@ -385,7 +385,7 @@ def test_url_item_upsert_reuses_legacy_source_name_row(isolated_workspace_db):
         session.commit()
         legacy_id = legacy.id
 
-    result = db.get_or_create_item_by_source_id(
+    result = db.get_or_create_item(
         {
             "title": "Fresh title",
             "description": "Fresh description",
@@ -432,7 +432,7 @@ def test_url_item_upsert_sanitizes_concurrent_race_winner(
         raise db.IntegrityError("INSERT", {}, RuntimeError("duplicate URL"))
 
     monkeypatch.setattr(db, "create_item", insert_race_winner_then_fail)
-    result = db.get_or_create_item_by_source_id(
+    result = db.get_or_create_item(
         {
             "title": "Fresh title",
             "description": "Fresh description",
