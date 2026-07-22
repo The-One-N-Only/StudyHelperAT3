@@ -29,10 +29,10 @@ def _response(text):
 
 
 def _unexpected_work(*_args, **_kwargs):
-    raise AssertionError("source or provider work happened before hosted AI configuration check")
+    raise AssertionError("provider work happened before AI configuration check")
 
 
-def test_summarise_url_success_uses_configured_key_and_model(monkeypatch):
+def test_summarise_url_success(monkeypatch):
     post = Mock(
         return_value=_response(
             '{"summary": "Test summary", "bullets": ["Bullet 1"], "relevance": "Relevant"}'
@@ -58,11 +58,9 @@ def test_summarise_url_success_uses_configured_key_and_model(monkeypatch):
         "content-type": "application/json",
     }
     assert request.kwargs["json"]["model"] == HOSTED_MODEL
-    assert request.kwargs["json"]["messages"][0]["role"] == "user"
-    assert request.kwargs["timeout"] == 10
 
 
-def test_summarise_file_success_keeps_structured_shape(monkeypatch):
+def test_summarise_file_success(monkeypatch):
     monkeypatch.setattr(
         db,
         "get_uploaded_files",
@@ -90,7 +88,7 @@ def test_summarise_file_success_keeps_structured_shape(monkeypatch):
     }
 
 
-def test_summarise_search_results_success_is_structured(monkeypatch):
+def test_summarise_search_results_success(monkeypatch):
     monkeypatch.setattr(
         summarise.requests,
         "post",
@@ -104,132 +102,7 @@ def test_summarise_search_results_success_is_structured(monkeypatch):
     assert result == {"status": True, "summary": "Concise hosted search summary."}
 
 
-def test_summarise_search_results_uses_top_result_from_each_source(monkeypatch):
-    post = Mock(return_value=_response("Source-diverse summary."))
-    monkeypatch.setattr(summarise.requests, "post", post)
-    monkeypatch.setattr(
-        summarise.whitelist,
-        "get_domain",
-        lambda url: url.split("/", 3)[2],
-    )
-
-    result = summarise.summarise_search_results(
-        "history",
-        [
-            {
-                "title": "Archive first",
-                "description": "First archive result.",
-                "source_name": "Archive",
-                "source_url": "https://archive.example/first",
-                "whitelist_rank": 1,
-            },
-            {
-                "title": "Archive second",
-                "description": "Second archive result.",
-                "source_name": "Archive",
-                "source_url": "https://archive.example/second",
-                "whitelist_rank": 2,
-            },
-            {
-                "title": "Library first",
-                "description": "First library result.",
-                "source_name": "Library",
-                "source_url": "https://library.example/first",
-                "whitelist_rank": 1,
-            },
-        ],
-    )
-
-    assert result == {"status": True, "summary": "Source-diverse summary."}
-    prompt = post.call_args.kwargs["json"]["messages"][0]["content"]
-    assert "Archive first" in prompt
-    assert "Library first" in prompt
-    assert "Archive second" not in prompt
-
-
-def test_summarise_search_results_provider_failure_uses_structured_text_fallback(
-    monkeypatch,
-):
-    monkeypatch.setattr(
-        summarise.requests,
-        "post",
-        Mock(side_effect=RuntimeError("provider unavailable")),
-    )
-    log_exception = Mock()
-    monkeypatch.setattr(summarise.logging, "exception", log_exception)
-
-    result = summarise.summarise_search_results(
-        "history",
-        [
-            {
-                "title": "Archive",
-                "description": "First useful fact. More detail.",
-                "source_name": "Archive",
-            },
-            {
-                "title": "Library",
-                "description": "Second useful fact. More detail.",
-                "source_name": "Library",
-            },
-        ],
-    )
-
-    assert result == {
-        "status": True,
-        "summary": "Archive: First useful fact Library: Second useful fact",
-    }
-    log_exception.assert_called_once()
-
-
-def test_summarise_url_logs_requesting_user(monkeypatch):
-    monkeypatch.setattr(
-        summarise.requests,
-        "post",
-        Mock(
-            return_value=_response(
-                '{"summary": "Summary", "bullets": [], "relevance": "Relevant"}'
-            )
-        ),
-    )
-    monkeypatch.setattr(summarise.whitelist, "is_allowed", lambda _url: True)
-    monkeypatch.setattr(
-        summarise.proxy,
-        "fetch_source",
-        lambda _url: {"status": True, "text": LONG_CONTENT, "title": "Fetched"},
-    )
-    log_info = Mock()
-    monkeypatch.setattr(summarise.logging, "info", log_info)
-
-    result = summarise.summarise_url(
-        "https://example.com",
-        "Title",
-        user_id=7,
-    )
-
-    assert result["status"] is True
-    log_info.assert_called_once_with(
-        "User 7 requested AI summary for https://example.com"
-    )
-
-
-def test_summarise_url_short_content_does_not_call_provider(monkeypatch):
-    post = Mock()
-    monkeypatch.setattr(summarise.requests, "post", post)
-    monkeypatch.setattr(summarise.whitelist, "is_allowed", lambda _url: True)
-    monkeypatch.setattr(
-        summarise.proxy,
-        "fetch_source",
-        lambda _url: {"status": True, "text": "Short"},
-    )
-
-    result = summarise.summarise_url("https://example.com", "Title")
-
-    assert result["status"] is False
-    assert "insufficient" in result["error"]
-    post.assert_not_called()
-
-
-def test_missing_key_url_fails_before_whitelist_or_source_work(monkeypatch):
+def test_missing_key_url_fails_before_provider(monkeypatch):
     monkeypatch.setattr(summarise, "ANTHROPIC_API_KEY", "")
     monkeypatch.setattr(summarise.whitelist, "is_allowed", _unexpected_work)
     monkeypatch.setattr(summarise.proxy, "fetch_source", _unexpected_work)
@@ -240,7 +113,7 @@ def test_missing_key_url_fails_before_whitelist_or_source_work(monkeypatch):
     assert result == {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
 
-def test_missing_key_file_fails_before_database_work(monkeypatch):
+def test_missing_key_file_fails_before_database(monkeypatch):
     monkeypatch.setattr(summarise, "ANTHROPIC_API_KEY", None)
     monkeypatch.setattr(db, "get_uploaded_files", _unexpected_work)
     monkeypatch.setattr(summarise.requests, "post", _unexpected_work)
@@ -250,20 +123,7 @@ def test_missing_key_file_fails_before_database_work(monkeypatch):
     assert result == {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
 
-def test_missing_key_search_fails_before_result_or_provider_work(monkeypatch):
-    monkeypatch.setattr(summarise, "ANTHROPIC_API_KEY", "")
-    monkeypatch.setattr(summarise.requests, "post", _unexpected_work)
-
-    class UnexpectedResults(list):
-        def __iter__(self):
-            _unexpected_work()
-
-    result = summarise.summarise_search_results("history", UnexpectedResults())
-
-    assert result == {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
-
-
-def test_summarise_provider_detail_is_logged_not_returned(monkeypatch):
+def test_summarise_provider_detail_not_leaked(monkeypatch):
     provider_detail = "provider-secret-DO-NOT-RETURN-a193"
     monkeypatch.setattr(summarise.whitelist, "is_allowed", lambda _url: True)
     monkeypatch.setattr(

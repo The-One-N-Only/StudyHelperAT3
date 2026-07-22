@@ -6,19 +6,16 @@ Run this to verify the PubMed search functionality is working correctly.
 
 import os
 import sys
-import json
 
-# Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src import pubmed, citations
 from dotenv import load_dotenv
 
-# Load environment
 load_dotenv()
 
+
 def test_pubmed_search():
-    """Test basic PubMed search."""
     print("=" * 60)
     print("Testing PubMed Basic Search")
     print("=" * 60)
@@ -29,7 +26,7 @@ def test_pubmed_search():
 
     try:
         results = pubmed.search(query, num_results=5, user_id=1)
-        print(f"\n✓ Search successful! Found {len(results)} results")
+        print(f"\nSearch successful! Found {len(results)} results")
 
         if results:
             result = results[0]
@@ -42,13 +39,12 @@ def test_pubmed_search():
             if result.get('abstract'):
                 print(f"  Abstract: {result['abstract'][:200]}...")
     except Exception as e:
-        print(f"✗ Search failed: {str(e)}")
+        print(f"Search failed: {str(e)}")
         import traceback
         traceback.print_exc()
 
 
 def test_mesh_filtering():
-    """Test PubMed search with MeSH filtering."""
     print("\n" + "=" * 60)
     print("Testing PubMed with MeSH Filtering")
     print("=" * 60)
@@ -60,13 +56,12 @@ def test_mesh_filtering():
 
     try:
         results = pubmed.search(query, num_results=3, mesh_terms=mesh_terms, user_id=1)
-        print(f"✓ Search with MeSH filter successful! Found {len(results)} results")
+        print(f"Search with MeSH filter successful! Found {len(results)} results")
     except Exception as e:
-        print(f"✗ Search failed: {str(e)}")
+        print(f"Search failed: {str(e)}")
 
 
 def test_date_filtering():
-    """Test PubMed search with date filtering."""
     print("\n" + "=" * 60)
     print("Testing PubMed with Date Filtering")
     print("=" * 60)
@@ -77,17 +72,16 @@ def test_date_filtering():
 
     try:
         results = pubmed.search(query, num_results=3, min_date="2023", max_date="2024/12/31", user_id=1)
-        print(f"✓ Search with date filter successful! Found {len(results)} results")
+        print(f"Search with date filter successful! Found {len(results)} results")
 
         if results:
             for r in results:
                 print(f"  - {r.get('title', 'N/A')} ({r.get('year', 'N/A')})")
     except Exception as e:
-        print(f"✗ Search failed: {str(e)}")
+        print(f"Search failed: {str(e)}")
 
 
 def test_mesh_suggestions():
-    """Test MeSH term auto-complete."""
     print("\n" + "=" * 60)
     print("Testing MeSH Term Suggestions")
     print("=" * 60)
@@ -97,20 +91,18 @@ def test_mesh_suggestions():
 
     try:
         suggestions = pubmed.get_mesh_terms(query, num_results=5)
-        print(f"✓ Got {len(suggestions)} suggestions:")
+        print(f"Got {len(suggestions)} suggestions:")
         for term in suggestions[:5]:
             print(f"  - {term}")
     except Exception as e:
-        print(f"✗ Failed: {str(e)}")
+        print(f"Failed: {str(e)}")
 
 
 def test_citation_formatting():
-    """Test citation formatting for PubMed articles."""
     print("\n" + "=" * 60)
     print("Testing Citation Formatting")
     print("=" * 60)
 
-    # Sample PubMed article data
     article = {
         "title": "Deep Learning for Medical Image Analysis",
         "source_name": "pubmed",
@@ -132,29 +124,26 @@ def test_citation_formatting():
         apa = citations.format_apa(**article)
         harvard = citations.format_harvard(**article)
 
-        print("\n✓ Citation formatting successful!")
+        print("\nCitation formatting successful!")
         print(f"\nAPA Format:\n{apa}")
         print(f"\nHarvard Format:\n{harvard}")
     except Exception as e:
-        print(f"✗ Citation formatting failed: {str(e)}")
+        print(f"Citation formatting failed: {str(e)}")
         import traceback
         traceback.print_exc()
 
 
 def main():
-    """Run all tests."""
     print("\n" + "=" * 60)
     print("PubMed E-utilities Integration Tests")
     print("=" * 60)
 
-    # Check environment
     api_key = os.getenv("PUBMED_API_KEY")
     if api_key:
-        print(f"\n✓ PUBMED_API_KEY configured (first 10 chars: {api_key[:10]}...)")
+        print(f"\nPUBMED_API_KEY configured (first 10 chars: {api_key[:10]}...)")
     else:
-        print("\n⚠ PUBMED_API_KEY not configured - using standard rate limits (3 req/sec)")
+        print("\nWARNING PUBMED_API_KEY not configured - using standard rate limits (3 req/sec)")
 
-    # Run tests
     test_pubmed_search()
     test_mesh_filtering()
     test_date_filtering()

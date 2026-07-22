@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test script for parallel multi-source search endpoint.
-Demonstrates the new /api/browse/search-all functionality.
+Demonstrates the /api/browse/search-all functionality.
 """
 
 import os
@@ -19,7 +19,6 @@ load_dotenv()
 
 
 def test_parallel_search():
-    """Test parallel searching all sources."""
     print("=" * 70)
     print("Testing Parallel Multi-Source Search")
     print("=" * 70)
@@ -31,7 +30,6 @@ def test_parallel_search():
     print(f"Results per source: {num_results}")
     print(f"Sources: Wikipedia, Google Books, PubMed\n")
 
-    # Simulate what the endpoint does
     import concurrent.futures
 
     search_tasks = {
@@ -52,7 +50,7 @@ def test_parallel_search():
         for source in search_tasks:
             func, args = search_tasks[source]
             futures[source] = executor.submit(func, *args, user_id=1)
-            print(f"  ✓ Submitted {source}")
+            print(f"  Submitted {source}")
 
         print("\nWaiting for results...\n")
 
@@ -61,20 +59,17 @@ def test_parallel_search():
                 source_results = futures[source].result(timeout=15)
                 all_results.extend(source_results or [])
                 source_counts[source] = len(source_results) if source_results else 0
-                print(f"  ✓ {source:12} - {source_counts[source]:2} results")
+                print(f"  {source:12} - {source_counts[source]:2} results")
             except Exception as e:
-                print(f"  ✗ {source:12} - FAILED: {str(e)}")
+                print(f"  {source:12} - FAILED: {str(e)}")
                 source_counts[source] = 0
 
     end_time = time.time()
 
-    print(f"\n{'─' * 70}")
-    print(f"Total Results: {len(all_results)}")
+    print(f"\nTotal Results: {len(all_results)}")
     print(f"Total Time: {end_time - start_time:.2f} seconds")
-    print(f"Source breakdown: {source_counts}")
-    print(f"{'─' * 70}\n")
+    print(f"Source breakdown: {source_counts}\n")
 
-    # Show sample results
     if all_results:
         print("Sample Results (first 5):\n")
         for i, result in enumerate(all_results[:5], 1):
@@ -85,7 +80,6 @@ def test_parallel_search():
 
 
 def test_filtered_search():
-    """Test searching only specific sources."""
     print("=" * 70)
     print("Testing Filtered Search (Only PubMed + Wikipedia)")
     print("=" * 70)
@@ -115,7 +109,7 @@ def test_filtered_search():
         for source in search_tasks:
             func, args = search_tasks[source]
             futures[source] = executor.submit(func, *args, user_id=1)
-            print(f"  ✓ Submitted {source}")
+            print(f"  Submitted {source}")
 
         print("\nWaiting for results...\n")
 
@@ -124,27 +118,23 @@ def test_filtered_search():
                 source_results = futures[source].result(timeout=15)
                 all_results.extend(source_results or [])
                 source_counts[source] = len(source_results) if source_results else 0
-                print(f"  ✓ {source:12} - {source_counts[source]:2} results")
+                print(f"  {source:12} - {source_counts[source]:2} results")
             except Exception as e:
-                print(f"  ✗ {source:12} - FAILED: {str(e)}")
+                print(f"  {source:12} - FAILED: {str(e)}")
                 source_counts[source] = 0
 
     end_time = time.time()
 
-    print(f"\n{'─' * 70}")
-    print(f"Total Results: {len(all_results)}")
+    print(f"\nTotal Results: {len(all_results)}")
     print(f"Total Time: {end_time - start_time:.2f} seconds")
-    print(f"Source breakdown: {source_counts}")
-    print(f"{'─' * 70}\n")
+    print(f"Source breakdown: {source_counts}\n")
 
 
 def test_client_filtering():
-    """Demonstrate client-side filtering of mixed results."""
     print("=" * 70)
     print("Demonstrating Client-Side Result Filtering")
     print("=" * 70)
 
-    # Simulate mixed results from API
     mixed_results = [
         {'title': 'Article 1', 'source_name': 'wikipedia'},
         {'title': 'Article 2', 'source_name': 'pubmed'},
@@ -156,22 +146,18 @@ def test_client_filtering():
 
     print("\nMixed Results (3 sources):")
     for r in mixed_results:
-        print(f"  • {r['title']:15} from {r['source_name']}")
+        print(f"  - {r['title']:15} from {r['source_name']}")
 
-    print("\n" + "─" * 70)
-    print("Client-side filtering examples:\n")
+    print("\nClient-side filtering examples:\n")
 
-    # Filter by source
     pubmed_only = [r for r in mixed_results if r['source_name'] == 'pubmed']
     print(f"Filter: Only PubMed results")
     print(f"  Result: {len(pubmed_only)} items - {[r['title'] for r in pubmed_only]}")
 
-    # Filter by multiple sources
     academic = [r for r in mixed_results if r['source_name'] in ['pubmed', 'gbooks']]
     print(f"\nFilter: Only academic sources (PubMed + Books)")
     print(f"  Result: {len(academic)} items - {[r['title'] for r in academic]}")
 
-    # Filter by source name
     wikipedia_only = [r for r in mixed_results if r['source_name'] == 'wikipedia']
     print(f"\nFilter: Only Wikipedia results")
     print(f"  Result: {len(wikipedia_only)} items - {[r['title'] for r in wikipedia_only]}")
@@ -180,7 +166,6 @@ def test_client_filtering():
 
 
 def main():
-    """Run all tests."""
     print("\n" + "=" * 70)
     print("PARALLEL MULTI-SOURCE SEARCH TESTS")
     print("=" * 70 + "\n")
@@ -196,41 +181,6 @@ def main():
     print("=" * 70)
     print("All demonstrations complete!")
     print("=" * 70 + "\n")
-
-    print("API Usage Guide:")
-    print("─" * 70)
-    print("\n1. Search all sources (mixed results):")
-    print("""
-curl -X POST http://localhost:8010/api/browse/search-all \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "query": "machine learning",
-    "num_results": 20
-  }'
-""")
-
-    print("2. Search specific sources only:")
-    print("""
-curl -X POST http://localhost:8010/api/browse/search-all \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "query": "COVID-19",
-    "num_results": 15,
-    "sources": ["pubmed", "wikipedia"]
-  }'
-""")
-
-    print("3. Filter results client-side (JavaScript):")
-    print("""
-// From response, filter by source:
-const results = response.results;
-const pubmedOnly = results.filter(r => r.source_name === 'pubmed');
-const academicOnly = results.filter(r =>
-  ['pubmed', 'gbooks'].includes(r.source_name)
-);
-""")
-
-    print("─" * 70 + "\n")
 
 
 if __name__ == "__main__":
