@@ -706,6 +706,31 @@ def get_uploaded_files(user_id):
             "time_uploaded": f.time_uploaded
         } for f in files]
 
+
+def get_workspace_uploaded_files(workspace_id, user_id):
+    """Get uploaded files that belong to a specific workspace."""
+    with SessionLocal() as session:
+        files = (
+            session.query(UploadedFile)
+            .join(WorkspaceItem, WorkspaceItem.file_id == UploadedFile.id)
+            .filter(
+                WorkspaceItem.workspace_id == workspace_id,
+                WorkspaceItem.user_id == user_id,
+                WorkspaceItem.file_id.isnot(None),
+            )
+            .order_by(UploadedFile.time_uploaded.desc())
+            .all()
+        )
+        return [{
+            "id": f.id,
+            "filename": f.filename,
+            "stored_path": f.stored_path,
+            "file_type": f.file_type,
+            "extracted_text": f.extracted_text,
+            "file_size": f.file_size,
+            "time_uploaded": f.time_uploaded
+        } for f in files]
+
 def create_uploaded_file(user_id, filename, stored_path, file_type, extracted_text, file_size):
     with SessionLocal() as session:
         new_file = UploadedFile(

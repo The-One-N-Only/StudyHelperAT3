@@ -64,13 +64,14 @@ def gather_workspace_notes_context(workspace_id: int, user_id: int, query: str) 
     return {"status": True, "context": "", "sources": []}
 
 
-def search_files_for_context(user_id: int, query: str, num_results: int = 5) -> dict:
+def search_files_for_context(user_id: int, query: str, num_results: int = 5, workspace_id: Optional[int] = None) -> dict:
     """
     Search uploaded files for content relevant to the query.
+    When workspace_id is provided, only searches files in that workspace.
     Returns relevant passages with file references.
     """
     try:
-        uploaded_files = db.get_uploaded_files(user_id)
+        uploaded_files = db.get_workspace_uploaded_files(workspace_id, user_id) if workspace_id else db.get_uploaded_files(user_id)
         if not uploaded_files:
             return {"status": True, "context": "", "sources": []}
         
@@ -227,7 +228,7 @@ def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optio
 
     try:
         # Collect context from files
-        file_context = search_files_for_context(user_id, prompt, num_results=3)
+        file_context = search_files_for_context(user_id, prompt, num_results=3, workspace_id=workspace_id)
         context_text = file_context["context"]
         all_sources = file_context["sources"].copy()
 
@@ -238,8 +239,8 @@ def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optio
                 context_text += notes_context["context"]
                 all_sources.extend(notes_context["sources"])
         
-        # Optionally search web and whitelisted sources
-        if search_web:
+        # Optionally search web and whitelisted sources (skip when in workspace context)
+        if search_web and not workspace_id:
             web_context = gather_whitelisted_context(prompt, user_id)
             if web_context["context"]:
                 context_text += web_context["context"]
@@ -306,7 +307,7 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None, w
         # Get initial context from the last user message
         last_user_message = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         
-        file_context = search_files_for_context(user_id, last_user_message, num_results=2)
+        file_context = search_files_for_context(user_id, last_user_message, num_results=2, workspace_id=workspace_id)
         context_text = file_context["context"]
         all_sources = file_context["sources"].copy()
 
@@ -315,11 +316,11 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None, w
             if notes_context["context"]:
                 context_text += notes_context["context"]
                 all_sources.extend(notes_context["sources"])
-        
-        web_context = gather_whitelisted_context(last_user_message, user_id)
-        if web_context["context"]:
-            context_text += web_context["context"]
-            all_sources.extend(web_context["sources"])
+        else:
+            web_context = gather_whitelisted_context(last_user_message, user_id)
+            if web_context["context"]:
+                context_text += web_context["context"]
+                all_sources.extend(web_context["sources"])
         
         system_prompt = """You are Alexander, an academic research assistant for secondary school students.
 You provide accurate, well-reasoned answers based on the information provided.
