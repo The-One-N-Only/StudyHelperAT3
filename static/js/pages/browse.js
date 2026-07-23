@@ -4,7 +4,7 @@ import { showToast } from '../toast.js';
 import { createCard } from '../card.js';
 import { fetchBrowseSummary } from '../browse-summary.js';
 
-const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'scholar'];
+const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'britannica'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 const BROWSE_STATE_VERSION = 2;
 const BROWSE_REQUEST_TIMEOUT_MS = 30000;
@@ -600,8 +600,8 @@ export function initBrowse(root) {
                                         <label class="form-check-label" for="filterPubMed">PubMed</label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterScholar" value="scholar" checked>
-                                        <label class="form-check-label" for="filterScholar">Google Scholar</label>
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterBritannica" value="britannica" checked>
+                                        <label class="form-check-label" for="filterBritannica">Britannica</label>
                                     </div>
                                     <div id="whitelistCheckboxes" class="ps-2 border-start mt-2"></div>
                                 </div>
@@ -744,7 +744,7 @@ function getDisplayNameForSource(source) {
     if (source === 'wikipedia') return 'Wikipedia';
     if (source === 'gbooks') return 'Google Books';
     if (source === 'pubmed') return 'PubMed';
-    if (source === 'scholar') return 'Google Scholar';
+    if (source === 'britannica') return 'Britannica';
     if (source === 'whitelist') return 'Whitelisted Sources';
     if (source.startsWith('whitelist_')) {
         const domain = source.slice('whitelist_'.length);
@@ -765,11 +765,11 @@ function itemMatchesSource(item, source) {
     if (source === 'pubmed') {
         return sourceName === 'pubmed';
     }
-    if (source === 'scholar') {
-        return sourceName === 'scholar' || sourceName === 'google scholar';
+    if (source === 'britannica') {
+        return sourceName === 'britannica';
     }
     if (source === 'whitelist') {
-        return !['wikipedia', 'pubmed', 'gbooks', 'scholar'].includes(sourceName);
+        return !['wikipedia', 'pubmed', 'gbooks', 'britannica'].includes(sourceName);
     }
     if (source.startsWith('whitelist_')) {
         const domain = source.slice('whitelist_'.length);
@@ -938,7 +938,7 @@ function groupResultsBySource(results) {
             if (sourceName === 'wikipedia') source = 'wikipedia';
             else if (sourceName === 'gbooks' || sourceName === 'google books') source = 'gbooks';
             else if (sourceName === 'pubmed') source = 'pubmed';
-            else if (sourceName === 'scholar' || sourceName === 'google scholar') source = 'scholar';
+            else if (sourceName === 'britannica') source = 'britannica';
             else {
                 try {
                     source = `whitelist_${new URL(item.source_url).hostname}`;

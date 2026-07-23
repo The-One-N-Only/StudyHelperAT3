@@ -370,7 +370,7 @@ def browse_search_all():
     data = request.json
     query = data['query']
     num_results = data.get('num_results', 20)
-    sources = data.get('sources', ['wikipedia', 'gbooks', 'scholar'])
+    sources = data.get('sources', ['wikipedia', 'gbooks', 'britannica'])
     filters = data.get('filters', {})
     user_id = session.get('user_id')
 

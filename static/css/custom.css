@@ -2381,7 +2381,12 @@ p {
 }
 
 [data-bs-theme="dark"] .loader-container {
-    background-color: #3d2011;
+    background-color: var(--bg-950);
+}
+
+[data-bs-theme="dark"] .browse-loader-art {
+    filter: invert(0.88) sepia(1) saturate(3) hue-rotate(330deg) brightness(0.85);
+    mix-blend-mode: normal;
 }
 
 [data-bs-theme="dark"] .browse-loader-status {
@@ -2434,8 +2439,8 @@ p {
 }
 
 [data-bs-theme="dark"] .result-card .result-card-image[data-image-kind="fallback"] {
-    filter: brightness(0.45);
-    mix-blend-mode: multiply;
+    filter: brightness(0.55) sepia(0.45) saturate(1.8) hue-rotate(340deg);
+    mix-blend-mode: normal;
     opacity: 0.55;
     padding: 1.25rem;
 }

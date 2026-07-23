@@ -30,7 +30,7 @@ GOOGLE_BOOKS_VOLUME_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,220}")
 BROWSE_SOURCE_DOMAINS = {
     "wikipedia": ("en.wikipedia.org", "wikipedia"),
     "gbooks": ("books.google.com", "gbooks"),
-    "scholar": ("scholar.google.com", "scholar"),
+    "britannica": ("www.britannica.com", "britannica"),
     "pubmed": ("pubmed.ncbi.nlm.nih.gov", "pubmed"),
 }
 
@@ -122,6 +122,8 @@ def _validate_url(value, max_length):
 
 def _safe_browse_image_url(value):
     """Return a bounded HTTPS image URL from an approved host, else empty."""
+    if isinstance(value, str) and value.startswith("http://"):
+        value = "https://" + value[len("http://"):]
     parsed = _validate_url(value, ITEM_THUMB_URL_MAX_LENGTH)
     if parsed is None:
         return ""
@@ -224,10 +226,19 @@ def _browse_result_image_url(item):
         )
         if cover_url:
             return cover_url
-    return (
+    thumb = (
         _safe_browse_image_url(item.get("thumbnail", ""))
         or _safe_browse_image_url(item.get("favicon", ""))
     )
+    if thumb:
+        return thumb
+    pagemap = item.get("pagemap", {}) or {}
+    for key in ("cse_thumbnail", "cse_image"):
+        for img in pagemap.get(key, []) or []:
+            url = _safe_browse_image_url((img or {}).get("src", ""))
+            if url:
+                return url
+    return ""
 
 
 def _make_search_cache_key(query, source_or_scope, filters_dict, num_results):
@@ -622,7 +633,7 @@ def gbooks(query, num_results, filters, *, user_id):
                 item_data = {
                     "title": vol.get("title", ""),
                     "description": vol.get("description", ""),
-                    "thumb_url": vol.get("imageLinks", {}).get("thumbnail", ""),
+                    "thumb_url": _safe_browse_image_url(vol.get("imageLinks", {}).get("thumbnail", "")),
                     "thumb_mime": "image/jpeg",
                     "thumb_height": 128,
                     "source_url": vol.get("infoLink", ""),
@@ -713,7 +724,7 @@ def _search_serpapi(query, num_results, scope, *, user_id):
                     item_data = {
                         "title": item.get("title", ""),
                         "description": item.get("snippet", ""),
-                        "thumb_url": "",
+                        "thumb_url": _browse_result_image_url(item),
                         "thumb_mime": "image/jpeg",
                         "thumb_height": 0,
                         "source_url": link,
