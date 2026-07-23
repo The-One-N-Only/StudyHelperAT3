@@ -24,6 +24,30 @@ def test_get_whitelisted_domains():
     assert 'pubmed.ncbi.nlm.nih.gov' in domains
 
 
+def test_get_domain_patterns():
+    patterns = whitelist.get_whitelisted_domain_patterns()
+    assert isinstance(patterns, list)
+    assert "*.edu.au" in patterns
+    assert "*.gov" in patterns
+
+def test_get_whitelist_search_scope():
+    scope = whitelist.get_whitelist_search_scope()
+    assert "site:en.wikipedia.org" in scope
+    assert "site:pubmed.ncbi.nlm.nih.gov" in scope
+    assert "site:*.edu" in scope
+
+@pytest.mark.parametrize("domain,expected", [
+    ("en.wikipedia.org", "Wikipedia"),
+    ("pubmed.ncbi.nlm.nih.gov", "PubMed"),
+    ("books.google.com", "Google Books"),
+    ("www.britannica.com", "Britannica"),
+    ("www.sciencedirect.com", "ScienceDirect"),
+    ("*.edu.au", "All edu.au sites"),
+    ("unknown.example.com", "Unknown.Example"),
+])
+def test_get_display_name_for_domain(domain, expected):
+    assert whitelist.get_display_name_for_domain(domain) == expected
+
 def test_allowed_gov_wildcard_domain():
     assert whitelist.is_allowed("https://www.usa.gov/page") == True
 
