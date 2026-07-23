@@ -83,6 +83,7 @@ function renderWorkspaceCards() {
     const addCardTarget = addCard.querySelector('.card');
     addCardTarget.addEventListener('click', () => startInlineWorkspaceCreate(addCardTarget));
     addCardTarget.addEventListener('keydown', (event) => {
+        if (addCardTarget.dataset.editing === 'true') return;
         if (event.key !== 'Enter' && event.key !== ' ') {
             return;
         }
@@ -352,7 +353,7 @@ function startInlineWorkspaceCreate(cardElement) {
     cardBody.innerHTML = `
         <div class="d-flex flex-column justify-content-center align-items-center gap-3 w-100">
             <label for="inlineWorkspaceName" class="h5 mb-0">Create new workspace</label>
-            <input type="text" id="inlineWorkspaceName" class="form-control text-center" placeholder="Enter workspace name..." autocomplete="off" maxlength="120">
+            <input type="text" id="inlineWorkspaceName" class="form-control text-center" placeholder="Enter workspace name..." autocomplete="off" maxlength="25">
             <div class="d-flex gap-2">
                 <button class="btn btn-primary btn-sm" id="inlineCreateBtn" type="button">Create</button>
                 <button class="btn btn-outline-secondary btn-sm" id="inlineCancelBtn" type="button">Cancel</button>

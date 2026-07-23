@@ -651,7 +651,9 @@ def create_workspace():
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
     
     data = request.json
-    name = data.get('name', 'New Workspace')
+    name = data.get('name', 'New Workspace').strip()[:25]
+    if not name:
+        return jsonify({'status': False, 'error': 'Workspace name is required'}), 400
     workspace = db.create_workspace(user_id, name)
     logging.info(f"User {user_id} created workspace: {name}")
     return jsonify({'status': True, 'workspace': workspace})
