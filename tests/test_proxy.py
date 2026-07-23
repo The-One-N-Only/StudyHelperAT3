@@ -29,7 +29,7 @@ class TestFetchSourceBasic:
         monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
         monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "en.wikipedia.org")
         html = _simple_html("Sample Article", "<article><p>Main text here.</p></article>")
-        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout, headers=None: FakeResponse(html))
 
         result = proxy.fetch_source(PUBLIC_URL)
 
@@ -43,7 +43,7 @@ class TestFetchSourceBasic:
         monkeypatch.setattr(proxy.whitelist, "is_allowed", lambda _url: True)
         monkeypatch.setattr(proxy.whitelist, "get_domain", lambda _url: "en.wikipedia.org")
         html = b"<html><head><title>Test</title></head><body><img src=\"/images/logo.png\"></body></html>"
-        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html, url="https://en.wikipedia.org/wiki/Test"))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout, headers=None: FakeResponse(html, url="https://en.wikipedia.org/wiki/Test"))
 
         result = proxy.fetch_source(PUBLIC_URL)
 
@@ -94,7 +94,7 @@ class TestFetchSourceBasic:
         monkeypatch.setattr(
             proxy.requests,
             "get",
-            lambda url, timeout: FakeResponse(b"", status_code=404),
+            lambda url, timeout, headers=None: FakeResponse(b"", status_code=404),
         )
 
         result = proxy.fetch_source(PUBLIC_URL)
@@ -108,7 +108,7 @@ class TestFetchSourceBasic:
         monkeypatch.setattr(
             proxy.requests,
             "get",
-            lambda url, timeout: FakeResponse(b"", status_code=403),
+            lambda url, timeout, headers=None: FakeResponse(b"", status_code=403),
         )
 
         result = proxy.fetch_source(PUBLIC_URL)
@@ -123,7 +123,7 @@ class TestFetchSourceBasic:
 
         import requests as real_requests
 
-        def _raise_timeout(url, timeout):
+        def _raise_timeout(url, timeout, headers=None):
             raise real_requests.Timeout()
 
         monkeypatch.setattr(proxy.requests, "get", _raise_timeout)
@@ -139,7 +139,7 @@ class TestFetchSourceBasic:
 
         import requests as real_requests
 
-        def _raise_error(url, timeout):
+        def _raise_error(url, timeout, headers=None):
             raise real_requests.ConnectionError("connection refused")
 
         monkeypatch.setattr(proxy.requests, "get", _raise_error)
@@ -162,7 +162,7 @@ class TestSanitization:
             <embed src="https://evil.test/flash">
             <p>Legitimate paragraph</p>
         </body></html>"""
-        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout, headers=None: FakeResponse(html))
 
         result = proxy.fetch_source(PUBLIC_URL)
 
@@ -180,7 +180,7 @@ class TestSanitization:
         </head><body>
             <div style="background: #f0f0f0; border: 1px solid #ccc;">Colored content</div>
         </body></html>"""
-        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout, headers=None: FakeResponse(html))
 
         result = proxy.fetch_source(PUBLIC_URL)
 
@@ -201,7 +201,7 @@ class TestSanitization:
             <article><p>Article content.</p></article>
             <footer><span>Copyright 2026</span></footer>
         </body></html>"""
-        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout: FakeResponse(html))
+        monkeypatch.setattr(proxy.requests, "get", lambda url, timeout, headers=None: FakeResponse(html))
 
         result = proxy.fetch_source(PUBLIC_URL)
 

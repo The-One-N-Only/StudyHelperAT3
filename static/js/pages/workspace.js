@@ -422,12 +422,6 @@ function renderSelectedSourcePreview(item) {
         return;
     }
 
-    const isNationalGeo = sourceUrl.includes('nationalgeographic.com');
-    if (isNationalGeo) {
-        renderPreviewNotice(previewContainer, 'National Geographic content requires a subscription.', sourceUrl);
-        return;
-    }
-
     previewContainer.innerHTML = `<div class="d-flex justify-content-center align-items-center h-100 p-3"><div class="spinner-border" role="status"></div></div>`;
 
     const fileExtension = sourceExtension(previewUrl);

@@ -651,18 +651,6 @@ export async function openViewer(item) {
         return;
     }
 
-    const isNationalGeo = textValue(item?.source_url).includes('nationalgeographic.com');
-    if (isNationalGeo) {
-        renderViewerNotice(
-            body,
-            'National Geographic content requires a subscription.',
-            'warning',
-            item?.source_url,
-            'Open National Geographic in new tab',
-        );
-        return;
-    }
-
     try {
         const response = await fetch(
             `/api/proxy/source?url=${encodeURIComponent(textValue(item?.source_url))}`,
