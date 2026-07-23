@@ -233,7 +233,7 @@ def test_answer_chat_persists_successful_turn(monkeypatch):
     monkeypatch.setattr(
         flask_app.answer,
         "chat_with_sources",
-        lambda received, user_id, atn=None, workspace_id=None: {
+        lambda received, user_id, atn=None: {
             "status": True,
             "response": "Hosted answer",
             "sources": [],
