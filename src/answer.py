@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 from typing import Optional
 from urllib.parse import quote
 
@@ -18,6 +19,50 @@ AI_PROVIDER_ERROR = "Alexander could not reach the AI service. Try again shortly
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
+def _strip_html(text: str) -> str:
+    """Remove HTML tags from text to create clean plain-text context."""
+    clean = re.sub(r'<[^>]+>', '', text)
+    clean = re.sub(r'\n{3,}', '\n\n', clean)
+    return clean.strip()
+
+
+def gather_workspace_notes_context(workspace_id: int, user_id: int, query: str) -> dict:
+    """Fetch workspace notes and extract context relevant to the query."""
+    notes = db.get_workspace_notes(workspace_id, user_id)
+    if not notes:
+        return {"status": True, "context": "", "sources": []}
+
+    context_parts = []
+    keywords = query.lower().split()
+
+    for note in notes:
+        title = note.get("title", "Untitled")
+        content = note.get("content", "")
+        if not content:
+            continue
+
+        clean_content = _strip_html(content)
+
+        score = sum(clean_content.lower().count(kw) for kw in keywords)
+        if score > 0 or len(notes) <= 2:
+            truncated = clean_content[:2000]
+            if len(clean_content) > 2000:
+                truncated += "..."
+            context_parts.append(
+                f"**Note titled '{title}':**\n{truncated}"
+            )
+
+    if context_parts:
+        context_text = "**Information from your workspace notes:**\n\n" + "\n\n".join(context_parts) + "\n\n"
+        return {
+            "status": True,
+            "context": context_text,
+            "sources": [{"type": "workspace_note", "title": n["title"]} for n in notes if n.get("content")]
+        }
+
+    return {"status": True, "context": "", "sources": []}
+
 
 def search_files_for_context(user_id: int, query: str, num_results: int = 5) -> dict:
     """
@@ -160,7 +205,7 @@ def gather_whitelisted_context(query: str, user_id: int, num_results: int = 3) -
     }
 
 
-def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optional[str] = None) -> dict:
+def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optional[str] = None, workspace_id: Optional[int] = None) -> dict:
     """
     Answer a user prompt using information from uploaded files and optionally web sources.
     
@@ -169,6 +214,7 @@ def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optio
         user_id: The user ID
         search_web: Whether to search Wikipedia for additional context
         atn: Optional assessment task/note for context
+        workspace_id: Optional workspace ID to include workspace notes as context
     
     Returns:
         Dict with answer, sources used, and status
@@ -184,6 +230,13 @@ def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optio
         file_context = search_files_for_context(user_id, prompt, num_results=3)
         context_text = file_context["context"]
         all_sources = file_context["sources"].copy()
+
+        # Collect context from workspace notes if applicable
+        if workspace_id:
+            notes_context = gather_workspace_notes_context(workspace_id, user_id, prompt)
+            if notes_context["context"]:
+                context_text += notes_context["context"]
+                all_sources.extend(notes_context["sources"])
         
         # Optionally search web and whitelisted sources
         if search_web:
@@ -230,7 +283,7 @@ Format your answer clearly with key points where appropriate."""
         }
 
 
-def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None) -> dict:
+def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None, workspace_id: Optional[int] = None) -> dict:
     """
     Multi-turn conversation with context from uploaded files and web.
     
@@ -238,6 +291,7 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None) -
         messages: List of message dicts with 'role' and 'content'
         user_id: The user ID
         atn: Optional assessment task/note for context
+        workspace_id: Optional workspace ID to include workspace notes as context
     
     Returns:
         Dict with response and sources used
@@ -255,6 +309,12 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None) -
         file_context = search_files_for_context(user_id, last_user_message, num_results=2)
         context_text = file_context["context"]
         all_sources = file_context["sources"].copy()
+
+        if workspace_id:
+            notes_context = gather_workspace_notes_context(workspace_id, user_id, last_user_message)
+            if notes_context["context"]:
+                context_text += notes_context["context"]
+                all_sources.extend(notes_context["sources"])
         
         web_context = gather_whitelisted_context(last_user_message, user_id)
         if web_context["context"]:

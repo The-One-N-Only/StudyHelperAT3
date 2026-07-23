@@ -188,6 +188,16 @@ body.offcanvas-push {
     border-radius: var(--radius-panel);
 }
 
+.notes-box .ql-container {
+    overflow-y: auto !important;
+    max-height: 350px;
+}
+
+.workspace-quill-editor {
+    display: flex;
+    flex-direction: column;
+}
+
 /* Viewer offcanvas iframe */
 .viewer-iframe {
     width: 100%;

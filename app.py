@@ -1032,7 +1032,7 @@ def answer_chat():
         if latest_user_content is None:
             return jsonify({'status': False, 'error': 'No user message provided'}), 400
     
-    result = answer.chat_with_sources(messages, user_id, atn=atn)
+    result = answer.chat_with_sources(messages, user_id, atn=atn, workspace_id=workspace_id)
     if isinstance(result, str):
         result = {'status': True, 'response': result}
     elif not isinstance(result, dict):

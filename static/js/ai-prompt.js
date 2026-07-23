@@ -189,11 +189,13 @@ class StudyHelperAI {
    */
   formatResponse(response) {
     if (!response.status) {
-      return `<div class="error">Error: ${response.error}</div>`;
+      return `<div class="error">Error: ${this._escapeHtml(response.error)}</div>`;
     }
 
+    const answer = this._formatMarkdown(response.answer || response.response || '');
+
     let html = '<div class="response">';
-    html += `<div class="answer">${response.answer || response.response}</div>`;
+    html += `<div class="answer">${answer}</div>`;
     
     if (response.sources) {
       html += this.formatSources(response.sources);
@@ -201,6 +203,19 @@ class StudyHelperAI {
 
     html += '</div>';
     return html;
+  }
+
+  _escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  _formatMarkdown(text) {
+    let safe = this._escapeHtml(text);
+    safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    safe = safe.replace(/\n/g, '<br>');
+    return safe;
   }
 }
 

@@ -784,10 +784,18 @@ function renderAlexanderMessages() {
     alexanderMessages.forEach((message) => {
         const messageEl = document.createElement('div');
         messageEl.className = `mb-3 p-3 rounded chat-row chat-message ${message.role === 'agent' ? 'bg-light text-dark chat-row-agent chat-message-agent chat-avatar' : 'bg-primary text-white chat-row-user chat-message-user'}`;
-        messageEl.innerHTML = `<strong>${message.role === 'agent' ? 'Alexander' : 'You'}</strong><div class="mt-1">${escapeHtml(message.text)}</div>`;
+        const formattedText = message.role === 'agent' ? formatAlexanderText(message.text) : escapeHtml(message.text);
+        messageEl.innerHTML = `<strong>${message.role === 'agent' ? 'Alexander' : 'You'}</strong><div class="mt-1">${formattedText}</div>`;
         container.appendChild(messageEl);
     });
     container.scrollTop = container.scrollHeight;
+}
+
+function formatAlexanderText(text) {
+    let safe = escapeHtml(text);
+    safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    safe = safe.replace(/\n/g, '<br>');
+    return safe;
 }
 
 function createWorkspaceDialog() {
