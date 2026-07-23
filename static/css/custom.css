@@ -1338,19 +1338,6 @@ p {
     border-color: hsl(33 30% 60% / 0.30);
 }
 
-:root:not([data-bs-theme="dark"]) .quick-note-input {
-    background: transparent;
-    border-color: transparent;
-    color: var(--ink-900);
-    resize: vertical;
-}
-
-:root:not([data-bs-theme="dark"]) .quick-note-input:focus {
-    background: transparent;
-    border-color: var(--gilt-900);
-    box-shadow: var(--shadow-gilt-glow);
-}
-
 :root:not([data-bs-theme="dark"]) .source-preview-shell {
     background: var(--paper-100) !important;
     border-color: hsl(33 30% 60% / 0.30) !important;
@@ -2674,19 +2661,6 @@ p {
     border-color: hsl(35 40% 45% / 0.14);
 }
 
-[data-bs-theme="dark"] .quick-note-input {
-    background: transparent;
-    border-color: transparent;
-    color: var(--text-primary);
-    resize: vertical;
-}
-
-[data-bs-theme="dark"] .quick-note-input:focus {
-    background: transparent;
-    border-color: var(--gold-500);
-    box-shadow: var(--shadow-warm-glow);
-}
-
 [data-bs-theme="dark"] .source-preview-shell {
     background: hsl(28 50% 5% / 0.35) !important;
     border-color: hsl(35 40% 45% / 0.18) !important;
@@ -3035,4 +3009,275 @@ p {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* Workspace Quill editor: light theme */
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow {
+    background: var(--paper-100);
+    border: none !important;
+    border-bottom: 1px solid hsl(33 30% 60% / 0.35) !important;
+    border-radius: 0 !important;
+    font-family: var(--font-body);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-stroke,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-stroke {
+    stroke: var(--ink-700);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-fill,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-fill {
+    fill: var(--ink-700);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker {
+    color: var(--ink-700);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker-options,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker-options {
+    background: var(--paper-100);
+    border-color: hsl(33 30% 60% / 0.45);
+    color: var(--ink-900);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow button:hover .ql-stroke,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow button.ql-active .ql-stroke,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker-label:hover .ql-stroke,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker-label.ql-active .ql-stroke,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow button:hover .ql-stroke,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow button.ql-active .ql-stroke,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label:hover .ql-stroke,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label.ql-active .ql-stroke {
+    stroke: var(--rubric-500);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow button:hover .ql-fill,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow button.ql-active .ql-fill,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker-label:hover .ql-fill,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker-label.ql-active .ql-fill,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow button:hover .ql-fill,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow button.ql-active .ql-fill,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label:hover .ql-fill,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label.ql-active .ql-fill {
+    fill: var(--rubric-500);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow button:hover,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow button:focus-visible,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker-label:hover,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker-label.ql-active,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow button:hover,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow button:focus-visible,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label:hover,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label.ql-active {
+    color: var(--rubric-500);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker-item:hover,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-toolbar.ql-snow .ql-picker-item.ql-selected,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker-item:hover,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-toolbar.ql-snow .ql-picker-item.ql-selected {
+    color: var(--rubric-500);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-container.ql-snow,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-container.ql-snow {
+    border: none !important;
+    font-family: var(--font-body);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor {
+    background: var(--paper-50);
+    color: var(--ink-900);
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    line-height: 1.7;
+    padding: 15px;
+    min-height: inherit;
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor.ql-blank::before,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor.ql-blank::before {
+    color: var(--ink-700);
+    opacity: 1;
+    font-style: italic;
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor h1,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor h2,
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor h3,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor h1,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor h2,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor h3 {
+    color: var(--ink-900);
+    font-family: var(--font-display);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor blockquote,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor blockquote {
+    border-left: 3px solid var(--gilt-500);
+    color: var(--ink-700);
+}
+
+/* Workspace Quill editor: dark theme (black bg, gold text) */
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow {
+    background: var(--bg-950);
+    border: none !important;
+    border-bottom: 1px solid var(--gold-700) !important;
+    border-radius: 0 !important;
+    font-family: var(--font-body);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-stroke,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-stroke {
+    stroke: var(--gold-300);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-fill,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-fill {
+    fill: var(--gold-300);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker {
+    color: var(--gold-300);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-options,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-options {
+    background: var(--bg-950);
+    border-color: var(--gold-700);
+    color: var(--gold-100);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-item,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-item {
+    color: var(--gold-300);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow button:hover .ql-stroke,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow button.ql-active .ql-stroke,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-label:hover .ql-stroke,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-label.ql-active .ql-stroke,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow button:hover .ql-stroke,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow button.ql-active .ql-stroke,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label:hover .ql-stroke,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label.ql-active .ql-stroke {
+    stroke: var(--gold-100);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow button:hover .ql-fill,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow button.ql-active .ql-fill,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-label:hover .ql-fill,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-label.ql-active .ql-fill,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow button:hover .ql-fill,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow button.ql-active .ql-fill,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label:hover .ql-fill,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label.ql-active .ql-fill {
+    fill: var(--gold-100);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow button:hover,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow button:focus-visible,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-label:hover,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-label.ql-active,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow button:hover,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow button:focus-visible,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label:hover,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label.ql-active {
+    color: var(--gold-100);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-item:hover,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-item.ql-selected,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-item:hover,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-item.ql-selected {
+    color: var(--gold-100);
+    background: hsl(35 70% 55% / 0.12);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow button:hover,
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow .ql-picker-label:hover,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow button:hover,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow .ql-picker-label:hover {
+    background: hsl(35 70% 55% / 0.1);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-toolbar.ql-snow button.ql-active,
+[data-bs-theme="dark"] #noteEditorModal .ql-toolbar.ql-snow button.ql-active {
+    background: hsl(35 70% 55% / 0.15);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-container.ql-snow,
+[data-bs-theme="dark"] #noteEditorModal .ql-container.ql-snow {
+    border: none !important;
+    font-family: var(--font-body);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-editor,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor {
+    background: var(--bg-950);
+    color: var(--gold-100);
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    line-height: 1.7;
+    padding: 15px;
+    min-height: inherit;
+}
+
+[data-bs-theme="dark"] .notes-box .ql-editor.ql-blank::before,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor.ql-blank::before {
+    color: var(--gold-700);
+    opacity: 1;
+    font-style: italic;
+}
+
+[data-bs-theme="dark"] .notes-box .ql-editor h1,
+[data-bs-theme="dark"] .notes-box .ql-editor h2,
+[data-bs-theme="dark"] .notes-box .ql-editor h3,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor h1,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor h2,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor h3 {
+    color: var(--gold-100);
+    font-family: var(--font-display);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-editor blockquote,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor blockquote {
+    border-left: 3px solid var(--gold-500);
+    color: var(--text-secondary);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-editor a,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor a {
+    color: var(--gold-300);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-editor ::selection,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor ::selection {
+    background: var(--gold-500);
+    color: var(--bg-950);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-editor ::-moz-selection,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor ::-moz-selection {
+    background: var(--gold-500);
+    color: var(--bg-950);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor ::selection,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor ::selection {
+    background: var(--gilt-300);
+    color: var(--ink-900);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor ::-moz-selection,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor ::-moz-selection {
+    background: var(--gilt-300);
+    color: var(--ink-900);
 }

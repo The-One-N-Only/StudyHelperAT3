@@ -25,6 +25,19 @@ let alexanderAIConfigured = true;
 let alexanderRequestPending = false;
 let alexanderConversationVersion = 0;
 let workspaceUploadSelectedFile = null;
+let quillEditor = null;
+let modalQuill = null;
+
+const QUILL_TOOLBAR = [
+    [{ 'header': [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline'],
+    [{ 'size': ['small', false, 'large', 'huge'] }],
+    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+    [{ 'indent': '-1'}, { 'indent': '+1' }],
+    [{ 'color': [] }, { 'background': [] }],
+    [{ 'align': [] }],
+    ['clean']
+];
 
 export function initWorkspace(root) {
     pageRoot = root;
@@ -85,8 +98,8 @@ function renderWorkspaceDetail() {
                             </div>
                             <button class="btn btn-sm btn-outline-primary btn-secondary-wood" id="saveQuickNoteBtn">Save quick note</button>
                         </div>
-                        <div class="card-body">
-                            <textarea id="quickNoteInput" class="form-control quick-note-input" rows="10" placeholder="Write your thoughts, outline key ideas, or summarise the selected source..."></textarea>
+                        <div class="card-body p-0">
+                            <div id="quillEditor" class="workspace-quill-editor" style="min-height: 250px;"></div>
                         </div>
                     </div>
                 </div>
@@ -150,6 +163,26 @@ function renderWorkspaceDetail() {
     attachWorkspaceDetailListeners();
     renderAlexanderMessages();
     syncAlexanderChatAvailability();
+    initWorkspaceQuill();
+}
+
+function initWorkspaceQuill() {
+    const editorEl = pageRoot.querySelector('#quillEditor');
+    if (!editorEl) return;
+
+    if (quillEditor) {
+        quillEditor = null;
+    }
+
+    quillEditor = new Quill('#quillEditor', {
+        theme: 'snow',
+        modules: {
+            toolbar: {
+                container: QUILL_TOOLBAR
+            }
+        },
+        placeholder: 'Write your thoughts, outline key ideas, or summarise the selected source...'
+    });
 }
 
 function attachWorkspaceDetailListeners() {
@@ -576,9 +609,9 @@ function showNoteEditor(title, content) {
                         <h5 class="modal-title">${currentNoteId ? 'Edit Note' : 'New Note'}</h5>
                         <button type="button" class="btn-close" id="closeModalBtn"></button>
                     </div>
-                    <div class="modal-body">
-                        <input type="text" class="form-control mb-3" id="noteTitleInput" placeholder="Note title" value="${escapeHtml(title)}">
-                        <textarea class="form-control" id="noteContentInput" rows="10" placeholder="Note content">${escapeHtml(content)}</textarea>
+                    <div class="modal-body p-0">
+                        <input type="text" class="form-control mb-0 border-0 border-bottom rounded-0" id="noteTitleInput" placeholder="Note title" value="${escapeHtml(title)}" style="padding: 12px 15px;">
+                        <div id="modalQuillEditor" class="workspace-quill-editor" style="min-height: 350px;"></div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" id="cancelNoteBtn">Cancel</button>
@@ -592,11 +625,25 @@ function showNoteEditor(title, content) {
     modal.querySelector('#closeModalBtn').addEventListener('click', closeNoteEditor);
     modal.querySelector('#cancelNoteBtn').addEventListener('click', closeNoteEditor);
     modal.querySelector('#saveNoteBtn').addEventListener('click', saveNote);
+
+    modalQuill = new Quill('#modalQuillEditor', {
+        theme: 'snow',
+        modules: {
+            toolbar: {
+                container: QUILL_TOOLBAR
+            }
+        },
+        placeholder: 'Note content...'
+    });
+
+    if (content) {
+        modalQuill.root.innerHTML = content;
+    }
 }
 
 function saveNote() {
     const title = pageRoot.querySelector('#noteTitleInput').value.trim();
-    const content = pageRoot.querySelector('#noteContentInput').value.trim();
+    const content = modalQuill ? modalQuill.root.innerHTML.trim() : '';
 
     if (!title) {
         showToast('Please enter a note title', 'warning');
@@ -625,14 +672,18 @@ function saveNote() {
 }
 
 function closeNoteEditor() {
+    if (modalQuill) {
+        modalQuill = null;
+    }
     const modal = pageRoot.querySelector('#noteEditorModal');
     if (modal) modal.innerHTML = '';
     currentNoteId = null;
 }
 
 function saveQuickNote() {
-    const content = pageRoot.querySelector('#quickNoteInput')?.value.trim();
-    if (!content) {
+    if (!quillEditor) return;
+    const content = quillEditor.root.innerHTML.trim();
+    if (!content || content === '<p><br></p>') {
         showToast('Add some quick notes before saving.', 'warning');
         return;
     }
@@ -647,7 +698,7 @@ function saveQuickNote() {
     .then(result => {
         if (result.status) {
             showToast('Quick note saved', 'success');
-            pageRoot.querySelector('#quickNoteInput').value = '';
+            quillEditor.setText('');
             loadWorkspaceNotes();
         } else {
             showToast(result.error || 'Unable to save note', 'danger');
