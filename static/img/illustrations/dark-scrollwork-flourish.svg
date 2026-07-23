@@ -1,0 +1,10 @@
+<svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg" role="presentation" aria-hidden="true" class="illustration illustration--scrollwork" focusable="false" fill="none">
+  <g fill="none" stroke="#A9824F" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M205,15 C130,10 55,45 50,120 C47,165 78,195 118,188" />
+    <path d="M118,188 C95,183 82,163 88,140 C95,113 135,105 158,118" />
+    <path d="M158,118 C178,129 195,115 192,92" />
+    <circle cx="205" cy="15" r="4" fill="#A9824F" stroke="none" />
+    <circle cx="192" cy="92" r="3.5" fill="#A9824F" stroke="none" />
+    <circle cx="118" cy="188" r="3.5" fill="#A9824F" stroke="none" />
+  </g>
+</svg>

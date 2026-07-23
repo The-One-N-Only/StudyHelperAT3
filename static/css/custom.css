@@ -179,8 +179,23 @@ body.offcanvas-push {
     background: var(--paper-100);
 }
 
+#viewerOffcanvas {
+    overflow-x: hidden;
+}
+
+#viewerOffcanvas .offcanvas-header {
+    overflow: hidden;
+}
+
+#viewerHeader {
+    overflow: hidden;
+    min-width: 0;
+}
+
 .site-info-box {
     background: var(--bs-tertiary-bg);
+    overflow: hidden;
+    min-width: 0;
 }
 
 .source-preview-box,
@@ -2439,9 +2454,7 @@ p {
 }
 
 [data-bs-theme="dark"] .result-card .result-card-image[data-image-kind="fallback"] {
-    filter: brightness(0.55) sepia(0.45) saturate(1.8) hue-rotate(340deg);
-    mix-blend-mode: normal;
-    opacity: 0.55;
+    opacity: 0.6;
     padding: 1.25rem;
 }
 

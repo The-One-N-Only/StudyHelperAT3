@@ -49,6 +49,12 @@ function textValue(value) {
     return value === null || value === undefined ? '' : String(value);
 }
 
+function truncateText(value, maxLen) {
+    const str = textValue(value);
+    if (str.length <= maxLen) return str;
+    return str.substring(0, maxLen) + '\u2026';
+}
+
 function appendTextElement(parent, tagName, value, className = '') {
     const element = document.createElement(tagName);
     element.className = className;
@@ -88,11 +94,11 @@ function renderViewerHeader(header, item) {
     summary.className = 'd-flex align-items-center gap-2';
 
     const details = document.createElement('div');
-    details.className = 'flex-grow-1';
+    details.className = 'flex-grow-1 min-w-0';
     appendTextElement(
         details,
         'h6',
-        item?.title,
+        truncateText(item?.title, 60),
         'fw-semibold text-truncate mb-1',
     );
 
@@ -109,12 +115,12 @@ function renderViewerHeader(header, item) {
     if (sourceUrl) {
         const urlLink = document.createElement('a');
         urlLink.className = 'small text-muted text-truncate d-inline-block source-link-truncate';
+        urlLink.style.maxWidth = '100%';
         urlLink.href = sourceUrl;
         urlLink.target = '_blank';
         urlLink.rel = 'noopener noreferrer';
-        urlLink.textContent = sourceUrl;
+        urlLink.textContent = truncateText(sourceUrl, 55);
         urlLink.title = sourceUrl;
-        urlLink.style.maxWidth = '380px';
         metadata.appendChild(urlLink);
     }
     details.appendChild(metadata);

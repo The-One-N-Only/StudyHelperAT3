@@ -347,13 +347,16 @@ def browse_search():
     results = []
     try:
         for requested_source in requested_sources:
-            results.extend(search.browse_serpapi_search(
-                query,
-                num_results,
-                requested_source,
-                filters,
-                user_id=user_id,
-            ))
+            if requested_source == 'wikipedia':
+                results.extend(search.wikipedia(query, num_results, user_id=user_id))
+            else:
+                results.extend(search.browse_serpapi_search(
+                    query,
+                    num_results,
+                    requested_source,
+                    filters,
+                    user_id=user_id,
+                ))
     except search.SerpApiProviderError:
         return jsonify({
             'status': False,
@@ -417,17 +420,24 @@ def browse_search_all():
     source_errors = {}
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=6)
-    futures = {
-        source: executor.submit(
-            search.browse_serpapi_search,
-            query,
-            num_results,
-            source,
-            filters,
-            user_id=user_id,
-        )
-        for source in requested_sources
-    }
+    futures = {}
+    for source in requested_sources:
+        if source == 'wikipedia':
+            futures[source] = executor.submit(
+                search.wikipedia,
+                query,
+                num_results,
+                user_id=user_id,
+            )
+        else:
+            futures[source] = executor.submit(
+                search.browse_serpapi_search,
+                query,
+                num_results,
+                source,
+                filters,
+                user_id=user_id,
+            )
     try:
         done, not_done = concurrent.futures.wait(
             futures.values(),

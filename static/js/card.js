@@ -8,20 +8,40 @@ const RESULT_IMAGE_FALLBACKS_LIST = [
     '/static/img/illustrations/scrollwork-flourish.svg',
     '/static/img/illustrations/stacked-books.svg',
     '/static/img/illustrations/compass-rose.svg',
-    '/static/img/illustrations/victorian-man.svg',
+    '/static/img/illustrations/candlestick.svg',
     '/static/img/illustrations/sextant.svg',
-    '/static/img/illustrations/victorian-man.svg',
+    '/static/img/illustrations/oil-lamp.svg',
 ];
+
+const RESULT_IMAGE_FALLBACKS_DARK = RESULT_IMAGE_FALLBACKS_LIST.map(function (path) {
+    return path.replace('/illustrations/', '/illustrations/dark-');
+});
+
+const ALL_RESULT_IMAGE_FALLBACKS = RESULT_IMAGE_FALLBACKS_LIST.concat(
+    RESULT_IMAGE_FALLBACKS_DARK
+);
+
+function isDarkMode() {
+    return document.documentElement.getAttribute('data-bs-theme') === 'dark';
+}
 
 function randomResultImageFallback() {
     const index = Math.floor(Math.random() * RESULT_IMAGE_FALLBACKS_LIST.length);
-    return RESULT_IMAGE_FALLBACKS_LIST[index];
+    return isDarkMode()
+        ? RESULT_IMAGE_FALLBACKS_DARK[index]
+        : RESULT_IMAGE_FALLBACKS_LIST[index];
 }
 const enhancedResultImages = new WeakSet();
 const failedResultImageUrls = new Set();
 
+function darkFallbackPath(lightPath) {
+    if (!isDarkMode()) return lightPath;
+    if (lightPath.includes('/dark-')) return lightPath;
+    return lightPath.replace('/illustrations/', '/illustrations/dark-');
+}
+
 function switchToResultImageFallback(image, fallbackImage) {
-    image.src = fallbackImage;
+    image.src = darkFallbackPath(fallbackImage);
     image.setAttribute('data-image-kind', 'fallback');
 }
 
@@ -29,7 +49,7 @@ function enhanceResultImage(image) {
     if (!image || enhancedResultImages.has(image)) return;
 
     const fallbackImage = image.getAttribute('data-fallback-src');
-    if (!RESULT_IMAGE_FALLBACKS_LIST.includes(fallbackImage)) return;
+    if (!ALL_RESULT_IMAGE_FALLBACKS.includes(fallbackImage)) return;
 
     enhancedResultImages.add(image);
     const remoteImage = safeRemoteImageUrl(
@@ -40,6 +60,16 @@ function enhanceResultImage(image) {
         && remoteImage
         && failedResultImageUrls.has(remoteImage)
     ) {
+        switchToResultImageFallback(image, fallbackImage);
+        return;
+    }
+    if (
+        image.getAttribute('data-image-kind') === 'remote'
+        && remoteImage
+        && image.complete
+        && image.naturalWidth === 0
+    ) {
+        rememberResultImageFailure(remoteImage);
         switchToResultImageFallback(image, fallbackImage);
         return;
     }
@@ -169,12 +199,36 @@ if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
         document.addEventListener(
             'DOMContentLoaded',
-            () => enhanceResultCardImages(document),
+            () => { enhanceResultCardImages(document); observeThemeForFallbacks(); },
             { once: true },
         );
     } else {
         enhanceResultCardImages(document);
+        observeThemeForFallbacks();
     }
+}
+
+function observeThemeForFallbacks() {
+    if (typeof MutationObserver === 'undefined') return;
+    function refreshFallbacks() {
+        var isDark = isDarkMode();
+        document.querySelectorAll('.result-card-image[data-image-kind="fallback"]').forEach(function (img) {
+            var src = img.getAttribute('src') || '';
+            var fallback = img.getAttribute('data-fallback-src') || '';
+            if (isDark) {
+                if (!src.includes('/dark-')) {
+                    img.src = darkFallbackPath(fallback);
+                }
+            } else {
+                if (src.includes('/dark-')) {
+                    img.src = fallback;
+                }
+            }
+        });
+    }
+    refreshFallbacks();
+    var observer = new MutationObserver(refreshFallbacks);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme'] });
 }
 
 function updateSaveButton(button, saved) {

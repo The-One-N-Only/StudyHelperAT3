@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600" aria-hidden="true" focusable="false" fill="none" stroke="#A9824F" stroke-width="2">
+  <!-- Base -->
+  <rect x="130" y="450" width="140" height="20" rx="4"/>
+  <path d="M150 470 L150 520 M250 470 L250 520"/>
+  <rect x="120" y="520" width="160" height="25" rx="6"/>
+  <!-- Stem -->
+  <rect x="185" y="350" width="30" height="100"/>
+  <!-- Body -->
+  <path d="M140 350 L100 250 Q100 200 200 200 Q300 200 300 250 L260 350 Z"/>
+  <!-- Wick tube -->
+  <rect x="185" y="170" width="30" height="30"/>
+  <!-- Flame -->
+  <path d="M200 140 Q185 160 200 170 Q215 160 200 140 Z" fill="#A9824F" stroke="none"/>
+  <!-- Handle -->
+  <path d="M100 250 Q60 200 100 150"/>
+  <path d="M300 250 Q340 200 300 150"/>
+  <!-- Hatching on body -->
+  <line x1="130" y1="260" x2="270" y2="260" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="120" y1="280" x2="280" y2="280" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="115" y1="300" x2="285" y2="300" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="125" y1="320" x2="275" y2="320" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="140" y1="340" x2="260" y2="340" stroke-width="0.5" stroke-dasharray="2,4"/>
+  <line x1="130" y1="220" x2="270" y2="220" stroke-width="0.5" stroke-dasharray="2,3"/>
+  <line x1="140" y1="235" x2="260" y2="235" stroke-width="0.5" stroke-dasharray="2,3"/>
+</svg>

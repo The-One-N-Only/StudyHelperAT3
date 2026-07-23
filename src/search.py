@@ -233,11 +233,29 @@ def _browse_result_image_url(item):
     if thumb:
         return thumb
     pagemap = item.get("pagemap", {}) or {}
-    for key in ("cse_thumbnail", "cse_image"):
+    for key in ("cse_thumbnail", "cse_image", "imageobject"):
         for img in pagemap.get(key, []) or []:
             url = _safe_browse_image_url((img or {}).get("src", ""))
             if url:
                 return url
+    metatags = pagemap.get("metatags", []) or []
+    for meta in metatags:
+        og = (meta or {}).get("og:image", "")
+        if og:
+            url = _safe_browse_image_url(og)
+            if url:
+                return url
+    link = item.get("link", "")
+    if link:
+        from urllib.parse import urlsplit
+        try:
+            parsed = urlsplit(link)
+            favicon_url = f"https://{parsed.hostname}/favicon.ico"
+            url = _safe_browse_image_url(favicon_url)
+            if url:
+                return url
+        except Exception:
+            pass
     return ""
 
 

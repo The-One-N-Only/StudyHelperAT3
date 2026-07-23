@@ -113,14 +113,16 @@ class TestBrowseResultImageUrl:
         result = search._browse_result_image_url(item)
         assert result == "https://www.britannica.com/favicon.ico"
 
-    def test_serpapi_with_no_thumbnail_or_favicon_returns_empty(self):
+    def test_serpapi_with_no_thumbnail_or_favicon_falls_back_to_link_domain(self):
         item = {
             "link": "https://www.britannica.com/topic/test",
             "title": "Test",
             "snippet": "test",
         }
         result = search._browse_result_image_url(item)
-        assert result == "", f"Without thumbnail/favicon should be empty, got: {result!r}"
+        assert result == "https://www.britannica.com/favicon.ico", (
+            f"Should construct favicon from whitelisted link domain, got: {result!r}"
+        )
 
     def test_serpapi_favicon_from_non_whitelisted_domain_rejected(self):
         item = {
@@ -199,8 +201,7 @@ class TestBrowseResultImageUrl:
         result = search._browse_result_image_url(item)
         assert result == "https://upload.wikimedia.org/wikipedia/en/thumb/test.jpg"
 
-    def test_typical_serpapi_organic_result_no_thumbnail(self):
-        """Most realistic case: SerpAPI organic result without thumbnail/favicon."""
+    def test_serpapi_result_falls_back_to_link_domain_favicon(self):
         item = {
             "position": 1,
             "title": "Machine Learning - Wikipedia",
@@ -211,9 +212,8 @@ class TestBrowseResultImageUrl:
             "about_this_result": {},
         }
         result = search._browse_result_image_url(item)
-        assert result == "", (
-            f"Typical organic result has no thumbnail: got {result!r}. "
-            "This is expected - SerpAPI organic results rarely have thumbnail/favicon fields."
+        assert result == "https://en.wikipedia.org/favicon.ico", (
+            f"Should construct favicon from whitelisted link domain, got: {result!r}"
         )
 
 
@@ -306,3 +306,92 @@ def test_summarize_thumbnail_sources(monkeypatch):
 
     # The test always passes - it's diagnostic only
     assert True
+
+
+class TestEndToEndThumbnailFlow:
+    """Simulate a full SerpAPI response and verify thumb_url reaches the output."""
+
+    SERPAPI_JSON = {
+        "search_metadata": {"status": "Success"},
+        "organic_results": [
+            {
+                "position": 1,
+                "title": "Test Topic - Britannica",
+                "link": "https://www.britannica.com/topic/test",
+                "snippet": "Test article about the test topic.",
+                "pagemap": {
+                    "cse_thumbnail": [
+                        {
+                            "src": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTest123",
+                            "width": "160",
+                            "height": "120",
+                        }
+                    ],
+                    "cse_image": [
+                        {
+                            "src": "https://cdn.britannica.com/123/test-image.jpg"
+                        }
+                    ]
+                }
+            },
+            {
+                "position": 2,
+                "title": "Test Topic - Wikipedia",
+                "link": "https://en.wikipedia.org/wiki/Test",
+                "snippet": "Wikipedia article about test.",
+                "pagemap": {
+                    "cse_thumbnail": [
+                        {
+                            "src": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcWiki",
+                            "width": "160",
+                            "height": "120",
+                        }
+                    ]
+                }
+            },
+        ]
+    }
+
+    def mock_get(self, url, params=None, headers=None, timeout=None, **kwargs):
+        response = type('Response', (), {})()
+        response.status_code = 200
+        response.json = lambda: self.SERPAPI_JSON
+        return response
+
+    def test_browse_serpapi_returns_thumbnails_from_pagemap(self, monkeypatch):
+        import src.search as search_mod
+        monkeypatch.setattr(search_mod, 'SERP_API_KEY', 'test-key')
+        monkeypatch.setattr(search_mod.requests, 'get', self.mock_get.__get__(self))
+
+        results = search_mod.browse_serpapi_search(
+            query='test',
+            num_results=5,
+            source='britannica',
+            filters={},
+            user_id=9999,
+        )
+
+        assert len(results) >= 1, f'Expected at least 1 result, got {len(results)}'
+        britannica_result = results[0]
+        assert britannica_result['thumb_url'], (
+            f'Britannica result should have a thumb_url from pagemap, '
+            f'got: {britannica_result["thumb_url"]!r}'
+        )
+        assert 'gstatic.com' in britannica_result['thumb_url'], (
+            f'Expected gstatic thumbnail, got: {britannica_result["thumb_url"]!r}'
+        )
+
+        if len(results) >= 2:
+            wiki_result = results[1]
+            assert wiki_result['thumb_url'], (
+                f'Wikipedia result should have a thumb_url from pagemap, '
+                f'got: {wiki_result["thumb_url"]!r}'
+            )
+            assert 'gstatic.com' in wiki_result['thumb_url'], (
+                f'Expected gstatic thumbnail, got: {wiki_result["thumb_url"]!r}'
+            )
+
+        print(f'\n=== END-TO-END THUMBNAIL TEST ===')
+        for i, r in enumerate(results):
+            print(f'  Result {i}: title={r["title"][:40]}, thumb_url={r["thumb_url"]!r}')
+        print()
