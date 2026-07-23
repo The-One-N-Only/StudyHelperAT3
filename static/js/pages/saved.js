@@ -8,7 +8,7 @@ let pageRoot = null;
 export function initSaved(root) {
     pageRoot = root;
     root.innerHTML = `
-        <div class="archive-page archive-page-saved">
+        <div class="container-fluid py-4 archive-page archive-page-saved">
             <span class="archive-illustration illustration-books" aria-hidden="true"></span>
             <span class="archive-illustration illustration-flourish" aria-hidden="true"></span>
             <span class="archive-illustration illustration-oil-lamp" aria-hidden="true"></span>
