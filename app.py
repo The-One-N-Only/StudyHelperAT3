@@ -147,6 +147,11 @@ def register():
             form_values = {'name': name, 'email': email, 'username': username, 'gender': gender}
             return render_template('register.html', form_values=form_values)
 
+        if len(name) > 255 or len(email) > 255 or len(username) > 255 or len(password) > 255:
+            flash('Fields must not exceed 255 characters.', 'danger')
+            form_values = {'name': name, 'email': email, 'username': username, 'gender': gender}
+            return render_template('register.html', form_values=form_values)
+
         if len(password) < 8:
             flash('Password must be at least 8 characters.', 'danger')
             form_values = {'name': name, 'email': email, 'username': username, 'gender': gender}
@@ -178,8 +183,15 @@ def register():
             form_values = {'name': name, 'email': email, 'username': username, 'gender': gender}
             return render_template('register.html', form_values=form_values)
 
-        password_hash = generate_password_hash(password)
-        user = db.create_local_user(email, username, password_hash, name=name, gender=gender)
+        try:
+            password_hash = generate_password_hash(password)
+            user = db.create_local_user(email, username, password_hash, name=name, gender=gender)
+        except Exception as e:
+            logging.error(f"Registration error: {str(e)}")
+            flash('An error occurred during registration. Please try again.', 'danger')
+            form_values = {'name': name, 'email': email, 'username': username, 'gender': gender}
+            return render_template('register.html', form_values=form_values)
+
         session.clear()
         session['user_id'] = user['id']
         session['username'] = user['username']
@@ -261,6 +273,10 @@ def user():
             flash('Email and username are required.', 'danger')
             return render_template('user.html', user=user_obj, gender=gender, profile_picture=db.get_profile_picture_path(gender))
 
+        if len(name) > 255 or len(email) > 255 or len(username) > 255 or len(new_password) > 255:
+            flash('Fields must not exceed 255 characters.', 'danger')
+            return render_template('user.html', user=user_obj, gender=gender, profile_picture=db.get_profile_picture_path(gender))
+
         if '@' not in email or len(email) > 254:
             flash('Please enter a valid email address.', 'danger')
             return render_template('user.html', user=user_obj, gender=gender, profile_picture=db.get_profile_picture_path(gender))
@@ -285,7 +301,13 @@ def user():
                 return render_template('user.html', user=user_obj, gender=gender, profile_picture=db.get_profile_picture_path(gender))
             password_hash = generate_password_hash(new_password)
 
-        updated = db.update_user(user_id, name, username, email, gender, password_hash=password_hash)
+        try:
+            updated = db.update_user(user_id, name, username, email, gender, password_hash=password_hash)
+        except Exception as e:
+            logging.error(f"Profile update error: {str(e)}")
+            flash('An error occurred while updating your profile. Please try again.', 'danger')
+            return redirect(url_for('user'))
+
         if updated:
             session['username'] = updated['username']
             session['gender'] = updated['gender']
@@ -1095,7 +1117,7 @@ def api_note(note_id):
 @app.errorhandler(Exception)
 def handle_exception(e):
     logging.error(f"Unhandled exception: {str(e)}")
-    return render_template('error.html'), e
+    return render_template('error.html'), 500
 
 @app.errorhandler(404)
 def not_found(error):

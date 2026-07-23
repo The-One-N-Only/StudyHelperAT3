@@ -26,15 +26,15 @@
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="mb-3">
                                 <label for="name" class="form-label">Full Name</label>
-                                <input type="text" id="name" name="name" class="form-control" value="{{ user.name or '' }}">
+                                <input type="text" id="name" name="name" class="form-control" maxlength="255" value="{{ user.name or '' }}">
                             </div>
                             <div class="mb-3">
                                 <label for="username" class="form-label">Username</label>
-                                <input type="text" id="username" name="username" class="form-control" required value="{{ user.username or '' }}">
+                                <input type="text" id="username" name="username" class="form-control" required maxlength="255" value="{{ user.username or '' }}">
                             </div>
                             <div class="mb-3">
                                 <label for="email" class="form-label">Email</label>
-                                <input type="email" id="email" name="email" class="form-control" required value="{{ user.email or '' }}">
+                                <input type="email" id="email" name="email" class="form-control" required maxlength="255" value="{{ user.email or '' }}">
                             </div>
                             <div class="mb-3">
                                 <label for="gender" class="form-label">Gender</label>
@@ -47,11 +47,11 @@
                             <hr>
                             <div class="mb-3">
                                 <label for="new_password" class="form-label">New Password (leave blank to keep current)</label>
-                                <input type="password" id="new_password" name="new_password" class="form-control" autocomplete="new-password">
+                                <input type="password" id="new_password" name="new_password" class="form-control" maxlength="255" autocomplete="new-password">
                             </div>
                             <div class="mb-3">
                                 <label for="confirm_password" class="form-label">Confirm New Password</label>
-                                <input type="password" id="confirm_password" name="confirm_password" class="form-control" autocomplete="new-password">
+                                <input type="password" id="confirm_password" name="confirm_password" class="form-control" maxlength="255" autocomplete="new-password">
                             </div>
                             <button type="submit" class="btn btn-primary w-100">Save Changes</button>
                         </form>

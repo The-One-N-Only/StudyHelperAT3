@@ -47,6 +47,8 @@ export function initHome(root) {
     searchButton.addEventListener('click', submitSearch);
 
     loadWorkspaces();
+
+    setupWorkspaceMenuDelegation();
 }
 
 async function loadWorkspaces() {
@@ -107,7 +109,20 @@ function renderWorkspaceCards() {
                 <div class="card-body d-flex flex-column">
                     <div class="d-flex align-items-center justify-content-between mb-3">
                         <div class="badge bg-primary bg-opacity-10 text-primary archive-category-badge">Workspace</div>
-                        <span class="icon-button" aria-hidden="true"><i class="bi bi-three-dots-vertical text-muted"></i></span>
+                        <div class="workspace-menu">
+                            <button class="workspace-menu-btn" type="button" data-workspace-id="${workspace.id}" aria-label="Workspace actions" tabindex="0">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <div class="workspace-menu-dropdown d-none">
+                                <button class="dropdown-item rename-workspace" data-workspace-id="${workspace.id}">
+                                    <i class="bi bi-pencil me-2"></i>Rename
+                                </button>
+                                <div class="dropdown-divider"></div>
+                                <button class="dropdown-item text-danger delete-workspace" data-workspace-id="${workspace.id}">
+                                    <i class="bi bi-trash me-2"></i>Delete
+                                </button>
+                            </div>
+                        </div>
                     </div>
                     <div class="mb-4">
                         <h5 class="card-title mb-1 text-truncate">${escapeHtml(workspace.name)}</h5>
@@ -122,6 +137,210 @@ function renderWorkspaceCards() {
         `;
         container.appendChild(card);
     });
+}
+
+/* ── Workspace context menu (three dots) ── */
+
+function setupWorkspaceMenuDelegation() {
+    const container = document.getElementById('workspaceCards');
+    if (!container) return;
+
+    container.addEventListener('click', function (e) {
+        const menuBtn = e.target.closest('.workspace-menu-btn');
+        if (menuBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const menu = menuBtn.parentElement.querySelector('.workspace-menu-dropdown');
+            container.querySelectorAll('.workspace-menu-dropdown').forEach(m => {
+                if (m !== menu) m.classList.add('d-none');
+            });
+            menu.classList.toggle('d-none');
+            return;
+        }
+
+        const renameBtn = e.target.closest('.rename-workspace');
+        if (renameBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            renameBtn.closest('.workspace-menu-dropdown').classList.add('d-none');
+            const id = parseInt(renameBtn.dataset.workspaceId);
+            const card = renameBtn.closest('.workspace-card');
+            if (card) startInlineRename(card, id);
+            return;
+        }
+
+        const deleteBtn = e.target.closest('.delete-workspace');
+        if (deleteBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            deleteBtn.closest('.workspace-menu-dropdown').classList.add('d-none');
+            const id = parseInt(deleteBtn.dataset.workspaceId);
+            showDeleteConfirmation(id);
+            return;
+        }
+
+        if (!e.target.closest('.workspace-menu')) {
+            container.querySelectorAll('.workspace-menu-dropdown').forEach(m => {
+                m.classList.add('d-none');
+            });
+        }
+    });
+}
+
+document.addEventListener('click', function (e) {
+    if (!e.target.closest('.workspace-menu')) {
+        document.querySelectorAll('.workspace-menu-dropdown').forEach(m => {
+            m.classList.add('d-none');
+        });
+    }
+});
+
+/* ── Inline rename (within the card) ── */
+
+function startInlineRename(cardElement, workspaceId) {
+    if (cardElement.dataset.renaming === 'true') return;
+    cardElement.dataset.renaming = 'true';
+
+    const ws = allWorkspaces.find(w => w.id === workspaceId);
+    if (!ws) {
+        delete cardElement.dataset.renaming;
+        return;
+    }
+
+    const cardBody = cardElement.querySelector('.card-body');
+    const originalHTML = cardBody.innerHTML;
+
+    cardBody.innerHTML = `
+        <div class="d-flex flex-column justify-content-center align-items-center gap-3 w-100 h-100 py-3">
+            <label class="h5 mb-0">Rename workspace</label>
+            <input type="text" class="form-control text-center" value="${escapeHtml(ws.name)}" autocomplete="off" maxlength="120">
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary btn-sm" id="inlineRenameSave">Save</button>
+                <button class="btn btn-outline-secondary btn-sm" id="inlineRenameCancel">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    const stretchedLink = cardElement.querySelector('.stretched-link');
+    if (stretchedLink) stretchedLink.style.display = 'none';
+
+    const input = cardBody.querySelector('input');
+    const saveBtn = cardBody.querySelector('#inlineRenameSave');
+    const cancelBtn = cardBody.querySelector('#inlineRenameCancel');
+
+    const submitRename = async () => {
+        const name = input.value.trim();
+        if (!name) return;
+        if (name === ws.name) {
+            cardBody.innerHTML = originalHTML;
+            cardElement.dataset.renaming = 'false';
+            if (stretchedLink) stretchedLink.style.display = '';
+            return;
+        }
+        await renameWorkspace(workspaceId, name);
+    };
+
+    const cancelRename = () => {
+        cardBody.innerHTML = originalHTML;
+        cardElement.dataset.renaming = 'false';
+        if (stretchedLink) stretchedLink.style.display = '';
+    };
+
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            submitRename();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            cancelRename();
+        }
+    });
+    saveBtn.addEventListener('click', submitRename);
+    cancelBtn.addEventListener('click', cancelRename);
+
+    requestAnimationFrame(() => input.focus());
+}
+
+/* ── Rename API ── */
+
+async function renameWorkspace(id, name) {
+    try {
+        const response = await fetch(`/api/workspaces/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const data = await response.json();
+        if (!data.status) throw new Error('Rename failed');
+        showToast('Workspace renamed', 'success');
+        const ws = allWorkspaces.find(w => w.id === id);
+        if (ws) ws.name = name;
+        renderWorkspaceCards();
+    } catch (error) {
+        showToast('Unable to rename workspace', 'danger');
+    }
+}
+
+/* ── Delete confirmation modal ── */
+
+function showDeleteConfirmation(workspaceId) {
+    const ws = allWorkspaces.find(w => w.id === workspaceId);
+    if (!ws) return;
+
+    const existing = document.getElementById('deleteWorkspaceModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'deleteWorkspaceModal';
+    modal.className = 'modal fade show d-block';
+    modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete Workspace</h5>
+                    <button type="button" class="btn-close" id="deleteModalClose" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete <strong>${escapeHtml(ws.name)}</strong>?</p>
+                    <p class="text-danger fw-semibold mb-0"><i class="bi bi-exclamation-triangle-fill me-1"></i>This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="deleteModalCancel">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="deleteModalConfirm"><i class="bi bi-trash me-1"></i>Continue</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+
+    modal.querySelector('#deleteModalClose').addEventListener('click', close);
+    modal.querySelector('#deleteModalCancel').addEventListener('click', close);
+    modal.querySelector('#deleteModalConfirm').addEventListener('click', async () => {
+        await deleteWorkspace(workspaceId);
+        close();
+    });
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) close();
+    });
+}
+
+async function deleteWorkspace(id) {
+    try {
+        const response = await fetch(`/api/workspaces/${id}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        if (!data.status) throw new Error('Delete failed');
+        showToast('Workspace deleted', 'success');
+        allWorkspaces = allWorkspaces.filter(w => w.id !== id);
+        renderWorkspaceCards();
+    } catch (error) {
+        showToast('Unable to delete workspace', 'danger');
+    }
 }
 
 function startInlineWorkspaceCreate(cardElement) {
