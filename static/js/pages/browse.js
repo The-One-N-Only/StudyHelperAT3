@@ -4,7 +4,7 @@ import { showToast } from '../toast.js';
 import { createCard } from '../card.js';
 import { fetchBrowseSummary } from '../browse-summary.js';
 
-const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'britannica'];
+const DEFAULT_SOURCES = ['wikipedia', 'gbooks', 'britannica', 'natgeo'];
 const BROWSE_STORAGE_KEY = 'studyhelper_browse_state';
 const BROWSE_STATE_VERSION = 2;
 const BROWSE_REQUEST_TIMEOUT_MS = 30000;
@@ -596,14 +596,17 @@ export function initBrowse(root) {
                                         <label class="form-check-label" for="filterGBooks">Google Books</label>
                                     </div>
                                     <div class="form-check">
-                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterPubMed" value="pubmed">
-                                        <label class="form-check-label" for="filterPubMed">PubMed</label>
-                                    </div>
-                                    <div class="form-check">
                                         <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterBritannica" value="britannica" checked>
                                         <label class="form-check-label" for="filterBritannica">Britannica</label>
                                     </div>
-                                    <div id="whitelistCheckboxes" class="ps-2 border-start mt-2"></div>
+                                    <div class="form-check">
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterNatGeo" value="natgeo" checked>
+                                        <label class="form-check-label" for="filterNatGeo">National Geographic</label>
+                                    </div>
+                                    <details class="mt-2" id="whitelistDetails">
+                                        <summary class="small text-muted" style="cursor: pointer;">More whitelisted sites</summary>
+                                        <div id="whitelistCheckboxes" class="ps-2 border-start mt-2"></div>
+                                    </details>
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label mb-2">Year range</label>
@@ -745,6 +748,7 @@ function getDisplayNameForSource(source) {
     if (source === 'gbooks') return 'Google Books';
     if (source === 'pubmed') return 'PubMed';
     if (source === 'britannica') return 'Britannica';
+    if (source === 'natgeo') return 'National Geographic';
     if (source === 'whitelist') return 'Whitelisted Sources';
     if (source.startsWith('whitelist_')) {
         const domain = source.slice('whitelist_'.length);
@@ -768,8 +772,11 @@ function itemMatchesSource(item, source) {
     if (source === 'britannica') {
         return sourceName === 'britannica';
     }
+    if (source === 'natgeo') {
+        return sourceName === 'natgeo';
+    }
     if (source === 'whitelist') {
-        return !['wikipedia', 'pubmed', 'gbooks', 'britannica'].includes(sourceName);
+        return !['wikipedia', 'pubmed', 'gbooks', 'britannica', 'natgeo'].includes(sourceName);
     }
     if (source.startsWith('whitelist_')) {
         const domain = source.slice('whitelist_'.length);
@@ -939,6 +946,7 @@ function groupResultsBySource(results) {
             else if (sourceName === 'gbooks' || sourceName === 'google books') source = 'gbooks';
             else if (sourceName === 'pubmed') source = 'pubmed';
             else if (sourceName === 'britannica') source = 'britannica';
+            else if (sourceName === 'natgeo') source = 'natgeo';
             else {
                 try {
                     source = `whitelist_${new URL(item.source_url).hostname}`;
@@ -1142,9 +1150,8 @@ function renderWhitelistCheckboxes() {
         return;
     }
     
-    let html = '<label class="form-label mb-2 small">Whitelisted Sites</label>';
+    let html = '';
 
-    // Broad domain fan-out stays opt-in; restored user choices are reapplied below.
     whitelistDomains.forEach((domain, idx) => {
         const displayName = getDisplayNameForDomain(domain);
         const checkId = `filterWhitelist_${idx}`;

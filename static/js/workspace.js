@@ -4,9 +4,6 @@ import { showToast } from './toast.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     attachWorkspaceListeners();
-    
-    document.getElementById('exportPdfBtn').addEventListener('click', () => exportWorkspace('pdf'));
-    document.getElementById('exportDocxBtn').addEventListener('click', () => exportWorkspace('docx'));
 });
 
 function attachWorkspaceListeners() {
@@ -93,29 +90,4 @@ function removeFromWorkspace(id) {
     }
 }
 
-function exportWorkspace(format) {
-    fetch('/api/workspace/items')
-        .then(r => r.json())
-        .then(result => {
-            const items = result.items;
-            const atn = document.getElementById('atnInput').value;
-            const citation_format = document.querySelector('input[name="citationFormat"]:checked').value;
-            fetch(`/api/export/${format}`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({items, citation_format, atn})
-            }).then(r => {
-                if (r.ok) {
-                    return r.blob();
-                }
-            }).then(blob => {
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `StudyLib_Compilation.${format}`;
-                a.click();
-                URL.revokeObjectURL(url);
-                showToast(`Exported as ${format.toUpperCase()}`, 'success');
-            });
-        });
-}
+

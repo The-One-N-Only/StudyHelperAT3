@@ -3,7 +3,6 @@ from flask_session import Session
 import os
 from dotenv import load_dotenv
 load_dotenv()
-import io
 import src.db as db
 import src.search as search
 import src.pubmed as pubmed
@@ -11,7 +10,6 @@ import src.summarise as summarise
 import src.proxy as proxy
 import src.citations as citations
 import src.files as files
-import src.export as export
 import src.answer as answer
 import json
 import uuid
@@ -591,6 +589,9 @@ def workspace_add():
     
     try:
         result = db.add_to_workspace(user_id, item_id, summary, bullets, relevance, atn_used, citation_apa, citation_harvard, workspace_id)
+        if result and result.get("duplicate"):
+            logging.info(f"User {user_id} tried to add duplicate item {item_id} to workspace {workspace_id or 'default'}")
+            return jsonify({'status': True, 'duplicate': True, 'message': 'Already in this workspace'})
         logging.info(f"User {user_id} added item {item_id} to workspace {workspace_id or 'default'}")
         return jsonify({'status': True, 'item': result})
     except Exception as e:
@@ -610,6 +611,9 @@ def add_file_to_workspace(workspace_id):
     
     try:
         result = db.add_file_to_workspace(user_id, file_id, workspace_id)
+        if result and result.get("duplicate"):
+            logging.info(f"User {user_id} tried to add duplicate file {file_id} to workspace {workspace_id}")
+            return jsonify({'status': True, 'duplicate': True, 'message': 'Already in this workspace'})
         logging.info(f"User {user_id} added file {file_id} to workspace {workspace_id}")
         return jsonify({'status': True, 'item': result})
     except Exception as e:
@@ -901,36 +905,6 @@ def search_files():
     results = db.search_uploaded_files(user_id, query)
     logging.info(f"User {user_id} searched uploaded files for '{query}'")
     return jsonify({'status': True, 'results': results})
-
-@app.route('/api/export/pdf', methods=['POST'])
-def export_pdf():
-    user_id = session.get('user_id')
-    if not user_id:
-        return jsonify({'status': False, 'error': 'Not logged in'}), 401
-    
-    data = request.json
-    items = data['items']
-    atn = data.get('atn')
-    citation_format = data.get('citation_format', 'apa')
-    
-    pdf_data = export.export_pdf(items, atn, citation_format)
-    logging.info(f"User {user_id} exported workspace as PDF")
-    return send_file(io.BytesIO(pdf_data), as_attachment=True, download_name='StudyLib_Compilation.pdf', mimetype='application/pdf')
-
-@app.route('/api/export/docx', methods=['POST'])
-def export_docx():
-    user_id = session.get('user_id')
-    if not user_id:
-        return jsonify({'status': False, 'error': 'Not logged in'}), 401
-    
-    data = request.json
-    items = data['items']
-    atn = data.get('atn')
-    citation_format = data.get('citation_format', 'apa')
-    
-    docx_data = export.export_docx(items, atn, citation_format)
-    logging.info(f"User {user_id} exported workspace as DOCX")
-    return send_file(io.BytesIO(docx_data), as_attachment=True, download_name='StudyLib_Compilation.docx', mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
 
 @app.route('/api/item/save', methods=['POST'])
 def save_item():

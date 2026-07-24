@@ -9,7 +9,8 @@
         {"id": "wikipedia", "name": "Wikipedia", "checked": true},
         {"id": "gbooks", "name": "Google Books", "checked": true},
         {"id": "pubmed", "name": "PubMed", "checked": false},
-        {"id": "scholar", "name": "Google Scholar", "checked": false}
+        {"id": "scholar", "name": "Google Scholar", "checked": false},
+        {"id": "natgeo", "name": "National Geographic", "checked": false}
       ],
       "shown_source": null
     },

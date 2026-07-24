@@ -303,7 +303,11 @@ function addToWorkspace(item, workspaceSelect) {
     .then(r => r.json())
     .then(addResult => {
         if (addResult.status) {
-            showToast('Added to workspace', 'success');
+            if (addResult.duplicate) {
+                showToast('Already in this workspace', 'warning');
+            } else {
+                showToast('Added to workspace', 'success');
+            }
         } else {
             showToast('Failed to add to workspace: ' + (addResult.error || 'Unknown error'), 'danger');
         }

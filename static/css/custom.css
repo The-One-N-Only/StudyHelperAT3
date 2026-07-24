@@ -201,11 +201,13 @@ body.offcanvas-push {
 .source-preview-box,
 .notes-box {
     border-radius: var(--radius-panel);
+    overflow: hidden;
 }
 
 .notes-box .ql-container {
     overflow-y: auto !important;
     max-height: 350px;
+    border-radius: 0 0 var(--radius-panel) var(--radius-panel);
 }
 
 .workspace-quill-editor {

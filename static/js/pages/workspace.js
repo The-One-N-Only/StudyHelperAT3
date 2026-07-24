@@ -296,21 +296,51 @@ function renderSourcesList() {
         itemButton.type = 'button';
         itemButton.className = `list-group-item list-group-item-action workspace-source-item text-start ${item.id === selectedWorkspaceItemId ? 'active' : ''}`;
         itemButton.innerHTML = `
-            <div class="d-flex w-100 justify-content-between">
-                <div class="pe-2">
+            <div class="d-flex w-100 justify-content-between align-items-start">
+                <div class="pe-2 flex-grow-1" style="min-width: 0;">
                     <h6 class="mb-1 text-truncate">${escapeHtml(item.title)}</h6>
                     <p class="mb-0 text-muted small text-truncate">${escapeHtml(item.summary || '')}</p>
                 </div>
-                <small class="text-muted workspace-source-name align-self-start">${escapeHtml(item.source_name)}</small>
+                <div class="d-flex align-items-start gap-1 flex-shrink-0">
+                    <small class="text-muted workspace-source-name">${escapeHtml(item.source_name)}</small>
+                    <span class="btn btn-sm btn-outline-danger workspace-delete-btn" title="Remove from workspace">&times;</span>
+                </div>
             </div>
         `;
-        itemButton.addEventListener('click', () => {
+        itemButton.addEventListener('click', (e) => {
+            if (e.target.closest('.workspace-delete-btn')) return;
             selectedWorkspaceItemId = item.id;
             renderSelectedSource();
             renderSourcesList();
         });
+        const deleteBtn = itemButton.querySelector('.workspace-delete-btn');
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteWorkspaceSource(item.id);
+        });
         container.appendChild(itemButton);
     });
+}
+
+function deleteWorkspaceSource(workspaceItemId) {
+    fetch(`/api/workspace/${workspaceItemId}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(result => {
+            if (result.status) {
+                showToast('Source removed from workspace', 'success');
+                currentWorkspaceItems = currentWorkspaceItems.filter(item => item.id !== workspaceItemId);
+                if (selectedWorkspaceItemId === workspaceItemId) {
+                    selectedWorkspaceItemId = currentWorkspaceItems.length > 0 ? currentWorkspaceItems[0].id : null;
+                }
+                const badge = pageRoot.querySelector('#sourceBadge');
+                if (badge) badge.textContent = `${currentWorkspaceItems.length} sources`;
+                renderSelectedSource();
+                renderSourcesList();
+            } else {
+                showToast(result.error || 'Failed to remove source', 'danger');
+            }
+        })
+        .catch(() => showToast('Error removing source', 'danger'));
 }
 
 function renderSelectedSource() {
@@ -708,27 +738,77 @@ function saveQuickNote() {
 }
 
 function renameWorkspaceDialog() {
-    const workspaceName = window.WORKSPACE_NAME || '';
-    const newName = prompt('Enter a new name for this workspace:', workspaceName);
-    if (!newName || !newName.trim()) return;
+    const titleEl = pageRoot.querySelector('.archive-page-title');
+    if (!titleEl || titleEl.dataset.renaming === 'true') return;
 
-    fetch(`/api/workspaces/${currentWorkspaceId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim() })
-    })
-    .then(r => r.json())
-    .then(result => {
-        if (result.status) {
-            showToast('Workspace renamed', 'success');
-            window.WORKSPACE_NAME = result.workspace.name;
-            document.title = `${window.WORKSPACE_NAME} - StudyLib`;
-            renderWorkspaceDetail();
-        } else {
-            showToast(result.error || 'Unable to rename workspace', 'danger');
+    const originalName = window.WORKSPACE_NAME || '';
+    titleEl.dataset.renaming = 'true';
+    const originalHTML = titleEl.innerHTML;
+
+    titleEl.innerHTML = `
+        <div class="d-flex align-items-center gap-2">
+            <input type="text" class="form-control form-control-sm" value="${escapeHtml(originalName)}" autocomplete="off" maxlength="120" style="max-width: 300px;">
+            <button class="btn btn-primary btn-sm" id="inlineRenameSave">Save</button>
+            <button class="btn btn-outline-secondary btn-sm" id="inlineRenameCancel">Cancel</button>
+        </div>
+    `;
+
+    const input = titleEl.querySelector('input');
+    const saveBtn = titleEl.querySelector('#inlineRenameSave');
+    const cancelBtn = titleEl.querySelector('#inlineRenameCancel');
+
+    const cancelRename = () => {
+        titleEl.innerHTML = originalHTML;
+        delete titleEl.dataset.renaming;
+    };
+
+    const submitRename = () => {
+        const newName = input.value.trim();
+        if (!newName || newName === originalName) {
+            cancelRename();
+            return;
         }
-    })
-    .catch(() => showToast('Failed to rename workspace', 'danger'));
+
+        fetch(`/api/workspaces/${currentWorkspaceId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName })
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.status) {
+                showToast('Workspace renamed', 'success');
+                window.WORKSPACE_NAME = result.workspace.name;
+                document.title = `${window.WORKSPACE_NAME} - StudyLib`;
+                titleEl.innerHTML = escapeHtml(window.WORKSPACE_NAME);
+                delete titleEl.dataset.renaming;
+            } else {
+                showToast(result.error || 'Unable to rename workspace', 'danger');
+            }
+        })
+        .catch(() => {
+            showToast('Failed to rename workspace', 'danger');
+            titleEl.innerHTML = originalHTML;
+            delete titleEl.dataset.renaming;
+        });
+    };
+
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            submitRename();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            cancelRename();
+        }
+    });
+    saveBtn.addEventListener('click', submitRename);
+    cancelBtn.addEventListener('click', cancelRename);
+
+    requestAnimationFrame(() => {
+        input.focus();
+        input.select();
+    });
 }
 
 async function sendAlexanderMessage() {

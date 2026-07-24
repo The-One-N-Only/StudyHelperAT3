@@ -32,6 +32,7 @@ BROWSE_SOURCE_DOMAINS = {
     "gbooks": ("books.google.com", "gbooks"),
     "britannica": ("www.britannica.com", "britannica"),
     "pubmed": ("pubmed.ncbi.nlm.nih.gov", "pubmed"),
+    "natgeo": ("www.nationalgeographic.com", "natgeo"),
 }
 
 
@@ -620,6 +621,7 @@ def wikipedia(query, num_results, *, user_id):
                 results.append(db.get_or_create_item(item_data, user_id, True))
         return results
     except Exception:
+        logging.exception("Wikipedia search failed")
         return []
 
 def gbooks(query, num_results, filters, *, user_id):
@@ -766,6 +768,7 @@ def _search_serpapi(query, num_results, scope, *, user_id):
             db.set_search_cache(cache_key, item_ids)
         return results
     except Exception:
+        logging.exception("browse_serpapi_search failed for source %s", source)
         return []
 
 

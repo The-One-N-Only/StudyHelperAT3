@@ -584,6 +584,8 @@ def get_recently_searched(user_id):
         } for rts, item in searched]
 
 def append_to_recently_viewed(user_id, item_id):
+    if not user_id:
+        return
     with SessionLocal() as session:
         # Remove if exists
         session.query(UserToRecentlyViewed).filter_by(user_id=user_id, item_id=item_id).delete()
@@ -597,6 +599,8 @@ def append_to_recently_viewed(user_id, item_id):
         return "Added"
 
 def append_to_recently_searched(user_id, item_id):
+    if not user_id:
+        return
     with SessionLocal() as session:
         # Remove if exists
         session.query(UserToRecentlySearched).filter_by(user_id=user_id, item_id=item_id).delete()
@@ -1070,6 +1074,12 @@ def add_to_workspace(user_id, item_id, summary, bullets, relevance, atn_used, ci
                 session.flush()
             workspace_id = default.id
         
+        existing = session.query(WorkspaceItem).filter_by(
+            workspace_id=workspace_id, item_id=item_id, user_id=user_id
+        ).first()
+        if existing:
+            return {"duplicate": True}
+
         max_pos = session.query(func.max(WorkspaceItem.position)).filter_by(workspace_id=workspace_id).scalar() or 0
         new_item = WorkspaceItem(
             user_id=user_id,
@@ -1111,6 +1121,12 @@ def add_file_to_workspace(user_id, file_id, workspace_id=None):
                 session.add(default)
                 session.flush()
             workspace_id = default.id
+
+        existing = session.query(WorkspaceItem).filter_by(
+            workspace_id=workspace_id, file_id=file_id, user_id=user_id
+        ).first()
+        if existing:
+            return {"duplicate": True}
 
         max_pos = session.query(func.max(WorkspaceItem.position)).filter_by(workspace_id=workspace_id).scalar() or 0
         new_item = WorkspaceItem(
