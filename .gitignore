@@ -24,4 +24,7 @@ coverage.xml
 server.db
 .env
 static/uploads/
+.vscode/
+.github/instructions/
+instance/
 .DS_Store

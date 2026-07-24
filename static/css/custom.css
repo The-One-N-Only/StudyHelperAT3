@@ -1852,6 +1852,7 @@ p {
 /* Candlelit Archive: dark theme foundation */
 [data-bs-theme="dark"] {
     color-scheme: dark;
+    --illum-color: var(--gold-500);
 
     --bg-950: #0A0A0A;
     --bg-900: #14100B;
