@@ -377,41 +377,23 @@ body.offcanvas-push {
     overflow-y: auto;
 }
 
-/* Sidebar navigation overlay */
+/* Sidebar navigation hamburger */
 .archive-menu-button {
     -webkit-appearance: none;
     appearance: none;
+    align-items: center;
     background: transparent;
     block-size: 2.5rem;
     border: 0;
+    border-radius: var(--radius-button);
     cursor: pointer;
+    display: flex;
     flex: 0 0 2.5rem;
     inline-size: 2.5rem;
+    justify-content: center;
     min-block-size: 2.5rem;
     min-inline-size: 2.5rem;
-    padding-inline: 0;
-}
-
-.archive-menu-icon {
-    display: block;
-    height: 1.5rem;
-    position: relative;
-    width: 1.75rem;
-}
-
-.archive-menu-book,
-.archive-menu-bars {
-    inset: 0;
-    position: absolute;
-    transition: opacity 160ms ease, transform 160ms ease;
-}
-
-.archive-menu-book {
-    -webkit-mask: url("/static/img/illustrations/open-book.svg") center / contain no-repeat;
-    background-color: currentColor;
-    mask: url("/static/img/illustrations/open-book.svg") center / contain no-repeat;
-    opacity: 1;
-    transform: scale(1);
+    padding: 0;
 }
 
 .archive-menu-bars {
@@ -419,8 +401,7 @@ body.offcanvas-push {
     flex-direction: column;
     gap: 0.25rem;
     justify-content: center;
-    opacity: 0;
-    transform: scale(0.72);
+    width: 1.5rem;
 }
 
 .archive-menu-bars > span {
@@ -431,14 +412,30 @@ body.offcanvas-push {
     width: 100%;
 }
 
-.archive-menu-button[aria-expanded="true"] .archive-menu-book {
-    opacity: 0;
-    transform: scale(0.72);
+.archive-deco-book {
+    -webkit-mask: url("/static/img/illustrations/open-book.svg") center / contain no-repeat;
+    background-color: currentColor;
+    block-size: 30px;
+    display: inline-block;
+    inline-size: 30px;
+    mask: url("/static/img/illustrations/open-book.svg") center / contain no-repeat;
+    vertical-align: middle;
 }
 
-.archive-menu-button[aria-expanded="true"] .archive-menu-bars {
-    opacity: 1;
-    transform: scale(1);
+.archive-wordmark-wrap {
+    color: var(--ink-900);
+}
+
+[data-bs-theme="dark"] .archive-wordmark-wrap {
+    color: var(--gold-100);
+}
+
+:root:not([data-bs-theme="dark"]) .archive-menu-button {
+    color: var(--ink-900);
+}
+
+[data-bs-theme="dark"] .archive-menu-button {
+    color: var(--gold-100);
 }
 
 #navSidebarOffcanvas {
@@ -700,7 +697,7 @@ p {
 :root:not([data-bs-theme="dark"]) .archive-wordmark {
     color: var(--ink-900);
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: 30px;
     font-weight: 600;
     letter-spacing: 0.06em;
     padding: 0.35rem 0.5rem;
@@ -2260,7 +2257,7 @@ p {
 [data-bs-theme="dark"] .archive-wordmark {
     color: var(--gold-100);
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: 30px;
     font-weight: 600;
     letter-spacing: 0.06em;
     padding: 0.35rem 0.5rem;

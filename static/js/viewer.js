@@ -15,6 +15,9 @@ let googleBooksApiPromise;
 let activeGoogleBooksViewer;
 let googleBooksResizeObserver;
 let viewerRequestGeneration = 0;
+let _googleBooksLoaderElement = null;
+let _googleBooksLoadStartTime = 0;
+let _googleBooksViewerOutcome = null;
 
 function ensureViewerOffcanvas() {
     if (!viewerOffcanvas) {
@@ -82,6 +85,52 @@ export function resetGoogleBooksViewerState() {
         googleBooksResizeObserver = undefined;
     }
     activeGoogleBooksViewer = undefined;
+    _removeGoogleBooksLoader();
+}
+
+function _removeGoogleBooksLoader() {
+    if (_googleBooksLoaderElement && _googleBooksLoaderElement.parentNode) {
+        _googleBooksLoaderElement.remove();
+    }
+    _googleBooksLoaderElement = null;
+    _googleBooksViewerOutcome = null;
+}
+
+function renderGoogleBooksLoader(body) {
+    body.replaceChildren();
+    _googleBooksLoadStartTime = Date.now();
+    _googleBooksLoaderElement = document.createElement('div');
+    _googleBooksLoaderElement.className = 'loader-container';
+    _googleBooksLoaderElement.innerHTML = `
+        <picture class="browse-loader-picture">
+            <source media="(prefers-reduced-motion: reduce)" srcset="/static/img/loaders/bible-page-turn-still.png">
+            <img class="browse-loader-art" src="/static/img/loaders/bible-page-turn.gif" alt="" aria-hidden="true">
+        </picture>
+        <p class="browse-loader-status mb-0" role="status" aria-live="polite">Loading Google Books preview…</p>
+    `;
+    body.appendChild(_googleBooksLoaderElement);
+}
+
+function _reapplyGoogleBooksLoader(body) {
+    if (_googleBooksLoaderElement && !_googleBooksLoaderElement.parentNode) {
+        body.appendChild(_googleBooksLoaderElement);
+    }
+}
+
+function _waitMinimumLoaderDuration(generation, callback) {
+    if (generation !== viewerRequestGeneration) return;
+    const elapsed = Date.now() - _googleBooksLoadStartTime;
+    const remaining = Math.max(0, GOOGLE_BOOKS_RENDER_TIMEOUT_MS - elapsed);
+    const run = () => {
+        if (generation === viewerRequestGeneration) {
+            callback();
+        }
+    };
+    if (remaining <= 0) {
+        run();
+    } else {
+        setTimeout(run, remaining);
+    }
 }
 
 function renderViewerHeader(header, item) {
@@ -411,21 +460,27 @@ async function renderGoogleBooksViewer(body, item, generation) {
         ? item.accessInfo
         : {};
     if (accessInfo.embeddable === false) {
-        renderGoogleBooksFallback(
-            body,
-            item,
-            'An embedded preview is not available for this book.',
-        );
+        _googleBooksViewerOutcome = 'notfound';
+        _waitMinimumLoaderDuration(generation, () => {
+            renderGoogleBooksFallback(
+                body,
+                item,
+                'An embedded preview is not available for this book.',
+            );
+        });
         return;
     }
 
     const volumeId = googleBooksVolumeId(item);
     if (!volumeId) {
-        renderGoogleBooksFallback(
-            body,
-            item,
-            'This result does not include a Google Books volume ID.',
-        );
+        _googleBooksViewerOutcome = 'error';
+        _waitMinimumLoaderDuration(generation, () => {
+            renderGoogleBooksFallback(
+                body,
+                item,
+                'This result does not include a Google Books volume ID.',
+            );
+        });
         return;
     }
 
@@ -433,13 +488,16 @@ async function renderGoogleBooksViewer(body, item, generation) {
     try {
         booksApi = await loadGoogleBooksApi();
     } catch {
-        if (generation === viewerRequestGeneration) {
-            renderGoogleBooksFallback(
-                body,
-                item,
-                'The Google Books preview service could not be loaded.',
-            );
-        }
+        _googleBooksViewerOutcome = 'error';
+        _waitMinimumLoaderDuration(generation, () => {
+            if (generation === viewerRequestGeneration) {
+                renderGoogleBooksFallback(
+                    body,
+                    item,
+                    'The Google Books preview service could not be loaded.',
+                );
+            }
+        });
         return;
     }
     if (generation !== viewerRequestGeneration) return;
@@ -450,16 +508,20 @@ async function renderGoogleBooksViewer(body, item, generation) {
     canvas.className = 'google-books-viewer-canvas';
     viewerShell.appendChild(canvas);
     body.replaceChildren(viewerShell);
+    _reapplyGoogleBooksLoader(body);
 
     let viewer;
     try {
         viewer = new booksApi.DefaultViewer(canvas);
     } catch {
-        renderGoogleBooksFallback(
-            body,
-            item,
-            'The embedded preview could not be started.',
-        );
+        _googleBooksViewerOutcome = 'error';
+        _waitMinimumLoaderDuration(generation, () => {
+            renderGoogleBooksFallback(
+                body,
+                item,
+                'The embedded preview could not be started.',
+            );
+        });
         return;
     }
 
@@ -468,20 +530,28 @@ async function renderGoogleBooksViewer(body, item, generation) {
             viewer.load(
                 volumeId,
                 () => {
-                    if (generation === viewerRequestGeneration) {
-                        renderGoogleBooksFallback(
-                            body,
-                            item,
-                            'No embedded preview is available for this volume.',
-                        );
+                    if (generation !== viewerRequestGeneration) {
+                        resolve();
+                        return;
                     }
-                    resolve();
+                    _googleBooksViewerOutcome = 'notfound';
+                    _waitMinimumLoaderDuration(generation, () => {
+                        if (generation === viewerRequestGeneration) {
+                            renderGoogleBooksFallback(
+                                body,
+                                item,
+                                'No embedded preview is available for this volume.',
+                            );
+                        }
+                        resolve();
+                    });
                 },
                 () => {
                     if (generation !== viewerRequestGeneration) {
                         resolve();
                         return;
                     }
+                    _googleBooksViewerOutcome = 'success';
 
                     activeGoogleBooksViewer = viewer;
                     if (typeof ResizeObserver === 'function') {
@@ -496,18 +566,26 @@ async function renderGoogleBooksViewer(body, item, generation) {
                         });
                         googleBooksResizeObserver.observe(canvas);
                     }
-                    resolve();
+                    _waitMinimumLoaderDuration(generation, () => {
+                        if (generation === viewerRequestGeneration) {
+                            _removeGoogleBooksLoader();
+                        }
+                        resolve();
+                    });
                 },
             );
         } catch {
-            if (generation === viewerRequestGeneration) {
-                renderGoogleBooksFallback(
-                    body,
-                    item,
-                    'The embedded preview could not be loaded.',
-                );
-            }
-            resolve();
+            _googleBooksViewerOutcome = 'error';
+            _waitMinimumLoaderDuration(generation, () => {
+                if (generation === viewerRequestGeneration) {
+                    renderGoogleBooksFallback(
+                        body,
+                        item,
+                        'The embedded preview could not be loaded.',
+                    );
+                }
+                resolve();
+            });
         }
     });
 }
@@ -516,7 +594,7 @@ async function renderGoogleBooksViewerWithTimeout(body, item, generation) {
     let timeoutId;
     const timeout = new Promise((resolve) => {
         timeoutId = setTimeout(() => {
-            if (generation === viewerRequestGeneration) {
+            if (generation === viewerRequestGeneration && !_googleBooksViewerOutcome) {
                 viewerRequestGeneration += 1;
                 resetGoogleBooksViewerState();
                 renderGoogleBooksFallback(
@@ -571,9 +649,14 @@ export async function openViewer(item) {
     body.classList.remove('viewer-mode-reader');
     const workspaceSelect = renderViewerHeader(header, item);
     addBtn.onclick = () => addToWorkspaceFromViewer(item, workspaceSelect);
-    renderLoading(body);
 
     const isGoogleBooks = isGoogleBooksResult(item);
+    if (isGoogleBooks) {
+        renderGoogleBooksLoader(body);
+    } else {
+        renderLoading(body);
+    }
+
     const offcanvasElement = document.getElementById('viewerOffcanvas');
     const shown = isGoogleBooks
         ? waitForOffcanvasShown(offcanvasElement)

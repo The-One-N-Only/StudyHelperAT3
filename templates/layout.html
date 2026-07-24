@@ -20,21 +20,21 @@
         <div class="container-fluid">
             <div class="d-flex align-items-center gap-2">
                 <button
-                    class="archive-menu-button icon-button"
+                    class="archive-menu-button"
                     id="brandMenuButton"
                     type="button"
                     aria-label="Open navigation menu"
                     aria-controls="navSidebarOffcanvas"
                     aria-expanded="false"
                 >
-                    <span class="archive-menu-icon" aria-hidden="true">
-                        <span class="archive-menu-book"></span>
-                        <span class="archive-menu-bars">
-                            <span></span><span></span><span></span>
-                        </span>
+                    <span class="archive-menu-bars">
+                        <span></span><span></span><span></span>
                     </span>
                 </button>
-                <a class="navbar-brand archive-wordmark mb-0" href="/" aria-label="StudyLib home">StudyLib</a>
+                <span class="d-flex align-items-center gap-1 archive-wordmark-wrap">
+                    <a class="navbar-brand archive-wordmark mb-0" href="/" aria-label="StudyLib home">StudyLib</a>
+                    <span class="archive-deco-book" aria-hidden="true"></span>
+                </span>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <button class="btn btn-link p-1 icon-button" id="themeToggle" type="button" aria-label="Switch to dark theme">

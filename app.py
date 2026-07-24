@@ -261,6 +261,7 @@ def user():
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip()
         gender = request.form.get('gender', 'gentleman')
+        old_password = request.form.get('old_password', '')
         new_password = request.form.get('new_password', '')
         confirm_password = request.form.get('confirm_password', '')
 
@@ -291,6 +292,12 @@ def user():
 
         password_hash = None
         if new_password:
+            if not old_password:
+                flash('Current password is required to set a new password.', 'danger')
+                return render_template('user.html', user=user_obj, gender=gender, profile_picture=db.get_profile_picture_path(gender))
+            if not check_password_hash(user_obj.password_hash, old_password):
+                flash('Current password is incorrect.', 'danger')
+                return render_template('user.html', user=user_obj, gender=gender, profile_picture=db.get_profile_picture_path(gender))
             if len(new_password) < 8:
                 flash('Password must be at least 8 characters.', 'danger')
                 return render_template('user.html', user=user_obj, gender=gender, profile_picture=db.get_profile_picture_path(gender))
