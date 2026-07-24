@@ -13,35 +13,15 @@ const RESULT_IMAGE_FALLBACKS_LIST = [
     '/static/img/illustrations/oil-lamp.svg',
 ];
 
-const RESULT_IMAGE_FALLBACKS_DARK = RESULT_IMAGE_FALLBACKS_LIST.map(function (path) {
-    return path.replace('/illustrations/', '/illustrations/dark-');
-});
-
-const ALL_RESULT_IMAGE_FALLBACKS = RESULT_IMAGE_FALLBACKS_LIST.concat(
-    RESULT_IMAGE_FALLBACKS_DARK
-);
-
-function isDarkMode() {
-    return document.documentElement.getAttribute('data-bs-theme') === 'dark';
-}
-
 function randomResultImageFallback() {
     const index = Math.floor(Math.random() * RESULT_IMAGE_FALLBACKS_LIST.length);
-    return isDarkMode()
-        ? RESULT_IMAGE_FALLBACKS_DARK[index]
-        : RESULT_IMAGE_FALLBACKS_LIST[index];
+    return RESULT_IMAGE_FALLBACKS_LIST[index];
 }
 const enhancedResultImages = new WeakSet();
 const failedResultImageUrls = new Set();
 
-function darkFallbackPath(lightPath) {
-    if (!isDarkMode()) return lightPath;
-    if (lightPath.includes('/dark-')) return lightPath;
-    return lightPath.replace('/illustrations/', '/illustrations/dark-');
-}
-
 function switchToResultImageFallback(image, fallbackImage) {
-    image.src = darkFallbackPath(fallbackImage);
+    image.src = fallbackImage;
     image.setAttribute('data-image-kind', 'fallback');
 }
 
@@ -49,7 +29,7 @@ function enhanceResultImage(image) {
     if (!image || enhancedResultImages.has(image)) return;
 
     const fallbackImage = image.getAttribute('data-fallback-src');
-    if (!ALL_RESULT_IMAGE_FALLBACKS.includes(fallbackImage)) return;
+    if (!RESULT_IMAGE_FALLBACKS_LIST.includes(fallbackImage)) return;
 
     enhancedResultImages.add(image);
     const remoteImage = safeRemoteImageUrl(
@@ -211,18 +191,11 @@ if (typeof document !== 'undefined') {
 function observeThemeForFallbacks() {
     if (typeof MutationObserver === 'undefined') return;
     function refreshFallbacks() {
-        var isDark = isDarkMode();
         document.querySelectorAll('.result-card-image[data-image-kind="fallback"]').forEach(function (img) {
             var src = img.getAttribute('src') || '';
             var fallback = img.getAttribute('data-fallback-src') || '';
-            if (isDark) {
-                if (!src.includes('/dark-')) {
-                    img.src = darkFallbackPath(fallback);
-                }
-            } else {
-                if (src.includes('/dark-')) {
-                    img.src = fallback;
-                }
+            if (src !== fallback) {
+                img.src = fallback;
             }
         });
     }
