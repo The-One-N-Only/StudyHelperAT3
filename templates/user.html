@@ -68,6 +68,45 @@
                         </form>
                     </div>
                 </div>
+
+                <!-- Export Data -->
+                <div class="card shadow-sm mt-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Data Export</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small">Download all your data including workspaces, notes, saved items, and uploaded files.</p>
+                        <form method="post" action="{{ url_for('api.export_account_data') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn btn-outline-primary">Export My Data</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Delete Account -->
+                <div class="card shadow-sm mt-4 border-danger">
+                    <div class="card-header text-danger">
+                        <h5 class="mb-0">Delete Account</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if deletion_scheduled %}
+                            <div class="alert alert-warning">
+                                Your account is scheduled for deletion. You can cancel this within 30 days.
+                            </div>
+                            <form method="post" action="{{ url_for('auth.account_undelete') }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-success">Cancel Deletion</button>
+                            </form>
+                        {% else %}
+                            <p class="text-muted small">Permanently delete your account and all associated data. This action schedules deletion with a 30-day grace period.</p>
+                            <form method="post" action="{{ url_for('auth.account_delete') }}" onsubmit="return confirm('Are you sure you want to schedule your account for deletion? You have 30 days to cancel.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-danger">Delete Account</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>

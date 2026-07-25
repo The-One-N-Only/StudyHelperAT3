@@ -9,6 +9,7 @@ import src.db as db
 from src.logging_config import setup_logging
 from src.tasks import task_queue
 from src.cache import cache
+from backend.error_handlers import register_error_handlers
 
 _root = os.path.dirname(os.path.dirname(__file__))
 
@@ -29,7 +30,7 @@ def random_result_fallback():
     return random.choice(RESULT_IMAGE_FALLBACKS)
 
 
-LOGIN_EXEMPT = {'auth.login', 'auth.register', 'static'}
+LOGIN_EXEMPT = {'auth.login', 'auth.register', 'auth.google_login', 'auth.google_callback', 'auth.forgot_password', 'auth.reset_password', 'auth.account_delete_confirm', 'static'}
 
 
 def _get_csrf_token():
@@ -66,6 +67,11 @@ def create_app():
 
     app.jinja_env.globals['random_result_fallback'] = random_result_fallback
 
+    import datetime
+    def timestamp_to_date_filter(ts):
+        return datetime.datetime.fromtimestamp(int(ts)).strftime('%Y-%m-%d %H:%M')
+    app.jinja_env.filters['timestamp_to_date'] = timestamp_to_date_filter
+
     @app.route('/')
     def index():
         user_id = session['user_id']
@@ -76,6 +82,18 @@ def create_app():
     def require_login():
         if request.endpoint and request.endpoint not in LOGIN_EXEMPT and not session.get('user_id'):
             return redirect(url_for('auth.login'))
+
+    @app.before_request
+    def record_session():
+        user_id = session.get("user_id")
+        if user_id:
+            sid = request.cookies.get("session")
+            if sid:
+                db.record_session(
+                    user_id, sid,
+                    request.remote_addr or "",
+                    request.user_agent.string if request.user_agent else "",
+                )
 
     @app.context_processor
     def inject_user():
@@ -88,7 +106,6 @@ def create_app():
             ctx['profile_picture'] = db.get_profile_picture_path(session.get('gender', 'gentleman'))
         return ctx
 
-    from backend.error_handlers import register_error_handlers
     register_error_handlers(app)
 
     db.setup_db()

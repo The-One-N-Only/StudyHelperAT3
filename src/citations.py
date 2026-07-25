@@ -3,6 +3,21 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+KLA_CITATION_STYLES = {
+    "Science": "apa",
+    "Mathematics": "apa",
+    "English": "mla",
+    "HSIE": "chicago",
+    "Creative Arts": "mla",
+    "Languages": "apa",
+    "TAS": "apa",
+    "PDHPE": "apa",
+}
+
+
+def get_default_style_for_kla(kla: str) -> str:
+    return KLA_CITATION_STYLES.get(kla, "apa")
+
 
 def _parse_authors(authors_raw: Optional[str | list[str]]) -> Optional[list[str]]:
     if not authors_raw:

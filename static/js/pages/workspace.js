@@ -2,6 +2,7 @@
 
 import { showToast } from '../toast.js';
 import { showUndoToast } from '../undo-toast.js';
+import { showEmptyState } from '../components/empty-state.js';
 import { studyHelperAI } from '../ai-prompt.js';
 import {
     isGoogleBooksResult,
@@ -99,7 +100,19 @@ function renderWorkspaceDetail() {
                     <p class="text-muted mb-0">Use the workspace page to take notes, preview your selected source, and manage your studio.</p>
                 </div>
                 <div class="d-flex gap-2">
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-secondary-wood btn-sm dropdown-toggle" type="button" id="toolsDropdown" data-bs-toggle="dropdown" aria-expanded="false">Tools</button>
+                        <ul class="dropdown-menu" aria-labelledby="toolsDropdown">
+                            <li><a class="dropdown-item" href="#" id="flashcardsBtn"><i class="bi bi-card-checklist me-2"></i>Flashcards</a></li>
+                            <li><a class="dropdown-item" href="#" id="checkSimilarityBtn"><i class="bi bi-search me-2"></i>Check Similarity</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" id="sourceDiversityBtn"><i class="bi bi-pie-chart me-2"></i>Source Diversity</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" id="rubricExplainerBtn"><i class="bi bi-clipboard-check me-2"></i>Rubric Explainer</a></li>
+                        </ul>
+                    </div>
                     <button class="btn btn-outline-secondary btn-secondary-wood btn-sm" id="renameWorkspaceBtn">Rename</button>
+                    <button class="btn btn-outline-secondary btn-secondary-wood btn-sm" id="shareWorkspaceBtn"><i class="bi bi-share"></i> Share</button>
                     <button class="btn btn-outline-secondary btn-secondary-wood btn-sm" id="bulkSelectToggle"><i class="bi bi-check2-square"></i> Select</button>
                     <button class="btn btn-primary btn-secondary-wood btn-sm" id="refreshWorkspaceBtn">Refresh</button>
                 </div>
@@ -119,6 +132,7 @@ function renderWorkspaceDetail() {
                             <div id="selectedSourceViewer" class="border rounded p-2 source-preview-shell" style="min-height: 320px;"></div>
                         </div>
                     </div>
+                    <div id="subjectToolsContainer" class="mb-3"></div>
                     <div class="card surface-wood notes-box">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <div>
@@ -140,11 +154,14 @@ function renderWorkspaceDetail() {
                                     <h6 class="mb-0">Workspace Studio</h6>
                                     <small class="text-muted">Sources, notes, and Alexander chat.</small>
                                 </div>
+                                <div id="sourceDiversityIndicator" class="d-none small"></div>
                             </div>
                             <div class="workspace-tabs nav nav-pills mb-3" id="studioTabList" role="tablist">
                                 <button class="nav-link active" id="studio-sources-tab" data-bs-toggle="pill" data-bs-target="#studio-sources" type="button" role="tab">Sources</button>
                                 <button class="nav-link" id="studio-notes-tab" data-bs-toggle="pill" data-bs-target="#studio-notes" type="button" role="tab">Notes</button>
                                 <button class="nav-link" id="studio-chat-tab" data-bs-toggle="pill" data-bs-target="#studio-chat" type="button" role="tab">Alexander</button>
+                                <button class="nav-link" id="studio-activity-tab" data-bs-toggle="pill" data-bs-target="#studio-activity" type="button" role="tab">Activity</button>
+                                <button class="nav-link" id="studio-outcomes-tab" data-bs-toggle="pill" data-bs-target="#studio-outcomes" type="button" role="tab">Outcomes</button>
                             </div>
 
                             <div class="tab-content flex-grow-1 overflow-hidden" id="studioTabContent">
@@ -190,12 +207,42 @@ function renderWorkspaceDetail() {
                                 </div>
                                 <div class="tab-pane fade h-100" id="studio-chat" role="tabpanel">
                                     <div class="d-flex flex-column h-100">
+                                        <div class="d-flex align-items-center gap-2 mb-2">
+                                            <span class="badge bg-info text-dark">Shared Chat</span>
+                                            <small class="text-muted">All workspace members see these messages</small>
+                                        </div>
                                         <div id="alexanderChatMessages" class="border rounded p-3 mb-3 overflow-auto chat-messages" style="min-height: 220px;"></div>
                                         <div class="input-group">
                                             <input id="alexanderChatInput" type="text" class="form-control chat-input" placeholder="Ask Alexander a question..."${alexanderAIConfigured ? '' : ' disabled'}>
                                             <button class="btn btn-primary btn-brass" id="alexanderSendBtn" type="button"${alexanderAIConfigured ? '' : ' disabled'}>Send</button>
                                         </div>
                                         <small class="text-muted mt-2" id="alexanderChatStatus" aria-live="polite">${alexanderAIConfigured ? 'Alexander is a hosted research assistant that uses your workspace and available sources.' : ALEXANDER_NOT_CONFIGURED_MESSAGE}</small>
+                                    </div>
+                                </div>
+                                <div class="tab-pane fade h-100" id="studio-activity" role="tabpanel">
+                                    <div class="d-flex flex-column h-100">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <h6 class="mb-0">Activity Feed</h6>
+                                            <button class="btn btn-sm btn-outline-secondary" id="refreshActivityBtn"><i class="bi bi-arrow-clockwise"></i></button>
+                                        </div>
+                                        <div id="activityFeedContainer" class="overflow-auto"></div>
+                                    </div>
+                                </div>
+                                <div class="tab-pane fade h-100" id="studio-outcomes" role="tabpanel">
+                                    <div class="d-flex flex-column h-100 p-2">
+                                        <h6 class="mb-2">Syllabus Outcomes</h6>
+                                        <div class="mb-2">
+                                            <select class="form-select form-select-sm" id="syllabusCourseSelect">
+                                                <option value="">Select course...</option>
+                                            </select>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-primary mb-2" id="loadOutcomesBtn">Load Outcomes</button>
+                                        <div id="outcomesList" class="overflow-auto small" style="max-height:200px;"></div>
+                                        <hr class="my-2">
+                                        <button class="btn btn-sm btn-outline-success mb-2" id="suggestOutcomesBtn">Suggest Outcomes for Items</button>
+                                        <div id="outcomeTagsContainer" class="d-flex flex-wrap gap-1 mb-2"></div>
+                                        <button class="btn btn-sm btn-outline-info mb-2" id="outcomesReportBtn">View Outcomes Report</button>
+                                        <div id="outcomesReportContainer" class="small"></div>
                                     </div>
                                 </div>
                             </div>
@@ -206,11 +253,13 @@ function renderWorkspaceDetail() {
                 <div id="noteEditorModal"></div>
                 <div id="versionHistoryModal"></div>
                 <div id="tagPickerModal"></div>
+                <div id="appModalContainer"></div>
             </div>
         </div>
     `;
 
     renderSelectedSource();
+    renderSubjectTools();
     renderSourcesList();
     loadWorkspaceNotes();
     attachWorkspaceDetailListeners();
@@ -238,6 +287,9 @@ function attachWorkspaceDetailListeners() {
     const refreshWorkspaceBtn = pageRoot.querySelector('#refreshWorkspaceBtn');
     const alexanderSendBtn = pageRoot.querySelector('#alexanderSendBtn');
     const renameWorkspaceBtn = pageRoot.querySelector('#renameWorkspaceBtn');
+    const flashcardsBtn = pageRoot.querySelector('#flashcardsBtn');
+    const checkSimilarityBtn = pageRoot.querySelector('#checkSimilarityBtn');
+    const sourceDiversityBtn = pageRoot.querySelector('#sourceDiversityBtn');
     const searchNewBtn = pageRoot.querySelector('#searchNewBtn');
     const uploadNewBtn = pageRoot.querySelector('#uploadNewBtn');
     const bulkSelectToggle = pageRoot.querySelector('#bulkSelectToggle');
@@ -253,6 +305,9 @@ function attachWorkspaceDetailListeners() {
     if (refreshWorkspaceBtn) refreshWorkspaceBtn.addEventListener('click', loadWorkspaceDetails);
     if (alexanderSendBtn) alexanderSendBtn.addEventListener('click', sendAlexanderMessage);
     if (renameWorkspaceBtn) renameWorkspaceBtn.addEventListener('click', renameWorkspaceDialog);
+    if (flashcardsBtn) flashcardsBtn.addEventListener('click', showFlashcardsModal);
+    if (checkSimilarityBtn) checkSimilarityBtn.addEventListener('click', showCheckSimilarityModal);
+    if (sourceDiversityBtn) sourceDiversityBtn.addEventListener('click', fetchAndShowDiversity);
     if (searchNewBtn) searchNewBtn.addEventListener('click', () => { window.location.href = '/browse'; });
     if (uploadNewBtn) uploadNewBtn.addEventListener('click', showUploadModal);
     if (bulkSelectToggle) bulkSelectToggle.addEventListener('click', toggleBulkSelection);
@@ -263,9 +318,164 @@ function attachWorkspaceDetailListeners() {
     if (bulkExportBtn) bulkExportBtn.addEventListener('click', bulkExport);
     if (bulkMoveSelect) bulkMoveSelect.addEventListener('change', bulkMoveItems);
 
+    const shareWorkspaceBtn = pageRoot.querySelector('#shareWorkspaceBtn');
+    if (shareWorkspaceBtn) shareWorkspaceBtn.addEventListener('click', showShareModal);
+
+    const refreshActivityBtn = pageRoot.querySelector('#refreshActivityBtn');
+    if (refreshActivityBtn) refreshActivityBtn.addEventListener('click', loadActivityFeed);
+
+    const activityTab = pageRoot.querySelector('#studio-activity-tab');
+    if (activityTab) {
+        activityTab.addEventListener('shown.bs.tab', () => {
+            if (!document.querySelector('#studio-activity .activity-feed-loaded')) {
+                loadActivityFeed();
+            }
+        });
+    }
+
+    const rubricExplainerBtn = pageRoot.querySelector('#rubricExplainerBtn');
+    if (rubricExplainerBtn) rubricExplainerBtn.addEventListener('click', showRubricExplainerModal);
+
+    const loadOutcomesBtn = pageRoot.querySelector('#loadOutcomesBtn');
+    if (loadOutcomesBtn) loadOutcomesBtn.addEventListener('click', loadOutcomesForCourse);
+
+    const suggestOutcomesBtn = pageRoot.querySelector('#suggestOutcomesBtn');
+    if (suggestOutcomesBtn) suggestOutcomesBtn.addEventListener('click', suggestOutcomesForItems);
+
+    const outcomesReportBtn = pageRoot.querySelector('#outcomesReportBtn');
+    if (outcomesReportBtn) outcomesReportBtn.addEventListener('click', loadOutcomesReport);
+
+    const outcomesTab = pageRoot.querySelector('#studio-outcomes-tab');
+    if (outcomesTab) {
+        outcomesTab.addEventListener('shown.bs.tab', () => {
+            if (window.WORKSPACE_COURSE_ID) {
+                loadSyllabusCourses();
+            }
+        });
+    }
+
     const chatInput = pageRoot.querySelector('#alexanderChatInput');
     if (chatInput) {
         chatInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); sendAlexanderMessage(); } });
+    }
+}
+
+async function loadSyllabusCourses() {
+    const select = pageRoot.querySelector('#syllabusCourseSelect');
+    if (!select) return;
+    try {
+        const resp = await fetch('/api/nesa/courses');
+        const data = await resp.json();
+        if (data.status) {
+            select.innerHTML = '<option value="">Select course...</option>';
+            data.courses.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = `${c.course_name} (${c.kla})`;
+                select.appendChild(opt);
+            });
+            if (window.WORKSPACE_COURSE_ID) {
+                select.value = window.WORKSPACE_COURSE_ID;
+            }
+        }
+    } catch (e) { /* ignore */ }
+}
+
+async function loadOutcomesForCourse() {
+    const select = pageRoot.querySelector('#syllabusCourseSelect');
+    const list = pageRoot.querySelector('#outcomesList');
+    if (!select || !list) return;
+    const courseId = select.value;
+    if (!courseId) { showToast('Select a course first', 'warning'); return; }
+    list.innerHTML = '<div class="text-muted">Loading...</div>';
+    try {
+        const resp = await fetch(`/api/nesa/courses/${courseId}/outcomes`);
+        const data = await resp.json();
+        if (data.status) {
+            list.innerHTML = data.outcomes.map(o =>
+                `<div class="d-flex align-items-center gap-1 py-1 border-bottom">
+                    <span class="badge bg-secondary">${escapeHtml(o.code)}</span>
+                    <small>${escapeHtml(o.description)}</small>
+                </div>`
+            ).join('');
+        }
+    } catch (e) {
+        list.innerHTML = '<div class="text-danger">Failed to load outcomes</div>';
+    }
+}
+
+async function suggestOutcomesForItems() {
+    const select = pageRoot.querySelector('#syllabusCourseSelect');
+    const container = pageRoot.querySelector('#outcomeTagsContainer');
+    if (!select || !container) return;
+    const courseId = parseInt(select.value);
+    if (!courseId) { showToast('Select a course first', 'warning'); return; }
+
+    const items = currentWorkspaceItems || [];
+    if (items.length === 0) { showToast('No items to tag', 'warning'); return; }
+
+    container.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div>';
+    const allSuggestions = [];
+
+    for (const item of items.slice(0, 5)) {
+        const summary = item.summary || item.title || '';
+        if (!summary) continue;
+        try {
+            const resp = await fetch('/api/nesa/suggest-outcomes', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({summary: summary.slice(0, 1000), course_id: courseId})
+            });
+            const data = await resp.json();
+            if (data.status && data.suggestions) {
+                data.suggestions.forEach(s => {
+                    if (!allSuggestions.find(x => x.code === s.code)) {
+                        allSuggestions.push(s);
+                    }
+                });
+            }
+        } catch (e) { /* skip */ }
+    }
+
+    container.innerHTML = '';
+    if (allSuggestions.length === 0) {
+        container.innerHTML = '<div class="text-muted small">No suggestions found</div>';
+        return;
+    }
+    allSuggestions.forEach(s => {
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-primary me-1 mb-1';
+        badge.style.cursor = 'pointer';
+        badge.textContent = s.code;
+        badge.title = s.description;
+        badge.addEventListener('click', async () => {
+            showToast('Outcome: ' + s.code + ' - ' + s.description, 'info');
+        });
+        container.appendChild(badge);
+    });
+    showToast(`Found ${allSuggestions.length} outcome suggestions`, 'success');
+}
+
+async function loadOutcomesReport() {
+    const container = pageRoot.querySelector('#outcomesReportContainer');
+    if (!container) return;
+    container.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div>';
+    try {
+        const resp = await fetch(`/api/workspace/${currentWorkspaceId}/outcomes-report`);
+        const data = await resp.json();
+        if (data.status && data.outcomes.length > 0) {
+            container.innerHTML = '<div class="fw-semibold mb-1">Tagged Outcomes:</div>' +
+                data.outcomes.map(o =>
+                    `<div class="d-flex align-items-center gap-1 py-1 border-bottom">
+                        <span class="badge bg-success">${escapeHtml(o.outcome_code)}</span>
+                        <small>${escapeHtml(o.outcome_description || '')}</small>
+                    </div>`
+                ).join('');
+        } else {
+            container.innerHTML = '<div class="text-muted small">No outcomes tagged yet.</div>';
+        }
+    } catch (e) {
+        container.innerHTML = '<div class="text-danger small">Failed to load report</div>';
     }
 }
 
@@ -303,7 +513,11 @@ function applyAlexanderChatData(chatData) {
     studyHelperAI.setConversationHistory(savedMessages);
     alexanderMessages = [
         { role: 'agent', text: ALEXANDER_WELCOME_MESSAGE },
-        ...savedMessages.map((message) => ({ role: message.role === 'assistant' ? 'agent' : 'user', text: message.content }))
+        ...savedMessages.map((message) => ({
+            role: message.role === 'assistant' ? 'agent' : 'user',
+            text: message.content,
+            author_name: message.author_name || null,
+        }))
     ];
     alexanderAIConfigured = chatData?.ai_configured === true;
 }
@@ -377,29 +591,39 @@ function renderSourcesList() {
     }
 
     container.innerHTML = '';
+    container.id = 'sourcesListSortable';
     items.forEach((item) => {
         const itemButton = document.createElement('div');
         itemButton.className = `list-group-item list-group-item-action workspace-source-item text-start d-flex align-items-center ${item.id === selectedWorkspaceItemId ? 'active' : ''}`;
-        itemButton.draggable = true;
+        itemButton.dataset.itemId = item.id;
         itemButton.innerHTML = `
-            ${selectionMode ? `<div class="form-check me-2"><input class="form-check-input ws-item-checkbox" type="checkbox" data-item-id="${item.id}" ${selectedItemIds.has(item.id) ? 'checked' : ''}></div>` : ''}
+            ${selectionMode ? `<div class="form-check me-2"><input class="form-check-input ws-item-checkbox" type="checkbox" data-item-id="${item.id}" ${selectedItemIds.has(item.id) ? 'checked' : ''}></div>` : `<span class="drag-handle me-1 text-muted" style="cursor:grab;"><i class="bi bi-grip-vertical"></i></span>`}
             <div class="flex-grow-1" style="min-width:0;">
                 <div class="d-flex w-100 justify-content-between align-items-start">
                     <div class="pe-2 flex-grow-1" style="min-width:0;">
                         <h6 class="mb-1 text-truncate">${escapeHtml(item.title)}</h6>
                         <p class="mb-0 text-muted small text-truncate">${escapeHtml(item.summary || '')}</p>
-                        <div class="mt-1 d-flex gap-1 flex-wrap item-tags-container" data-item-id="${item.id}"></div>
+                        <div class="mt-1 d-flex gap-1 flex-wrap align-items-center">
+                            <span class="badge bg-light text-dark border small reading-time-badge">${computeReadingTime(item)}</span>
+                            <div class="item-tags-container" data-item-id="${item.id}"></div>
+                        </div>
                     </div>
                     <div class="d-flex align-items-start gap-1 flex-shrink-0">
+                        <button class="btn btn-sm btn-link text-muted p-0 comment-toggle-btn" data-item-id="${item.id}" title="Comments"><i class="bi bi-chat-dots"></i> <span class="comment-count-badge">0</span></button>
                         <small class="text-muted workspace-source-name">${escapeHtml(item.source_name)}</small>
                         <span class="btn btn-sm btn-outline-danger workspace-delete-btn" title="Remove from workspace" aria-label="Remove from workspace" role="button">&times;</span>
                     </div>
                 </div>
             </div>
+            <div class="comment-thread-container" data-item-id="${item.id}" style="display:none;"></div>
         `;
 
         itemButton.addEventListener('click', (e) => {
             if (e.target.closest('.workspace-delete-btn')) return;
+            if (e.target.closest('.comment-toggle-btn')) {
+                toggleCommentThread(item.id, itemButton);
+                return;
+            }
             if (e.target.closest('.ws-item-checkbox')) {
                 const cb = e.target.closest('.ws-item-checkbox');
                 if (cb.checked) selectedItemIds.add(item.id);
@@ -416,6 +640,21 @@ function renderSourcesList() {
             renderSelectedSource();
             renderSourcesList();
         });
+
+        // Citation graph button in source list
+        if (item.source_name === 'semantic_scholar' && item.source_id) {
+            const citeBtn = document.createElement('button');
+            citeBtn.className = 'btn btn-sm btn-link text-info p-0 ms-1';
+            citeBtn.innerHTML = '<i class="bi bi-diagram-3"></i>';
+            citeBtn.title = 'View citation graph';
+            citeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (window.showCitationGraph) {
+                    window.showCitationGraph(item.source_id, item.title);
+                }
+            });
+            itemButton.querySelector('.workspace-source-name').after(citeBtn);
+        }
 
         // Tag badges on items
         renderItemTags(item.id, itemButton.querySelector('.item-tags-container'));
@@ -709,11 +948,18 @@ function renderSelectedSource() {
                 <div>
                     <h5 class="mb-1 text-truncate">${escapeHtml(item.title)}</h5>
                     <p class="text-muted small mb-0">${escapeHtml(item.source_name)} • ${escapeHtml(item.source_url || '')}</p>
+                    ${item.citation_count ? `<span class="badge bg-info mt-1" title="Citation count">${item.citation_count} citations</span>` : ''}
+                    ${item.source_name === 'semantic_scholar' && item.source_id ? `<button class="btn btn-sm btn-outline-info mt-1 citation-graph-btn" data-paper-id="${escapeHtml(item.source_id)}" data-title="${escapeHtml(item.title)}"><i class="bi bi-diagram-3"></i> Citations</button>` : ''}
                 </div>
                 ${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-secondary-wood btn-sm">Open</a>` : ''}
             </div>
         </div>
-        <div id="selectedSourcePreview" class="rounded overflow-hidden border bg-white source-preview-content" style="min-height: 320px;"></div>`;
+        <ul class="nav nav-pills mb-2 small" id="sourcePreviewTabs">
+            <li class="nav-item"><button class="nav-link active" data-tab="content">Content</button></li>
+            <li class="nav-item"><button class="nav-link" data-tab="related">Related</button></li>
+        </ul>
+        <div id="selectedSourcePreview" class="rounded overflow-hidden border bg-white source-preview-content" style="min-height: 320px;"></div>
+        <div id="relatedSourcesStrip" class="mt-2" style="display:none;"></div>`;
     renderSelectedSourcePreview(item);
 }
 
@@ -757,6 +1003,36 @@ function textValue(value) { return value === null || value === undefined ? '' : 
 function renderSelectedSourcePreview(item) {
     const previewContainer = pageRoot.querySelector('#selectedSourcePreview');
     if (!previewContainer) return;
+
+    // Handle tab switching
+    const tabs = pageRoot.querySelectorAll('#sourcePreviewTabs .nav-link');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const tabName = tab.dataset.tab;
+            if (tabName === 'related') {
+                previewContainer.style.display = 'none';
+                showRelatedSources(item);
+            } else {
+                previewContainer.style.display = 'block';
+                const relatedStrip = pageRoot.querySelector('#relatedSourcesStrip');
+                if (relatedStrip) relatedStrip.style.display = 'none';
+            }
+        });
+    });
+
+    // Citation graph button handler
+    const viewerContainer = pageRoot.querySelector('#selectedSourceViewer');
+    const citeBtn = viewerContainer?.querySelector('.citation-graph-btn');
+    if (citeBtn) {
+        citeBtn.addEventListener('click', () => {
+            if (window.showCitationGraph) {
+                window.showCitationGraph(citeBtn.dataset.paperId, citeBtn.dataset.title);
+            }
+        });
+    }
+
     const remoteUrl = safeHttpUrl(item.source_url);
     const localUploadUrl = safeLocalUploadUrl(item.source_url);
     const previewUrl = localUploadUrl || remoteUrl;
@@ -1074,9 +1350,12 @@ function renderAlexanderMessages() {
     }
     alexanderMessages.forEach((message) => {
         const messageEl = document.createElement('div');
-        messageEl.className = `mb-3 p-3 rounded chat-row chat-message ${message.role === 'agent' ? 'bg-light text-dark chat-row-agent chat-message-agent chat-avatar' : 'bg-primary text-white chat-row-user chat-message-user'}`;
-        const formattedText = message.role === 'agent' ? formatAlexanderText(message.text) : escapeHtml(message.text);
-        messageEl.innerHTML = `<strong>${message.role === 'agent' ? 'Alexander' : 'You'}</strong><div class="mt-1">${formattedText}</div>`;
+        const isAgent = message.role === 'agent';
+        const authorName = isAgent ? 'Alexander' : (message.author_name || 'You');
+        const isCurrentUser = !isAgent && !message.author_name;
+        messageEl.className = `mb-3 p-3 rounded chat-row chat-message ${isAgent ? 'bg-light text-dark chat-row-agent chat-message-agent chat-avatar' : (isCurrentUser ? 'bg-primary text-white chat-row-user chat-message-user' : 'bg-secondary text-white chat-row-user')}`;
+        const formattedText = isAgent ? formatAlexanderText(message.text) : escapeHtml(message.text);
+        messageEl.innerHTML = `<strong>${escapeHtml(authorName)}</strong><div class="mt-1">${formattedText}</div>`;
         container.appendChild(messageEl);
     });
     container.scrollTop = container.scrollHeight;
@@ -1539,7 +1818,474 @@ function showEssayOutlineModal() {
     });
 }
 
+/* ── Mobile Chat Toggle ── */
+
+function initMobileChat() {
+    const chatPanel = document.querySelector('.workspace-chat-panel');
+    if (!chatPanel || window.innerWidth > 768) return;
+
+    const handle = chatPanel.querySelector('.chat-handle');
+    if (handle) {
+        handle.addEventListener('click', () => {
+            chatPanel.classList.toggle('expanded');
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initMobileChat);
+
+/* ── Reading Time ── */
+
+function computeReadingTime(item) {
+    const text = (item.summary || item.abstract || item.description || '').trim();
+    if (!text) return '';
+    const words = text.split(/\s+/).length;
+    const minutes = Math.ceil(words / 200);
+    if (minutes < 1) return '< 1 min read';
+    return `${minutes} min read`;
+}
+
+/* ── Rubric Explainer Modal ── */
+
+function showRubricExplainerModal() {
+    const modal = pageRoot.querySelector('#appModalContainer');
+    if (!modal) return;
+    modal.innerHTML = `
+        <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Rubric Explainer</h5>
+                        <button type="button" class="btn-close" id="rubricCloseBtn"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Marking Criteria</label>
+                            <textarea id="rubricCriteriaInput" class="form-control" rows="6" placeholder="Paste the marking criteria/rubric here..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Target Band</label>
+                            <select id="rubricBandSelect" class="form-select">
+                                <option value="Band 6">Band 6</option>
+                                <option value="Band 5">Band 5</option>
+                                <option value="Band 4">Band 4</option>
+                                <option value="Band 3">Band 3</option>
+                                <option value="Band 2">Band 2</option>
+                                <option value="Band 1">Band 1</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Draft Text (optional)</label>
+                            <textarea id="rubricDraftInput" class="form-control" rows="4" placeholder="Paste your draft for specific improvement suggestions..."></textarea>
+                        </div>
+                        <div id="rubricResult" style="display:none;" class="border rounded p-3 bg-light"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="rubricCancelBtn">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="rubricExplainBtn">Explain</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    const close = () => modal.innerHTML = '';
+    modal.querySelector('#rubricCloseBtn').addEventListener('click', close);
+    modal.querySelector('#rubricCancelBtn').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+    modal.querySelector('#rubricExplainBtn').addEventListener('click', async () => {
+        const criteria = modal.querySelector('#rubricCriteriaInput').value.trim();
+        const band = modal.querySelector('#rubricBandSelect').value;
+        const draft = modal.querySelector('#rubricDraftInput').value.trim();
+        if (!criteria) { showToast('Paste marking criteria first', 'warning'); return; }
+
+        const btn = modal.querySelector('#rubricExplainBtn');
+        btn.disabled = true;
+        btn.textContent = 'Explaining...';
+        modal.querySelector('#rubricResult').style.display = 'block';
+        modal.querySelector('#rubricResult').innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> Analyzing...';
+
+        try {
+            const resp = await fetch('/api/explain-rubric', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({criteria_text: criteria, target_band: band, draft_text: draft})
+            });
+            const data = await resp.json();
+            btn.disabled = false;
+            btn.textContent = 'Explain';
+            if (data.status) {
+                modal.querySelector('#rubricResult').innerHTML = '<strong>Explanation:</strong><br>' + formatAlexanderText(data.explanation || '');
+            } else {
+                modal.querySelector('#rubricResult').innerHTML = '<div class="text-danger">' + escapeHtml(data.error || 'Failed') + '</div>';
+            }
+        } catch (e) {
+            btn.disabled = false;
+            btn.textContent = 'Explain';
+            modal.querySelector('#rubricResult').innerHTML = '<div class="text-danger">Request failed</div>';
+        }
+    });
+}
+
+
+/* ── Flashcards Modal ── */
+
+function showFlashcardsModal() {
+    if (!currentWorkspaceItems || currentWorkspaceItems.length === 0) {
+        showToast('No sources in workspace to generate flashcards', 'warning');
+        return;
+    }
+
+    const modal = pageRoot.querySelector('#appModalContainer');
+    if (!modal) return;
+
+    modal.innerHTML = `
+        <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Flashcards</h5>
+                        <button type="button" class="btn-close" id="fcCloseBtn"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="fcLoading" class="text-center py-5">
+                            <div class="spinner-border mb-3" role="status"></div>
+                            <p class="text-muted">Generating flashcards...</p>
+                        </div>
+                        <div id="fcResult" style="display:none;">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="text-muted small" id="fcCounter">Card 1 of 10</span>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-sm btn-outline-secondary" id="fcPrevBtn">&laquo; Prev</button>
+                                    <button class="btn btn-sm btn-outline-secondary" id="fcNextBtn">Next &raquo;</button>
+                                </div>
+                            </div>
+                            <div class="card surface-wood mb-3" id="fcCardContainer" style="cursor:pointer;min-height:200px;">
+                                <div class="card-body d-flex align-items-center justify-content-center text-center p-4" id="fcCardBody">
+                                    <div>
+                                        <h5 id="fcFront" class="mb-0"></h5>
+                                        <p id="fcBack" class="text-muted mt-3 d-none"></p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="text-center">
+                                <small class="text-muted">Click card to flip</small>
+                            </div>
+                        </div>
+                        <div id="fcExportSection" style="display:none;" class="mt-3 border-top pt-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="small fw-semibold">Export:</span>
+                                <select id="fcExportFormat" class="form-select form-select-sm" style="width:auto;">
+                                    <option value="csv">CSV</option>
+                                    <option value="anki">Anki (APKG)</option>
+                                </select>
+                                <button class="btn btn-sm btn-outline-primary" id="fcExportBtn">Download</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="fcCloseFooterBtn">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    let flashcards = [];
+    let currentCard = 0;
+
+    function renderCard() {
+        if (flashcards.length === 0) return;
+        const card = flashcards[currentCard];
+        const frontEl = modal.querySelector('#fcFront');
+        const backEl = modal.querySelector('#fcBack');
+        const counter = modal.querySelector('#fcCounter');
+        if (frontEl) frontEl.textContent = card.front || '';
+        if (backEl) backEl.classList.add('d-none');
+        if (counter) counter.textContent = `Card ${currentCard + 1} of ${flashcards.length}`;
+    }
+
+    modal.querySelector('#fcCloseBtn').addEventListener('click', () => modal.innerHTML = '');
+    modal.querySelector('#fcCloseFooterBtn').addEventListener('click', () => modal.innerHTML = '');
+
+    modal.querySelector('#fcCardContainer')?.addEventListener('click', () => {
+        const backEl = modal.querySelector('#fcBack');
+        if (backEl) {
+            backEl.classList.toggle('d-none');
+            backEl.textContent = flashcards[currentCard]?.back || '';
+        }
+    });
+
+    modal.querySelector('#fcPrevBtn')?.addEventListener('click', () => {
+        if (currentCard > 0) { currentCard--; renderCard(); }
+    });
+
+    modal.querySelector('#fcNextBtn')?.addEventListener('click', () => {
+        if (currentCard < flashcards.length - 1) { currentCard++; renderCard(); }
+    });
+
+    modal.querySelector('#fcExportBtn')?.addEventListener('click', () => {
+        const format = modal.querySelector('#fcExportFormat')?.value || 'csv';
+        const url = `/api/workspace/${currentWorkspaceId}/flashcards/export?format=${format}`;
+        window.open(url, '_blank');
+    });
+
+    fetch('/api/flashcards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: currentWorkspaceId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        modal.querySelector('#fcLoading').style.display = 'none';
+        if (data.status && data.flashcards && data.flashcards.length > 0) {
+            flashcards = data.flashcards;
+            modal.querySelector('#fcResult').style.display = 'block';
+            modal.querySelector('#fcExportSection').style.display = 'block';
+            renderCard();
+        } else {
+            modal.querySelector('#fcResult').style.display = 'block';
+            modal.querySelector('#fcResult').innerHTML = '<p class="text-muted text-center">No flashcards could be generated.</p>';
+        }
+    })
+    .catch(() => {
+        modal.querySelector('#fcLoading').style.display = 'none';
+        modal.querySelector('#fcResult').style.display = 'block';
+        modal.querySelector('#fcResult').innerHTML = '<p class="text-danger text-center">Failed to generate flashcards.</p>';
+    });
+}
+
+/* ── Check Similarity Modal ── */
+
+function showCheckSimilarityModal() {
+    if (!currentWorkspaceItems || currentWorkspaceItems.length === 0) {
+        showToast('No sources in workspace to check against', 'warning');
+        return;
+    }
+
+    const modal = pageRoot.querySelector('#appModalContainer');
+    if (!modal) return;
+
+    modal.innerHTML = `
+        <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Check Similarity</h5>
+                        <button type="button" class="btn-close" id="simCloseBtn"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Paste your draft text:</label>
+                            <textarea id="simDraftInput" class="form-control" rows="8" placeholder="Paste your essay or draft text here to check for over-similarity with workspace sources..."></textarea>
+                        </div>
+                        <div id="simLoading" style="display:none;" class="text-center py-3">
+                            <div class="spinner-border mb-2" role="status"></div>
+                            <p class="text-muted small">Analyzing similarity...</p>
+                        </div>
+                        <div id="simResults" style="display:none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="simCancelBtn">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="simCheckBtn">Check Similarity</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    modal.querySelector('#simCloseBtn').addEventListener('click', () => modal.innerHTML = '');
+    modal.querySelector('#simCancelBtn').addEventListener('click', () => modal.innerHTML = '');
+    modal.querySelector('#simCheckBtn').addEventListener('click', () => {
+        const draft = modal.querySelector('#simDraftInput').value.trim();
+        if (!draft) { showToast('Please enter draft text', 'warning'); return; }
+
+        modal.querySelector('#simLoading').style.display = 'block';
+        modal.querySelector('#simResults').style.display = 'none';
+        modal.querySelector('#simCheckBtn').disabled = true;
+
+        fetch('/api/check-similarity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ draft, workspace_id: currentWorkspaceId })
+        })
+        .then(r => r.json())
+        .then(data => {
+            modal.querySelector('#simLoading').style.display = 'none';
+            modal.querySelector('#simCheckBtn').disabled = false;
+            modal.querySelector('#simResults').style.display = 'block';
+
+            if (data.status && data.results && data.results.length > 0) {
+                let html = '<h6 class="mb-3">Similarity Results</h6>';
+                data.results.forEach(r => {
+                    const pct = (r.similarity * 100).toFixed(1);
+                    const color = r.similarity > 0.6 ? 'danger' : (r.similarity > 0.3 ? 'warning' : 'success');
+                    html += `<div class="mb-3 p-3 border rounded">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <strong>${escapeHtml(r.source_title)}</strong>
+                            <span class="badge bg-${color}">${pct}% similar</span>
+                        </div>
+                        ${r.source_url ? `<small class="text-muted d-block mb-2">${escapeHtml(r.source_url)}</small>` : ''}`;
+                    (r.flagged_passages || []).forEach(p => {
+                        html += `<div class="bg-light p-2 rounded mb-1 small">
+                            <div class="text-muted mb-1"><em>Draft:</em> ${escapeHtml(p.draft_excerpt || '')}</div>
+                            <div class="text-muted"><em>Source:</em> ${escapeHtml(p.source_excerpt || '')}</div>
+                        </div>`;
+                    });
+                    html += '</div>';
+                });
+                modal.querySelector('#simResults').innerHTML = html;
+            } else {
+                modal.querySelector('#simResults').innerHTML = '<div class="alert alert-success mb-0">No significant similarity detected with your workspace sources.</div>';
+            }
+        })
+        .catch(() => {
+            modal.querySelector('#simLoading').style.display = 'none';
+            modal.querySelector('#simCheckBtn').disabled = false;
+            modal.querySelector('#simResults').style.display = 'block';
+            modal.querySelector('#simResults').innerHTML = '<div class="alert alert-danger mb-0">Similarity check failed. Try again.</div>';
+        });
+    });
+}
+
+/* ── Source Diversity ── */
+
+function fetchAndShowDiversity() {
+    if (!currentWorkspaceItems || currentWorkspaceItems.length === 0) {
+        showToast('No sources to analyze', 'warning');
+        return;
+    }
+
+    const indicator = pageRoot.querySelector('#sourceDiversityIndicator');
+    if (!indicator) return;
+
+    fetch(`/api/workspace/${currentWorkspaceId}/diversity`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.status) return;
+
+            const score = data.diversity_score;
+            const color = score > 0.6 ? 'success' : (score > 0.3 ? 'warning' : 'danger');
+            const label = score > 0.6 ? 'Good diversity' : (score > 0.3 ? 'Moderate' : 'Low diversity');
+
+            indicator.className = `small badge bg-${color} cursor-pointer`;
+            indicator.textContent = `Diversity: ${(score * 100).toFixed(0)}%`;
+            indicator.title = `Source diversity score: ${score.toFixed(2)}. ${score > 0.6 ? 'Well-balanced sources.' : score > 0.3 ? 'Consider diversifying your sources.' : 'Your sources are heavily weighted toward a single domain.'}`;
+
+            // Show distribution in modal
+            const modal = pageRoot.querySelector('#appModalContainer');
+            if (!modal) return;
+
+            let distHtml = data.distribution.map(d =>
+                `<div class="d-flex justify-content-between align-items-center mb-2">
+                    <span>${escapeHtml(d.domain)}</span>
+                    <div class="d-flex align-items-center gap-2 flex-grow-1 mx-3">
+                        <div class="progress flex-grow-1" style="height:8px;">
+                            <div class="progress-bar bg-${color}" style="width:${(d.percentage * 100).toFixed(0)}%"></div>
+                        </div>
+                    </div>
+                    <span class="small text-muted">${d.count} (${(d.percentage * 100).toFixed(0)}%)</span>
+                </div>`
+            ).join('');
+
+            modal.innerHTML = `
+                <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Source Diversity</h5>
+                                <button type="button" class="btn-close" id="divCloseBtn"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="text-center mb-3">
+                                    <h2 class="text-${color}">${(score * 100).toFixed(0)}%</h2>
+                                    <p class="text-muted small">Diversity Score</p>
+                                </div>
+                                <div class="mb-3">
+                                    <h6>Domain Distribution (${data.total_sources} sources)</h6>
+                                    ${distHtml}
+                                </div>
+                                <div class="alert alert-${color} small mb-0">
+                                    ${score > 0.6 ? 'Your sources are well-diversified across different domains.' : score > 0.3 ? 'Your sources are somewhat concentrated. Consider adding sources from different domains.' : 'Your sources are heavily weighted toward one domain. Consider diversifying.'}
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" id="divCloseFooterBtn">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+
+            modal.querySelector('#divCloseBtn')?.addEventListener('click', () => modal.innerHTML = '');
+            modal.querySelector('#divCloseFooterBtn')?.addEventListener('click', () => modal.innerHTML = '');
+        })
+        .catch(() => showToast('Failed to load diversity data', 'danger'));
+}
+
 /* ── Auto-Tagging ── */
+
+/* ── Related Sources ── */
+
+async function showRelatedSources(item) {
+    const strip = pageRoot.querySelector('#relatedSourcesStrip');
+    if (!strip) return;
+    strip.style.display = 'block';
+    strip.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm" role="status"></div> <span class="small text-muted">Finding related sources...</span></div>';
+
+    try {
+        const resp = await fetch(`/api/related-by-keywords?title=${encodeURIComponent(item.title || '')}&source=${encodeURIComponent(item.source_name || '')}`);
+        const data = await resp.json();
+        if (!data.status || !data.results || data.results.length === 0) {
+            strip.innerHTML = '<p class="small text-muted text-center py-2">No related sources found.</p>';
+            return;
+        }
+        let html = '<div class="d-flex gap-2 overflow-auto pb-2" style="scrollbar-width: thin;">';
+        data.results.forEach(rel => {
+            html += `
+                <div class="card flex-shrink-0" style="width: 200px;">
+                    <div class="card-body p-2">
+                        <h6 class="card-title small text-truncate mb-1">${escapeHtml(rel.title || '')}</h6>
+                        <p class="card-text small text-muted text-truncate mb-1">${escapeHtml((rel.description || '').slice(0, 80))}</p>
+                        <button class="btn btn-sm btn-outline-primary add-related-btn" data-item-id="${rel.id || ''}" data-title="${escapeHtml(rel.title || '')}">+ Add</button>
+                    </div>
+                </div>`;
+        });
+        html += '</div>';
+        strip.innerHTML = html;
+
+        strip.querySelectorAll('.add-related-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const itemId = btn.dataset.itemId;
+                if (!itemId) return;
+                try {
+                    const resp = await fetch('/api/workspace/add', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            item_id: parseInt(itemId),
+                            summary: '',
+                            bullets: [],
+                            relevance: '',
+                            citation_apa: 'APA citation',
+                            citation_harvard: 'Harvard citation',
+                            workspace_id: currentWorkspaceId
+                        })
+                    });
+                    const data = await resp.json();
+                    if (data.status) {
+                        showToast('Added to workspace', 'success');
+                        loadWorkspaceDetails();
+                    } else {
+                        showToast(data.error || 'Failed to add', 'danger');
+                    }
+                } catch (e) {
+                    showToast('Failed to add source', 'danger');
+                }
+            });
+        });
+    } catch (e) {
+        strip.innerHTML = '<p class="small text-muted text-center py-2">Could not load related sources.</p>';
+    }
+}
+
 
 function fetchAndShowTags(item) {
     const title = item.title || '';
@@ -1583,3 +2329,649 @@ function fetchAndShowTags(item) {
     })
     .catch(() => {});
 }
+
+// ========== Subject-Specific Tools ==========
+
+function getSubjectKla() {
+    const name = (window.WORKSPACE_COURSE_NAME || '').toLowerCase();
+    const kla = (window.WORKSPACE_COURSE_KLA || '').toLowerCase();
+    if (kla) return kla;
+    if (name.includes('english')) return 'english';
+    if (name.includes('math')) return 'mathematics';
+    if (name.includes('legal')) return 'legal studies';
+    if (name.includes('geography') || name.includes('economics')) return 'geography/economics';
+    if (name.includes('art') || name.includes('music') || name.includes('drama') || name.includes('dance') || name.includes('photography')) return 'creative arts';
+    if (name.includes('aboriginal') || name.includes('indigenous')) return 'aboriginal studies';
+    if (name.includes('design') || name.includes('technology') || name.includes('food') || name.includes('engineering') || name.includes('industrial')) return 'tas';
+    return '';
+}
+
+function renderSubjectTools() {
+    const container = pageRoot.querySelector('#subjectToolsContainer');
+    if (!container) return;
+    const kla = getSubjectKla();
+    container.innerHTML = '';
+
+    if (kla === 'english') {
+        renderEnglishTools(container);
+    } else if (kla === 'mathematics') {
+        renderMathTools(container);
+    } else if (kla === 'geography/economics') {
+        renderDataTools(container);
+    }
+}
+
+// ── English Tools ──
+
+function renderEnglishTools(container) {
+    container.innerHTML = `
+        <div class="card surface-wood">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-book"></i> English Tools</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold">Prescribed Text Lookup</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" id="englishTextSearch" placeholder="Search by title or author..." autocomplete="off">
+                        <button class="btn btn-outline-secondary" id="englishLookupBtn">Lookup</button>
+                    </div>
+                    <div id="englishTextResult" class="mt-2 small"></div>
+                </div>
+                <div class="d-flex gap-2 mb-2">
+                    <button class="btn btn-sm btn-outline-primary" id="englishRelatedBtn" disabled>Find Related Texts</button>
+                    <button class="btn btn-sm btn-outline-primary" id="englishCriticismBtn" disabled>Find Literary Criticism</button>
+                </div>
+                <div id="englishRelatedResult" class="mt-2 small"></div>
+                <div id="englishCriticismResult" class="mt-2 small"></div>
+            </div>
+        </div>
+    `;
+
+    const searchInput = container.querySelector('#englishTextSearch');
+    const lookupBtn = container.querySelector('#englishLookupBtn');
+    const relatedBtn = container.querySelector('#englishRelatedBtn');
+    const criticismBtn = container.querySelector('#englishCriticismBtn');
+    const resultDiv = container.querySelector('#englishTextResult');
+    const relatedResult = container.querySelector('#englishRelatedResult');
+    const criticismResult = container.querySelector('#englishCriticismResult');
+
+    let currentText = null;
+
+    async function doLookup() {
+        const q = searchInput.value.trim();
+        if (!q) return;
+        const resp = await fetch(`/api/english/prescribed-texts?q=${encodeURIComponent(q)}`);
+        const data = await resp.json();
+        if (data.status && data.texts && data.texts.length > 0) {
+            currentText = data.texts[0];
+            resultDiv.innerHTML = `<strong>${escapeHtml(currentText.title)}</strong> by ${escapeHtml(currentText.author)}<br><span class="text-muted">${escapeHtml(currentText.module)} — ${escapeHtml(currentText.elective)}</span>`;
+            relatedBtn.disabled = false;
+            criticismBtn.disabled = false;
+        } else {
+            currentText = null;
+            resultDiv.innerHTML = '<span class="text-muted">No prescribed text found.</span>';
+            relatedBtn.disabled = true;
+            criticismBtn.disabled = true;
+        }
+    }
+
+    lookupBtn.addEventListener('click', doLookup);
+    searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') doLookup(); });
+
+    relatedBtn.addEventListener('click', async () => {
+        if (!currentText) return;
+        relatedResult.innerHTML = '<span class="text-muted">Searching...</span>';
+        const resp = await fetch(`/api/english/related-texts?title=${encodeURIComponent(currentText.title)}&themes=`);
+        const data = await resp.json();
+        if (data.status && data.results && data.results.length > 0) {
+            relatedResult.innerHTML = '<strong>Related Texts:</strong><ul>' + data.results.slice(0, 5).map(r => `<li>${escapeHtml(r.title)}</li>`).join('') + '</ul>';
+            data.results.slice(0, 5).forEach(r => {
+                if (r.title && confirm('Add "' + r.title + '" to workspace?')) {
+                    fetch('/api/workspace/add', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            item_id: r.id || r.source_id,
+                            summary: r.description || '',
+                            workspace_id: currentWorkspaceId
+                        })
+                    }).then(() => loadWorkspaceDetails());
+                }
+            });
+        } else {
+            relatedResult.innerHTML = '<span class="text-muted">No related texts found.</span>';
+        }
+    });
+
+    criticismBtn.addEventListener('click', async () => {
+        if (!currentText) return;
+        criticismResult.innerHTML = '<span class="text-muted">Searching...</span>';
+        const resp = await fetch(`/api/english/literary-criticism?text=${encodeURIComponent(currentText.title)}&author=${encodeURIComponent(currentText.author)}`);
+        const data = await resp.json();
+        if (data.status && data.results && data.results.length > 0) {
+            criticismResult.innerHTML = '<strong>Criticism Sources:</strong><ul>' + data.results.slice(0, 5).map(r => `<li>${escapeHtml(r.title)}</li>`).join('') + '</ul>';
+        } else {
+            criticismResult.innerHTML = '<span class="text-muted">No criticism sources found.</span>';
+        }
+    });
+}
+
+// ── Math Tools ──
+
+function renderMathTools(container) {
+    container.innerHTML = `
+        <div class="card surface-wood">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-calculator"></i> Math Tools</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold">Expression / Equation</label>
+                    <input type="text" class="form-control form-control-sm" id="mathExprInput" placeholder="e.g. x**2 - 4 = 0 or x**2 + 2*x + 1">
+                </div>
+                <div class="d-flex gap-2 mb-2">
+                    <select class="form-select form-select-sm" id="mathOpSelect" style="width:auto;">
+                        <option value="solve">Solve</option>
+                        <option value="differentiate">Differentiate</option>
+                        <option value="integrate">Integrate</option>
+                        <option value="graph">Graph</option>
+                    </select>
+                    <button class="btn btn-sm btn-primary" id="mathComputeBtn">Compute</button>
+                </div>
+                <div id="mathResult" class="small border rounded p-2 bg-light" style="min-height:40px;">
+                    <span class="text-muted">Enter an expression and click Compute.</span>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary mt-2" id="mathInsertNoteBtn" style="display:none;">Insert into Note</button>
+            </div>
+        </div>
+    `;
+
+    const exprInput = container.querySelector('#mathExprInput');
+    const opSelect = container.querySelector('#mathOpSelect');
+    const computeBtn = container.querySelector('#mathComputeBtn');
+    const resultDiv = container.querySelector('#mathResult');
+    const insertBtn = container.querySelector('#mathInsertNoteBtn');
+
+    let lastResultHtml = '';
+
+    computeBtn.addEventListener('click', async () => {
+        const expr = exprInput.value.trim();
+        if (!expr) return;
+        const op = opSelect.value;
+
+        if (op === 'graph') {
+            const resp = await fetch(`/api/math/graph?expr=${encodeURIComponent(expr)}`);
+            const data = await resp.json();
+            if (data.status && data.url) {
+                lastResultHtml = `<iframe src="${escapeHtml(data.url)}" style="width:100%;height:400px;border:none;"></iframe>`;
+                resultDiv.innerHTML = lastResultHtml;
+                insertBtn.style.display = 'block';
+            } else {
+                resultDiv.innerHTML = '<span class="text-danger">Graph generation failed.</span>';
+            }
+            return;
+        }
+
+        let endpoint = '/api/math/solve';
+        let bodyKey = 'equation';
+        if (op === 'differentiate') { endpoint = '/api/math/differentiate'; bodyKey = 'expression'; }
+        else if (op === 'integrate') { endpoint = '/api/math/integrate'; bodyKey = 'expression'; }
+
+        const resp = await fetch(endpoint, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({[bodyKey]: expr})
+        });
+        const data = await resp.json();
+        if (data.status && data.result) {
+            const r = data.result;
+            if (r.error) {
+                resultDiv.innerHTML = `<span class="text-danger">${escapeHtml(r.error)}</span>`;
+                insertBtn.style.display = 'none';
+            } else {
+                const steps = r.steps || [];
+                lastResultHtml = steps.map(s => `<div>${escapeHtml(s)}</div>`).join('');
+                if (r.solutions) lastResultHtml += `<div class="mt-1 fw-bold">Solutions: ${r.solutions.map(s => escapeHtml(s)).join(', ')}</div>`;
+                if (r.derivative) lastResultHtml += `<div class="mt-1 fw-bold">Derivative: ${escapeHtml(r.derivative)}</div>`;
+                if (r.integral) lastResultHtml += `<div class="mt-1 fw-bold">Integral: ${escapeHtml(r.integral)}</div>`;
+                resultDiv.innerHTML = lastResultHtml;
+                insertBtn.style.display = 'block';
+            }
+        } else {
+            resultDiv.innerHTML = '<span class="text-danger">Computation failed.</span>';
+            insertBtn.style.display = 'none';
+        }
+    });
+
+    insertBtn.addEventListener('click', () => {
+        if (!quillEditor || !lastResultHtml) return;
+        quillEditor.clipboard.dangerouslyPasteHTML(quillEditor.getLength(), lastResultHtml);
+        showToast('Inserted into note', 'success');
+    });
+}
+
+// ── Data Tools (Geography/Economics) ──
+
+function renderDataTools(container) {
+    container.innerHTML = `
+        <div class="card surface-wood">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Data Tools</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold">ABS Datasets</label>
+                    <input type="text" class="form-control form-control-sm" id="absSearchInput" placeholder="Search datasets (CPI, GDP, etc.)">
+                    <button class="btn btn-sm btn-outline-primary mt-1" id="absSearchBtn">Search</button>
+                </div>
+                <div id="absResult" class="small mt-2"></div>
+                <hr>
+                <button class="btn btn-sm btn-outline-primary" id="rbaCashRateBtn">Get RBA Cash Rate</button>
+                <div id="rbaResult" class="small mt-2"></div>
+            </div>
+        </div>
+    `;
+
+    const absSearchInput = container.querySelector('#absSearchInput');
+    const absSearchBtn = container.querySelector('#absSearchBtn');
+    const absResult = container.querySelector('#absResult');
+    const rbaBtn = container.querySelector('#rbaCashRateBtn');
+    const rbaResult = container.querySelector('#rbaResult');
+
+    absSearchBtn.addEventListener('click', async () => {
+        const q = absSearchInput.value.trim();
+        if (!q) return;
+        absResult.innerHTML = '<span class="text-muted">Searching...</span>';
+        const resp = await fetch(`/api/abs/search?q=${encodeURIComponent(q)}`);
+        const data = await resp.json();
+        if (data.status && data.datasets && data.datasets.length > 0) {
+            let html = '<strong>Datasets:</strong><ul>';
+            data.datasets.forEach(ds => {
+                html += `<li>${escapeHtml(ds.name)} (${escapeHtml(ds.dataset_code)}) - ${escapeHtml(ds.frequency)}</li>`;
+            });
+            html += '</ul>';
+            absResult.innerHTML = html;
+        } else {
+            absResult.innerHTML = '<span class="text-muted">No datasets found.</span>';
+        }
+    });
+
+    rbaBtn.addEventListener('click', async () => {
+        rbaResult.innerHTML = '<span class="text-muted">Loading...</span>';
+        const resp = await fetch('/api/rba/cash-rate');
+        const data = await resp.json();
+        if (data.status) {
+            rbaResult.innerHTML = `<strong>${escapeHtml(data.data.title)}</strong>: ${escapeHtml(data.data.value)}<br><small class="text-muted">${escapeHtml(data.data.source)}</small>`;
+        } else {
+            rbaResult.innerHTML = '<span class="text-muted">Could not fetch data.</span>';
+        }
+    });
+}
+
+// ── Share Modal ──
+
+async function showShareModal() {
+    const modalEl = pageRoot.querySelector('#noteEditorModal');
+    if (!modalEl) return;
+    modalEl.innerHTML = `
+        <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Share Workspace</h5>
+                        <button type="button" class="btn-close" id="closeShareModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Invite Link</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="inviteLinkInput" readonly placeholder="Generate an invite link...">
+                                <button class="btn btn-outline-secondary" id="copyInviteLinkBtn"><i class="bi bi-clipboard"></i></button>
+                                <button class="btn btn-primary" id="generateInviteBtn">Generate</button>
+                            </div>
+                            <select class="form-select form-select-sm mt-2" id="inviteRoleSelect">
+                                <option value="viewer">Viewer (read-only)</option>
+                                <option value="editor">Editor (can edit sources)</option>
+                            </select>
+                        </div>
+                        <hr>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Add Member by Username</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="addMemberUsernameInput" placeholder="Enter username...">
+                                <button class="btn btn-primary" id="addMemberByUsernameBtn">Add</button>
+                            </div>
+                        </div>
+                        <hr>
+                        <div>
+                            <h6 class="mb-2">Current Members</h6>
+                            <div id="shareMembersList" class="list-group list-group-flush"><div class="text-muted small py-2">Loading...</div></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="closeShareFooterBtn">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    const close = () => { modalEl.innerHTML = ''; };
+    modalEl.querySelector('#closeShareModal').addEventListener('click', close);
+    modalEl.querySelector('#closeShareFooterBtn').addEventListener('click', close);
+    modalEl.querySelector('#generateInviteBtn').addEventListener('click', async () => {
+        const role = modalEl.querySelector('#inviteRoleSelect').value;
+        try {
+            const resp = await fetch(`/workspace/${currentWorkspaceId}/invite`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({role})
+            });
+            const data = await resp.json();
+            if (data.status) {
+                modalEl.querySelector('#inviteLinkInput').value = data.invite_url;
+                showToast('Invite link generated', 'success');
+            } else {
+                showToast(data.error || 'Failed to generate invite', 'danger');
+            }
+        } catch (e) {
+            showToast('Failed to generate invite', 'danger');
+        }
+    });
+    modalEl.querySelector('#copyInviteLinkBtn').addEventListener('click', () => {
+        const input = modalEl.querySelector('#inviteLinkInput');
+        if (!input.value) return;
+        navigator.clipboard.writeText(input.value).then(() => {
+            showToast('Copied to clipboard', 'success');
+        }).catch(() => {
+            input.select();
+            document.execCommand('copy');
+            showToast('Copied to clipboard', 'success');
+        });
+    });
+    modalEl.querySelector('#addMemberByUsernameBtn').addEventListener('click', async () => {
+        const username = modalEl.querySelector('#addMemberUsernameInput').value.trim();
+        if (!username) { showToast('Enter a username', 'warning'); return; }
+        try {
+            const resp = await fetch(`/workspace/${currentWorkspaceId}/add-member`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username})
+            });
+            const data = await resp.json();
+            if (data.status) {
+                showToast(`Added ${username}`, 'success');
+                modalEl.querySelector('#addMemberUsernameInput').value = '';
+                loadShareMembers();
+            } else {
+                showToast(data.error || 'Failed to add member', 'danger');
+            }
+        } catch (e) {
+            showToast('Failed to add member', 'danger');
+        }
+    });
+    modalEl.addEventListener('click', (e) => { if (e.target === modalEl) close(); });
+    loadShareMembers();
+}
+
+async function loadShareMembers() {
+    const list = document.querySelector('#shareMembersList');
+    if (!list) return;
+    try {
+        const resp = await fetch(`/workspace/${currentWorkspaceId}/members`);
+        const data = await resp.json();
+        if (!data.status) { list.innerHTML = '<div class="text-muted small py-2">Failed to load members.</div>'; return; }
+        const members = data.members || [];
+        if (members.length === 0) {
+            list.innerHTML = '<div class="text-muted small py-2">No members yet. Share the invite link to add members.</div>';
+            return;
+        }
+        list.innerHTML = '';
+        members.forEach(m => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item list-group-item-action d-flex align-items-center justify-content-between py-2';
+            item.innerHTML = `
+                <div>
+                    <strong>${escapeHtml(m.username)}</strong>
+                    <span class="badge ${m.role === 'owner' ? 'bg-warning' : 'bg-info'} ms-2">${escapeHtml(m.role)}</span>
+                </div>
+                ${m.role !== 'owner' ? `<button class="btn btn-sm btn-outline-danger remove-member-btn" data-member-id="${m.user_id}"><i class="bi bi-person-x"></i></button>` : ''}
+            `;
+            const removeBtn = item.querySelector('.remove-member-btn');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', async () => {
+                    if (!confirm('Remove this member?')) return;
+                    const resp = await fetch(`/workspace/${currentWorkspaceId}/members/${m.user_id}/remove`, {method: 'POST'});
+                    const result = await resp.json();
+                    if (result.status) {
+                        showToast('Member removed', 'success');
+                        loadShareMembers();
+                    } else {
+                        showToast(result.error || 'Failed to remove', 'danger');
+                    }
+                });
+            }
+            list.appendChild(item);
+        });
+    } catch (e) {
+        list.innerHTML = '<div class="text-muted small py-2">Error loading members.</div>';
+    }
+}
+
+// ── Comment Thread ──
+
+async function toggleCommentThread(itemId, itemButton) {
+    const container = itemButton.querySelector('.comment-thread-container');
+    if (!container) return;
+    if (container.style.display === 'block') {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = 'block';
+    container.innerHTML = '<div class="text-center py-2"><div class="spinner-border spinner-border-sm" role="status"></div></div>';
+    await loadCommentThread(itemId, container);
+}
+
+async function loadCommentThread(itemId, container) {
+    try {
+        const resp = await fetch(`/api/workspace-items/${itemId}/comments`);
+        const data = await resp.json();
+        const comments = data.status ? (data.comments || []) : [];
+        let html = '<div class="comment-thread">';
+        const countBadge = document.querySelector(`.comment-toggle-btn[data-item-id="${itemId}"] .comment-count-badge`);
+        if (countBadge) countBadge.textContent = comments.length;
+
+        if (comments.length === 0) {
+            html += '<div class="text-muted small py-1">No comments yet.</div>';
+        } else {
+            comments.forEach(c => {
+                const time = timeAgo(c.created_at);
+                html += `<div class="comment-item">
+                    <div class="comment-meta">${escapeHtml(c.username)} &middot; ${time}</div>
+                    <div>${escapeHtml(c.body)}</div>
+                    <div class="d-flex gap-2 mt-1">
+                        ${c.resolved ? '<span class="badge bg-success small">Resolved</span>' : `<button class="btn btn-sm btn-link p-0 text-success resolve-comment-btn" data-comment-id="${c.id}">Resolve</button>`}
+                        <button class="btn btn-sm btn-link p-0 text-danger delete-comment-btn" data-comment-id="${c.id}">Delete</button>
+                    </div>
+                </div>`;
+            });
+        }
+        html += `<div class="mt-2 d-flex gap-2">
+            <input type="text" class="comment-input form-control form-control-sm" placeholder="Add a comment...">
+            <button class="btn btn-sm btn-primary add-comment-btn">Post</button>
+        </div></div>`;
+        container.innerHTML = html;
+
+        container.querySelector('.add-comment-btn').addEventListener('click', async () => {
+            const input = container.querySelector('.comment-input');
+            const body = input.value.trim();
+            if (!body) return;
+            try {
+                const resp = await fetch(`/api/workspace-items/${itemId}/comments`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({body})
+                });
+                const result = await resp.json();
+                if (result.status) {
+                    input.value = '';
+                    await loadCommentThread(itemId, container);
+                } else {
+                    showToast(result.error || 'Failed to add comment', 'danger');
+                }
+            } catch (e) {
+                showToast('Failed to add comment', 'danger');
+            }
+        });
+        container.querySelectorAll('.resolve-comment-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const commentId = btn.dataset.commentId;
+                await fetch(`/api/comments/${commentId}/resolve`, {method: 'POST'});
+                await loadCommentThread(itemId, container);
+            });
+        });
+        container.querySelectorAll('.delete-comment-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const commentId = btn.dataset.commentId;
+                if (!confirm('Delete this comment?')) return;
+                await fetch(`/api/comments/${commentId}`, {method: 'DELETE'});
+                await loadCommentThread(itemId, container);
+            });
+        });
+    } catch (e) {
+        container.innerHTML = '<div class="text-muted small py-1">Failed to load comments.</div>';
+    }
+}
+
+function timeAgo(timestamp) {
+    const seconds = Math.floor(Date.now() / 1000) - timestamp;
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(timestamp * 1000).toLocaleDateString();
+}
+
+// ── Activity Feed ──
+
+async function loadActivityFeed() {
+    const container = document.querySelector('#activityFeedContainer');
+    if (!container) return;
+    container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm" role="status"></div></div>';
+    try {
+        const resp = await fetch(`/api/workspace/${currentWorkspaceId}/activity?limit=50`);
+        const data = await resp.json();
+        container.classList.add('activity-feed-loaded');
+        if (!data.status || !data.activity || data.activity.length === 0) {
+            container.innerHTML = '<div class="text-muted small py-3 text-center">No activity yet.</div>';
+            return;
+        }
+        container.innerHTML = '';
+        data.activity.forEach(entry => {
+            const item = document.createElement('div');
+            item.className = 'd-flex align-items-start gap-2 py-2 border-bottom';
+            const time = timeAgo(entry.created_at);
+            const iconMap = {source: 'bi-file-earmark', note: 'bi-file-text', file: 'bi-file-earmark-arrow-up', comment: 'bi-chat-dots', chat: 'bi-chat', member: 'bi-person-plus'};
+            const icon = iconMap[entry.target_type] || 'bi-circle';
+            item.innerHTML = `
+                <i class="bi ${icon} text-muted flex-shrink-0 mt-1"></i>
+                <div class="flex-grow-1">
+                    <strong>${escapeHtml(entry.username)}</strong> ${escapeHtml(entry.action)}
+                    <div class="text-muted small">${time}</div>
+                </div>`;
+            container.appendChild(item);
+        });
+    } catch (e) {
+        container.innerHTML = '<div class="text-muted small py-3 text-center">Failed to load activity.</div>';
+    }
+}
+
+// ── Drag-and-Drop Reordering ──
+
+function enableSourceReordering(containerId, workspaceId) {
+    const el = document.getElementById(containerId);
+    if (!el || !window.Sortable) return;
+    new Sortable(el, {
+        animation: 150,
+        handle: '.drag-handle',
+        onEnd: function(evt) {
+            const itemIds = Array.from(el.children).map(child =>
+                parseInt(child.dataset.itemId)
+            );
+            fetch('/api/workspace/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    workspace_id: workspaceId,
+                    item_ids: itemIds,
+                }),
+            });
+        },
+    });
+}
+
+// ── Citation Autocomplete ──
+
+function setupCitationAutocomplete(quill, workspaceId) {
+    if (!quill) return;
+    quill.on('text-change', function(delta, oldDelta, source) {
+        if (source !== 'user') return;
+        const text = quill.getText();
+        const cursor = quill.getSelection()?.index;
+        if (!cursor) return;
+        const before = text.slice(Math.max(0, cursor - 1), cursor);
+        if (before === '@') {
+            showCitationDropdown(quill, cursor, workspaceId);
+        }
+    });
+}
+
+async function showCitationDropdown(quill, cursor, workspaceId) {
+    let dropdown = document.querySelector('.citation-dropdown');
+    if (dropdown) dropdown.remove();
+
+    const resp = await fetch(`/api/workspace/items?workspace_id=${workspaceId}`);
+    const data = await resp.json();
+    const items = data.items || [];
+
+    dropdown = document.createElement('div');
+    dropdown.className = 'citation-dropdown';
+    dropdown.style.position = 'absolute';
+    dropdown.style.zIndex = '9999';
+
+    items.forEach(item => {
+        const option = document.createElement('div');
+        option.className = 'citation-option';
+        option.textContent = `${item.title} (${item.year || 'n.d.'})`;
+        option.addEventListener('click', () => {
+            const citation = `(${item.authors || 'Author'}, ${item.year || 'n.d.'})`;
+            quill.deleteText(cursor - 1, 1);
+            quill.insertText(cursor - 1, citation);
+            dropdown.remove();
+        });
+        dropdown.appendChild(option);
+    });
+
+    document.body.appendChild(dropdown);
+    const quillBounds = quill.root.getBoundingClientRect();
+    dropdown.style.top = (quillBounds.bottom + window.scrollY) + 'px';
+    dropdown.style.left = quillBounds.left + 'px';
+    dropdown.style.width = '300px';
+}
+
+// Override initWorkspaceQuill to add reordering + citation autocomplete
+const _origInitWorkspaceQuill = initWorkspaceQuill;
+initWorkspaceQuill = function() {
+    _origInitWorkspaceQuill();
+    setupCitationAutocomplete(quillEditor, currentWorkspaceId);
+};
+
+// Call enableSourceReordering after sources are rendered
+const _origRenderSourcesList = renderSourcesList;
+renderSourcesList = function() {
+    _origRenderSourcesList();
+    enableSourceReordering('sourcesListSortable', currentWorkspaceId);
+};

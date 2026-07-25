@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import logging
 import re
-from typing import Optional
+from typing import Generator, Optional
 from urllib.parse import quote
 
 import anthropic
@@ -20,7 +21,61 @@ AI_NOT_CONFIGURED_ERROR = (
 AI_PROVIDER_ERROR = "Alexander could not reach the AI service. Try again shortly."
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
+# Local model fallback settings
+LOCAL_API_URL = os.environ.get("LOCAL_LLM_API_URL", "http://localhost:8080/v1")
+LOCAL_MODEL = os.environ.get("LOCAL_LLM_MODEL", "local-model")
+FALLBACK_MODE = os.environ.get("ANTHROPIC_FALLBACK_MODE", "")
+
+_anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
+
+def _get_client():
+    """Return the appropriate client based on fallback mode."""
+    if FALLBACK_MODE == "local":
+        from openai import OpenAI
+        return OpenAI(base_url=LOCAL_API_URL, api_key="not-needed")
+    if not ANTHROPIC_API_KEY:
+        return None
+    return _anthropic_client
+
+
+def _call_llm(system_prompt, messages, max_tokens=4096, stream=False):
+    """Call the appropriate LLM based on fallback mode."""
+    if FALLBACK_MODE == "local":
+        openai_messages = [{"role": "system", "content": system_prompt}]
+        for m in messages:
+            openai_messages.append({"role": m["role"], "content": m["content"]})
+        client = _get_client()
+        response = client.chat.completions.create(
+            model=LOCAL_MODEL,
+            messages=openai_messages,
+            max_tokens=max_tokens,
+            stream=stream,
+        )
+        if stream:
+            return response
+        return response.choices[0].message.content
+    else:
+        client = _get_client()
+        response = client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=max_tokens,
+            system=system_prompt,
+            messages=messages,
+            stream=stream,
+        )
+        if stream:
+            return response
+        return response.content[0].text
+
+
+def _log_ai_usage(user_id, endpoint, model, input_tokens, output_tokens):
+    """Log AI usage to the database."""
+    try:
+        db.log_ai_usage(user_id, endpoint, model, input_tokens, output_tokens)
+    except Exception:
+        logging.exception("Failed to log AI usage")
 
 def _strip_html(text: str) -> str:
     """Remove HTML tags from text to create clean plain-text context."""
@@ -232,7 +287,8 @@ PERSONA_PROMPTS = {
 }
 
 
-def _build_system_prompt(atn: Optional[str] = None, context_text: str = "", persona: str = "formal") -> str:
+def _build_system_prompt(atn: Optional[str] = None, context_text: str = "", persona: str = "formal",
+                         workspace_id: Optional[int] = None, user_id: Optional[int] = None) -> str:
     base = PERSONA_PROMPTS.get(persona, PERSONA_PROMPTS["formal"])
     system_prompt = base + (
         " You never fabricate information or cite sources not provided in the context."
@@ -240,6 +296,13 @@ def _build_system_prompt(atn: Optional[str] = None, context_text: str = "", pers
         " If the provided information is insufficient, clearly state that."
         " Format your answer clearly with key points where appropriate."
     )
+    if workspace_id and user_id:
+        workspace = db.get_workspace(user_id, workspace_id)
+        if workspace and workspace.get("course_name"):
+            system_prompt += (
+                f"\n\nThe student is studying {workspace['course_name']} "
+                f"({workspace['course_kla']}). Tailor your responses to this subject area."
+            )
     if atn:
         system_prompt += f"\n\nAssessment Task Context: {atn}"
     if context_text:
@@ -261,55 +324,43 @@ def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optio
     Returns:
         Dict with answer, sources used, and status
     """
-    if client is None:
+    if _get_client() is None:
         return {
             "status": False,
             "error": AI_NOT_CONFIGURED_ERROR
         }
 
     try:
-        # Collect context from files
         file_context = search_files_for_context(user_id, prompt, num_results=3, workspace_id=workspace_id)
         context_text = file_context["context"]
         all_sources = file_context["sources"].copy()
 
-        # Collect context from workspace notes if applicable
         if workspace_id:
             notes_context = gather_workspace_notes_context(workspace_id, user_id, prompt)
             if notes_context["context"]:
                 context_text += notes_context["context"]
                 all_sources.extend(notes_context["sources"])
-        
-        # Optionally search web and whitelisted sources (skip when in workspace context)
+
         if search_web and not workspace_id:
             web_context = gather_whitelisted_context(prompt, user_id)
             if web_context["context"]:
                 context_text += web_context["context"]
                 all_sources.extend(web_context["sources"])
-        
-        system_prompt = _build_system_prompt(atn, context_text, persona)
 
+        system_prompt = _build_system_prompt(atn, context_text, persona)
         user_message = f"{context_text}\n---\n\nQuestion: {prompt}\n\nPlease answer this question based on the above information."
 
-        message = client.messages.create(
-            model=ANTHROPIC_MODEL,
-            max_tokens=2048,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": user_message}
-            ]
-        )
-        answer_text = message.content[0].text
-        
+        answer_text = _call_llm(system_prompt, [{"role": "user", "content": user_message}], max_tokens=2048)
+
         logging.info(f"User {user_id} received AI answer for prompt: {prompt[:50]}")
-        
+
         return {
             "status": True,
             "answer": answer_text,
             "sources": all_sources,
             "context_used": context_text
         }
-    
+
     except Exception:
         logging.exception("Anthropic request failed while answering prompt for user %s", user_id)
         return {
@@ -350,16 +401,15 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None, w
     Returns:
         Dict with response, sources used, and citations
     """
-    if client is None:
+    if _get_client() is None:
         return {
             "status": False,
             "error": AI_NOT_CONFIGURED_ERROR
         }
 
     try:
-        # Get initial context from the last user message
         last_user_message = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-        
+
         file_context = search_files_for_context(user_id, last_user_message, num_results=2, workspace_id=workspace_id)
         context_text = file_context["context"]
         all_sources = file_context["sources"].copy()
@@ -374,8 +424,7 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None, w
             if web_context["context"]:
                 context_text += web_context["context"]
                 all_sources.extend(web_context["sources"])
-        
-        # Map sources with indices for citation
+
         source_refs = ""
         for i, s in enumerate(all_sources, 1):
             title = s.get("title") or s.get("filename", "Source")
@@ -387,26 +436,19 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None, w
         if source_refs:
             system_prompt += f"\n\nAvailable sources (cite by number):\n{source_refs}"
 
-        response = client.messages.create(
-            model=ANTHROPIC_MODEL,
-            max_tokens=2048,
-            system=system_prompt,
-            messages=messages
-        )
-        response_text = response.content[0].text
-        
-        # Parse citations from response
+        response_text = _call_llm(system_prompt, messages, max_tokens=2048)
+
         response_text, citations = _parse_citations(response_text, all_sources)
-        
+
         logging.info(f"User {user_id} had multi-turn conversation")
-        
+
         return {
             "status": True,
             "response": response_text,
             "sources": all_sources,
             "citations": citations,
         }
-    
+
     except Exception:
         logging.exception("Anthropic chat request failed for user %s", user_id)
         return {
@@ -417,7 +459,7 @@ def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None, w
 
 def generate_follow_up_questions(conversation_history: list, workspace_context: str = "") -> list:
     """Suggest 3 follow-up questions based on the last AI response and workspace context."""
-    if client is None:
+    if _get_client() is None:
         return []
     try:
         last_exchange = ""
@@ -432,13 +474,11 @@ def generate_follow_up_questions(conversation_history: list, workspace_context: 
             f"Workspace context: {workspace_context[:500]}\n\n"
             f"Return ONLY a JSON array of 3 short question strings, nothing else."
         )
-        response = client.messages.create(
-            model=ANTHROPIC_MODEL,
+        text = _call_llm(
+            "You are a helpful academic tutor. Suggest follow-up questions as a JSON array.",
+            [{"role": "user", "content": prompt}],
             max_tokens=300,
-            system="You are a helpful academic tutor. Suggest follow-up questions as a JSON array.",
-            messages=[{"role": "user", "content": prompt}]
         )
-        text = response.content[0].text
         try:
             questions = json.loads(text)
             if isinstance(questions, list) and len(questions) <= 5:
@@ -471,7 +511,7 @@ def synthesize_sources(source_texts: list[dict], instruction: str) -> dict:
     Returns:
         Dict with status and synthesis text
     """
-    if client is None:
+    if _get_client() is None:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
     instruction_prompts = {
@@ -494,13 +534,12 @@ def synthesize_sources(source_texts: list[dict], instruction: str) -> dict:
             f"Sources:\n{sources_text}\n\n"
             f"Provide a structured synthesis with section headings. Be thorough and cite sources by number."
         )
-        response = client.messages.create(
-            model=ANTHROPIC_MODEL,
+        synthesis = _call_llm(
+            "You are an academic synthesis assistant. Create well-structured multi-source analyses with clear section headings.",
+            [{"role": "user", "content": prompt}],
             max_tokens=3072,
-            system="You are an academic synthesis assistant. Create well-structured multi-source analyses with clear section headings.",
-            messages=[{"role": "user", "content": prompt}]
         )
-        return {"status": True, "synthesis": response.content[0].text}
+        return {"status": True, "synthesis": synthesis}
     except Exception:
         logging.exception("Synthesis failed")
         return {"status": False, "error": AI_PROVIDER_ERROR}
@@ -508,7 +547,7 @@ def synthesize_sources(source_texts: list[dict], instruction: str) -> dict:
 
 def generate_study_guide(workspace_id: int, user_id: int) -> dict:
     """Auto-generate a study guide from all sources in a workspace."""
-    if client is None:
+    if _get_client() is None:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
     try:
         items = db.get_workspace_items(user_id, workspace_id)
@@ -531,21 +570,147 @@ def generate_study_guide(workspace_id: int, user_id: int) -> dict:
             f"Sources:\n{sources_text}\n\n"
             f"Format as structured markdown with clear headings."
         )
-        response = client.messages.create(
-            model=ANTHROPIC_MODEL,
+        study_guide = _call_llm(
+            "You are an expert study guide creator for secondary school students. Create clear, structured study guides in markdown.",
+            [{"role": "user", "content": prompt}],
             max_tokens=4096,
-            system="You are an expert study guide creator for secondary school students. Create clear, structured study guides in markdown.",
-            messages=[{"role": "user", "content": prompt}]
         )
-        return {"status": True, "study_guide": response.content[0].text}
+        return {"status": True, "study_guide": study_guide}
     except Exception:
         logging.exception("Study guide generation failed")
         return {"status": False, "error": AI_PROVIDER_ERROR}
 
 
+def chat_with_sources_streaming(
+    user_content: str,
+    atn: Optional[str] = None,
+    workspace_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+    persona: str = "formal",
+) -> Generator[str, None, dict]:
+    """
+    Streaming version of chat_with_sources.
+    Yields content delta strings as they arrive from Claude.
+    Returns final dict with citations, sources, etc.
+    """
+    system_prompt = _build_system_prompt(atn, "", persona)
+
+    messages = _build_workspace_messages(workspace_id, user_id)
+    messages.append({"role": "user", "content": user_content})
+
+    citations_info = []
+
+    if _get_client() is None:
+        yield "__CITATIONS__:" + json.dumps({"status": False, "error": AI_NOT_CONFIGURED_ERROR})
+        return
+
+    try:
+        with _anthropic_client.messages.stream(
+            model=ANTHROPIC_MODEL,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=messages,
+        ) as stream:
+            for text_delta in stream.text_deltas:
+                yield text_delta
+
+            final_message = stream.get_final_message()
+
+        response_text = final_message.content[0].text
+        _, citations_info = _parse_citations(response_text, [])
+
+        usage = final_message.usage
+        _log_ai_usage(
+            user_id=user_id,
+            endpoint="chat_stream",
+            model=ANTHROPIC_MODEL,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+        )
+
+        yield "__CITATIONS__:" + json.dumps(citations_info)
+    except Exception:
+        logging.exception("Streaming chat failed for user %s", user_id)
+        yield "__CITATIONS__:" + json.dumps({"status": False, "error": AI_PROVIDER_ERROR})
+
+
+def _build_workspace_messages(workspace_id, user_id):
+    """Build messages from workspace context."""
+    messages = []
+    if workspace_id and user_id:
+        items = db.get_workspace_items(user_id, workspace_id) or []
+        if items:
+            context = "Workspace context:\n"
+            for item in items:
+                title = item.get("title", "Untitled")
+                summary = item.get("summary", "")[:300]
+                context += f"- {title}: {summary}\n"
+            messages.append({"role": "user", "content": context})
+    return messages
+
+
+def generate_flashcards(workspace_id: int, user_id: int) -> list[dict]:
+    """Generate Q&A flashcards from workspace content using Claude."""
+    items = db.get_workspace_items(user_id, workspace_id)
+    if not items:
+        return []
+
+    context_parts = []
+    for item in items:
+        title = item.get("title", "Untitled")
+        summary = item.get("summary", "") or item.get("snippet", "")
+        context_parts.append(f"Source: {title}\nSummary: {summary}")
+
+    context = "\n\n".join(context_parts)
+
+    prompt = f"""Based on these sources, generate 10 Q&A flashcards for study.
+Return as a JSON array of {{"front": "question", "back": "answer"}} objects.
+Focus on key concepts, definitions, important figures, and relationships.
+
+Sources:
+{context[:8000]}"""
+
+    response = _call_llm(
+        "You are a flashcard generator. Output ONLY valid JSON.",
+        [{"role": "user", "content": prompt}],
+        max_tokens=4096,
+    )
+
+    try:
+        flashcards = json.loads(response)
+        if isinstance(flashcards, list):
+            return flashcards[:20]
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return []
+
+
+def explain_rubric(criteria_text: str, target_band: str, draft_text: str = "") -> dict:
+    prompt = f"""You are a HSC marking criteria explainer.
+
+Marking criteria:
+{criteria_text}
+
+Target band: {target_band}
+
+Explain in plain language:
+1. What does this band descriptor actually mean?
+2. What specific things would a student at this band do?
+3. What differentiates this band from the one below?
+
+{'4. The student has provided their draft below. Give specific, actionable rewrite suggestions for each section to reach the target band.' if draft_text else ''}
+"""
+    if draft_text:
+        prompt += f"\n\nStudent draft:\n{draft_text[:4000]}"
+
+    response = _call_llm("You are a helpful HSC tutor.", [{"role": "user", "content": prompt}])
+    return {"explanation": response}
+
+
 def generate_essay_outline(workspace_id: int, user_id: int, thesis_statement: str) -> dict:
     """Generate a detailed essay outline from workspace sources based on a thesis."""
-    if client is None:
+    if _get_client() is None:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
     try:
         items = db.get_workspace_items(user_id, workspace_id)
@@ -569,13 +734,12 @@ def generate_essay_outline(workspace_id: int, user_id: int, thesis_statement: st
             f"Sources:\n{sources_text}\n\n"
             f"Format as structured markdown with clear headings and bullet points."
         )
-        response = client.messages.create(
-            model=ANTHROPIC_MODEL,
+        outline = _call_llm(
+            "You are an expert essay outline generator. Create detailed, well-structured outlines with evidence from provided sources.",
+            [{"role": "user", "content": prompt}],
             max_tokens=4096,
-            system="You are an expert essay outline generator. Create detailed, well-structured outlines with evidence from provided sources.",
-            messages=[{"role": "user", "content": prompt}]
         )
-        return {"status": True, "outline": response.content[0].text}
+        return {"status": True, "outline": outline}
     except Exception:
         logging.exception("Essay outline generation failed")
         return {"status": False, "error": AI_PROVIDER_ERROR}

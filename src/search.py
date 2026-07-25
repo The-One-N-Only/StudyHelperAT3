@@ -39,6 +39,8 @@ BROWSE_SOURCE_DOMAINS = {
     "natgeo": ("www.nationalgeographic.com", "natgeo"),
 }
 
+BROWSE_DEDICATED_SOURCES = {"wikipedia", "gbooks", "pubmed", "semantic_scholar", "openstax"}
+
 
 class SerpApiConfigurationError(RuntimeError):
     """Raised when Browse cannot start because SerpAPI is not configured."""
@@ -512,6 +514,45 @@ def with_response_dedupe_metadata(item: Mapping) -> dict:
     return response_item
 
 
+import re
+from difflib import SequenceMatcher
+
+
+def _normalize_title(title: str) -> str:
+    title = title.lower()
+    title = re.sub(r'[^\w\s]', '', title)
+    title = re.sub(r'\s+', ' ', title).strip()
+    return title
+
+
+def _title_similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, _normalize_title(a), _normalize_title(b)).ratio()
+
+
+def _first_author_surname(item: Mapping) -> str:
+    """Extract first author surname from item for grouping."""
+    authors = item.get("authors") or ""
+    if isinstance(authors, str) and authors:
+        try:
+            import json as _json
+            parsed = _json.loads(authors)
+            if isinstance(parsed, list) and parsed:
+                first = parsed[0]
+                if isinstance(first, str):
+                    parts = first.replace(",", " ").split()
+                    return parts[0] if parts else ""
+        except Exception:
+            pass
+        first = authors.split(",")[0].strip()
+        return first.split()[-1] if first.split() else ""
+    snippet = item.get("description") or item.get("snippet") or ""
+    snippet = snippet.strip()
+    if snippet:
+        words = snippet.split()
+        return words[0] if words else ""
+    return ""
+
+
 def deduplicate_results(results: Any) -> list[dict]:
     """Keep first item from each identity/URL connected component, in order."""
     if results is None or isinstance(results, (str, bytes, Mapping)):
@@ -564,15 +605,50 @@ def deduplicate_results(results: Any) -> list[dict]:
             else:
                 union(index, previous_index)
 
+    # Second pass: fuzzy title matching grouped by first-author surname
+    surname_groups: dict[str, list[int]] = {}
+    for index, item in enumerate(items):
+        if not isinstance(item, Mapping):
+            continue
+        surname = _first_author_surname(item)
+        if surname:
+            surname_groups.setdefault(surname, []).append(index)
+
+    for surname, indices in surname_groups.items():
+        for i in range(len(indices)):
+            for j in range(i + 1, len(indices)):
+                idx_i = indices[i]
+                idx_j = indices[j]
+                if find(idx_i) == find(idx_j):
+                    continue
+                title_i = _normalize_title(items[idx_i].get("title", "")) if isinstance(items[idx_i], Mapping) else ""
+                title_j = _normalize_title(items[idx_j].get("title", "")) if isinstance(items[idx_j], Mapping) else ""
+                if title_i and title_j and _title_similarity(title_i, title_j) > 0.85:
+                    union(idx_i, idx_j)
+
     first_index_by_component = {}
     for index in range(len(items)):
         first_index_by_component.setdefault(find(index), index)
 
-    return [
-        item
-        for index, item in enumerate(items)
-        if first_index_by_component[find(index)] == index
-    ]
+    deduped = []
+    for index, item in enumerate(items):
+        if first_index_by_component[find(index)] == index:
+            deduped.append(item)
+
+    # Add duplicate_group field to merged results
+    group_map: dict[int, list[int]] = {}
+    for index in range(len(items)):
+        root = find(index)
+        group_map.setdefault(root, []).append(index)
+
+    seen_in_deduped = set(id(d) for d in deduped)
+    for item in deduped:
+        item["duplicate_group"] = []
+        for idx in group_map.get(find(items.index(item)), []):
+            if items[idx] is not item:
+                item["duplicate_group"].append(str(idx))
+
+    return deduped
 
 
 def wikipedia(query: str, num_results: int, *, user_id: int) -> list[dict]:
@@ -826,6 +902,57 @@ def get_related_sources(item_id: int, user_id: int, limit: int = 5) -> list[dict
             return [db_mod._item_to_dict(item) for item in related]
     except Exception:
         logging.exception("Failed to get related sources")
+        return []
+
+
+def semantic_scholar(query: str, num_results: int, *, user_id: int) -> list[dict]:
+    import src.semantic_scholar as ss
+    try:
+        papers = ss.search_papers(query, limit=num_results)
+        results = []
+        for paper in papers:
+            item_data = {
+                "title": paper.get("title", ""),
+                "description": paper.get("snippet", ""),
+                "thumb_url": "",
+                "thumb_mime": "image/jpeg",
+                "thumb_height": 0,
+                "source_url": paper.get("source_url", f"https://api.semanticscholar.org/CorpusID:{paper.get('source_id', '')}"),
+                "source_name": "semantic_scholar",
+                "source_id": paper.get("source_id", ""),
+            }
+            persisted = db.get_or_create_item(item_data, user_id, True)
+            persisted["citation_count"] = paper.get("citation_count", 0)
+            persisted["publication_date"] = paper.get("publication_date", "")
+            persisted["authors"] = paper.get("authors", [])
+            results.append(persisted)
+        return results
+    except Exception:
+        logging.exception("Semantic Scholar search failed")
+        return []
+
+
+def oer_search(query: str, num_results: int, *, user_id: int) -> list[dict]:
+    import src.oer as oer
+    try:
+        books = oer.search_openstax(query, limit=num_results)
+        results = []
+        for book in books:
+            item_data = {
+                "title": book.get("title", ""),
+                "description": book.get("snippet", ""),
+                "thumb_url": "",
+                "thumb_mime": "image/jpeg",
+                "thumb_height": 0,
+                "source_url": book.get("source_url", ""),
+                "source_name": "openstax",
+                "source_id": book.get("source_url", ""),
+            }
+            persisted = db.get_or_create_item(item_data, user_id, True)
+            results.append(persisted)
+        return results
+    except Exception:
+        logging.exception("OpenStax search failed")
         return []
 
 

@@ -1,0 +1,111 @@
+{% extends "layout.html" %}
+
+{% block title %}Usage Dashboard - StudyLib{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <div>
+            <h3 class="mb-1">AI Usage Dashboard</h3>
+            <p class="text-muted mb-0">Monitor your AI token usage and costs.</p>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <label class="form-label mb-0 small">Period:</label>
+            <select id="usageDaysSelect" class="form-select form-select-sm" style="width:auto;">
+                <option value="7">7 days</option>
+                <option value="30" selected>30 days</option>
+                <option value="90">90 days</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="row g-3 mb-4" id="usageSummaryCards">
+        <div class="col-md-3">
+            <div class="card surface-wood">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-1">Total Cost</h6>
+                    <h3 class="mb-0" id="totalCost">$0.00</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card surface-wood">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-1">Total Calls</h6>
+                    <h3 class="mb-0" id="totalCalls">0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card surface-wood">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-1">Input Tokens</h6>
+                    <h3 class="mb-0" id="totalInputTokens">0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card surface-wood">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-1">Output Tokens</h6>
+                    <h3 class="mb-0" id="totalOutputTokens">0</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-8">
+            <div class="card surface-wood">
+                <div class="card-header">
+                    <h6 class="mb-0">Daily Token Usage</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="usageLineChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card surface-wood">
+                <div class="card-header">
+                    <h6 class="mb-0">Model Distribution</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="usagePieChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cost breakdown -->
+    <div class="card surface-wood mb-4">
+        <div class="card-header">
+            <h6 class="mb-0">Cost Breakdown by Endpoint</h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" id="usageBreakdownTable">
+                    <thead>
+                        <tr>
+                            <th>Day</th>
+                            <th>Endpoint</th>
+                            <th>Calls</th>
+                            <th>Input Tokens</th>
+                            <th>Output Tokens</th>
+                            <th>Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usageBreakdownBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/pages/usage.js') }}"></script>
+{% endblock %}

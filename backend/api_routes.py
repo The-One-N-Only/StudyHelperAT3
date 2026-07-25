@@ -5,18 +5,31 @@ import os
 import re
 import secrets
 import uuid
-from flask import Blueprint, request, jsonify, session, send_file
+import flask
+from flask import Blueprint, request, jsonify, session, send_file, Response
 import src.answer as answer
 import src.citations as citations
 import src.db as db
+import src.embeddings as embeddings
 import src.files as files
 import src.proxy as proxy
 import src.pubmed as pubmed
 import src.search as search
+import src.semantic_scholar as semantic_scholar
 import src.summarise as summarise
 from backend.config import BROWSE_SERVER_TIMEOUT_SECONDS
+from backend.decorators import require_workspace_role
 from src.ratelimit import user_rate_limit, ip_rate_limit
 from src.tasks import task_queue, generate_task_id, Task, TaskPriority
+import src.english as english
+import src.mathematics as mathematics
+import src.austlii as austlii
+import src.abs_data as abs_data
+import src.rba_data as rba_data
+import src.gallery_search as gallery_search
+import src.aiatsis as aiatsis
+import src.tas as tas
+import src.dashboard as dashboard
 
 api_bp = Blueprint('api', __name__)
 
@@ -54,6 +67,16 @@ def browse_search():
         for requested_source in requested_sources:
             if requested_source == 'wikipedia':
                 results.extend(search.wikipedia(query, num_results, user_id=user_id))
+            elif requested_source == 'semantic_scholar':
+                results.extend(search.semantic_scholar(query, num_results, user_id=user_id))
+            elif requested_source == 'openstax':
+                results.extend(search.oer_search(query, num_results, user_id=user_id))
+            elif requested_source == 'austlii':
+                results.extend(austlii.search_cases(query))
+            elif requested_source == 'aiatsis':
+                results.extend(aiatsis.search_catalogue(query))
+            elif requested_source == 'art_gallery':
+                results.extend(gallery_search.search_nga(query) + gallery_search.search_ngv(query))
             else:
                 results.extend(search.browse_serpapi_search(
                     query,
@@ -93,7 +116,10 @@ def browse_search_all():
     if not query or not sources:
         return jsonify({'status': False, 'error': 'Query and sources required'}), 400
 
-    if not search.SERP_API_KEY:
+    independent_sources = {'austlii', 'aiatsis', 'art_gallery'}
+    needs_serp = any(s not in independent_sources for s in sources)
+
+    if needs_serp and not search.SERP_API_KEY:
         return jsonify({
             'status': False,
             'error': 'Browse search is not configured. Add SERP_API_KEY and restart StudyLib.'
@@ -131,7 +157,7 @@ def browse_search_all():
     source_counts = {}
     source_errors = {}
 
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
     futures = {}
     for source in requested_sources:
         if source == 'wikipedia':
@@ -140,6 +166,28 @@ def browse_search_all():
                 query,
                 num_results,
                 user_id=user_id,
+            )
+        elif source == 'semantic_scholar':
+            futures[source] = executor.submit(
+                search.semantic_scholar,
+                query,
+                num_results,
+                user_id=user_id,
+            )
+        elif source == 'openstax':
+            futures[source] = executor.submit(
+                search.oer_search,
+                query,
+                num_results,
+                user_id=user_id,
+            )
+        elif source == 'austlii':
+            futures[source] = executor.submit(austlii.search_cases, query)
+        elif source == 'aiatsis':
+            futures[source] = executor.submit(aiatsis.search_catalogue, query)
+        elif source == 'art_gallery':
+            futures[source] = executor.submit(
+                lambda: gallery_search.search_nga(query) + gallery_search.search_ngv(query)
             )
         else:
             futures[source] = executor.submit(
@@ -443,7 +491,7 @@ def get_workspace_chat(workspace_id):
     return jsonify({
         'status': True,
         'messages': messages,
-        'ai_configured': answer.client is not None,
+        'ai_configured': answer._anthropic_client is not None or answer.FALLBACK_MODE == "local",
     })
 
 
@@ -459,7 +507,8 @@ def create_workspace():
         return jsonify({'status': False, 'error': 'Workspace name is required'}), 400
     parent_id = data.get('parent_id')
     folder_id = data.get('folder_id')
-    workspace = db.create_workspace(user_id, name, parent_id=parent_id, folder_id=folder_id)
+    course_id = data.get('course_id')
+    workspace = db.create_workspace(user_id, name, parent_id=parent_id, folder_id=folder_id, course_id=course_id)
     logging.info(f"User {user_id} created workspace: {name}")
     return jsonify({'status': True, 'workspace': workspace})
 
@@ -842,6 +891,27 @@ def upload_file():
         extracted_text = files.extract_text_ocr(stored_path, file_type)
 
     result = db.create_uploaded_file(user_id, file.filename, stored_path, file_type, extracted_text, file.content_length, file_hash=file_hash)
+
+    # Store embeddings for semantic search
+    try:
+        chunks = files.chunk_text(extracted_text)
+        if chunks:
+            chunk_data = []
+            for chunk in chunks:
+                vec = embeddings.compute_simple_embedding(chunk)
+                chunk_data.append((chunk, vec))
+            db.store_file_embeddings(result["id"], chunk_data)
+    except Exception:
+        logging.exception("Failed to store file embeddings")
+
+    # Store per-page text for PDFs
+    try:
+        pages = files.extract_text_pages(stored_path, file_type)
+        if pages:
+            db.store_file_pages(result["id"], [(i+1, p) for i, p in enumerate(pages)])
+    except Exception:
+        logging.exception("Failed to store file pages")
+
     logging.info(f"User {user_id} uploaded file {file.filename} ({file_type})")
     return jsonify({'status': True, 'file_id': result['id'], 'filename': result['filename'], 'url': f"/static/uploads/{user_id}/{result['id']}_{result['filename']}"})
 
@@ -959,6 +1029,7 @@ def answer_prompt():
 
 @api_bp.route('/answer/chat', methods=['POST'])
 @user_rate_limit(30, 60)
+@require_workspace_role('editor', optional=True)
 def answer_chat():
     user_id = session.get('user_id')
     if not user_id:
@@ -1121,6 +1192,84 @@ def suggest_questions():
     history = [{"role": "assistant", "content": last_response}]
     questions = answer.generate_follow_up_questions(history, workspace_context)
     return jsonify({'status': True, 'questions': questions})
+
+
+# ========== GDPR Data Export ==========
+
+@api_bp.route('/account/export', methods=['POST'])
+def export_account_data():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+
+    import io
+    import zipfile
+    import json as json_mod
+
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return jsonify({'status': False, 'error': 'User not found'}), 404
+
+    data = export_user_data(user_id)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('user_data.json', json_mod.dumps(data, indent=2, default=str))
+
+        # Include uploaded files
+        for f in data.get('uploaded_files', []):
+            stored_path = f.get('stored_path', '')
+            if stored_path and os.path.exists(stored_path):
+                arcname = f"uploads/{f.get('filename', 'file')}"
+                zf.write(stored_path, arcname)
+
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'studylib-export-user-{user_id}.zip',
+    )
+
+
+def export_user_data(user_id: int) -> dict:
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return {}
+
+    workspaces = db.get_user_workspaces(user_id) or []
+    workspace_details = []
+    for ws in workspaces:
+        items = db.get_workspace_items(user_id, ws['id']) or []
+        notes = db.get_workspace_notes(ws['id'], user_id)
+        chat = db.get_workspace_chat_messages(ws['id'], user_id)
+        workspace_details.append({
+            "id": ws['id'],
+            "name": ws['name'],
+            "time_created": ws.get('time_created'),
+            "archived": ws.get('archived', False),
+            "items": items,
+            "notes": notes,
+            "chat_messages": chat,
+        })
+
+    search_history = db.get_search_history(user_id) or []
+
+    saved_items = db.get_saved_items(user_id) or []
+    uploaded_files = db.get_uploaded_files(user_id) or []
+
+    return {
+        "profile": {
+            "username": user.username,
+            "email": user.email,
+            "gender": user.gender,
+            "created_at": user.time_created,
+        },
+        "workspaces": workspace_details,
+        "search_history": search_history,
+        "saved_items": saved_items,
+        "uploaded_files": uploaded_files,
+    }
 
 
 @api_bp.route('/synthesize', methods=['POST'])
@@ -1394,6 +1543,245 @@ def search_all_workspaces():
     return jsonify({'status': True, 'results': list(results.values())})
 
 
+# ========== AI Streaming & Tools ==========
+
+@api_bp.route('/chat/stream', methods=['POST'])
+def chat_stream():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+
+    data = request.get_json(silent=True) or {}
+    messages = data.get('messages', [])
+    atn = data.get('atn')
+    workspace_id = data.get('workspace_id')
+    persona = data.get('persona', 'formal')
+
+    if not messages:
+        return jsonify({'status': False, 'error': 'No messages provided'}), 400
+
+    latest_user_content = next((
+        message.get('content')
+        for message in reversed(messages)
+        if isinstance(message, dict)
+        and message.get('role') == 'user'
+        and isinstance(message.get('content'), str)
+        and message.get('content').strip()
+    ), None)
+    if latest_user_content is None:
+        return jsonify({'status': False, 'error': 'No user message provided'}), 400
+
+    if workspace_id is not None:
+        try:
+            workspace_id = int(workspace_id)
+        except (TypeError, ValueError):
+            return jsonify({'status': False, 'error': 'Invalid workspace ID'}), 400
+        workspace = db.get_workspace(user_id, workspace_id)
+        if not workspace:
+            return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+        persona = workspace.get('persona', persona)
+
+    def generate():
+        final_result = None
+        for chunk in answer.chat_with_sources_streaming(
+            user_content=latest_user_content,
+            atn=atn,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            persona=persona,
+        ):
+            if isinstance(chunk, str) and chunk.startswith("__CITATIONS__:"):
+                final_result = chunk
+            else:
+                yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
+        if final_result:
+            citations_json = final_result[len("__CITATIONS__:"):]
+            yield f"data: {json.dumps({'type': 'citations', 'citations': citations_json})}\n\n"
+        else:
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    response = Response(generate(), mimetype='text/event-stream')
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response
+
+
+@api_bp.route('/usage/dashboard')
+def usage_dashboard():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+
+    days = request.args.get('days', 30, type=int)
+    aggregates = db.get_user_usage(user_id, days=days)
+    total_cost = db.get_total_user_cost(user_id)
+
+    # Compute model distribution
+    model_dist = {}
+    for row in aggregates:
+        model = row.get("endpoint", "unknown")
+        model_dist[model] = model_dist.get(model, 0) + row.get("calls", 0)
+
+    return jsonify({
+        'status': True,
+        'aggregates': aggregates,
+        'total_cost': total_cost,
+        'model_distribution': [{"model": k, "calls": v} for k, v in model_dist.items()],
+    })
+
+
+@api_bp.route('/check-similarity', methods=['POST'])
+def check_similarity():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+
+    data = request.json
+    draft = data.get('draft', '')
+    workspace_id = data.get('workspace_id')
+
+    if not draft:
+        return jsonify({'status': False, 'error': 'Draft text required'}), 400
+    if not workspace_id:
+        return jsonify({'status': False, 'error': 'workspace_id required'}), 400
+
+    items = db.get_workspace_items(user_id, workspace_id) or []
+    source_texts = []
+    for item in items:
+        title = item.get("title", "Untitled")
+        url = item.get("source_url", "")
+        text = (item.get("abstract") or item.get("summary") or "")[:5000]
+        if text:
+            source_texts.append((title, url, text))
+        # Also check uploaded file extracted text
+        if item.get("file_id"):
+            files_list = db.get_workspace_uploaded_files(workspace_id, user_id)
+            for f in files_list:
+                if f.get("extracted_text"):
+                    source_texts.append((f.get("filename", "File"), f.get("stored_path", ""), f["extracted_text"][:5000]))
+
+    from src.similarity import check_similarity as run_check
+    results = run_check(draft, source_texts)
+    return jsonify({'status': True, 'results': results})
+
+
+@api_bp.route('/flashcards', methods=['POST'])
+def api_flashcards():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+
+    data = request.json
+    workspace_id = data.get('workspace_id')
+    if not workspace_id:
+        return jsonify({'status': False, 'error': 'workspace_id required'}), 400
+
+    flashcards = answer.generate_flashcards(workspace_id, user_id)
+    return jsonify({'status': True, 'flashcards': flashcards})
+
+
+@api_bp.route('/workspace/<int:workspace_id>/flashcards/export')
+def export_flashcards(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+
+    fmt = request.args.get('format', 'csv')
+    flashcards = answer.generate_flashcards(workspace_id, user_id)
+
+    if fmt == 'anki':
+        try:
+            import genanki
+            deck = genanki.Deck(workspace_id, f"Workspace {workspace_id} Flashcards")
+            for i, card in enumerate(flashcards):
+                model = genanki.Model(
+                    workspace_id * 1000 + i,
+                    f"Card Model {i}",
+                    fields=[
+                        {"name": "Front"},
+                        {"name": "Back"},
+                    ],
+                    templates=[{
+                        "qfmt": "{{Front}}",
+                        "afmt": "{{FrontSide}}\n\n<hr id=answer>\n\n{{Back}}",
+                    }],
+                )
+                note = genanki.Note(model=model, fields=[card.get("front", ""), card.get("back", "")])
+                deck.add_note(note)
+            package = genanki.Package(deck)
+            import io
+            buf = io.BytesIO()
+            package.write_to_file(buf)
+            buf.seek(0)
+            return send_file(
+                buf,
+                mimetype='application/apkg',
+                as_attachment=True,
+                download_name='flashcards.apkg',
+            )
+        except ImportError:
+            return jsonify({'status': False, 'error': 'genanki library not installed'}), 500
+    else:
+        import io
+        import csv
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(['question', 'answer'])
+        for card in flashcards:
+            writer.writerow([card.get("front", ""), card.get("back", "")])
+        return Response(
+            buf.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=flashcards.csv'},
+        )
+
+
+@api_bp.route('/workspace/<int:workspace_id>/diversity')
+def source_diversity(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+
+    from urllib.parse import urlparse
+    items = db.get_workspace_items(user_id, workspace_id) or []
+    domain_counts = {}
+    total = len(items)
+
+    for item in items:
+        url = item.get("source_url", "")
+        if url:
+            try:
+                domain = urlparse(url).netloc
+                if not domain:
+                    domain = "unknown"
+            except Exception:
+                domain = "unknown"
+        else:
+            domain = "unknown"
+        domain_counts[domain] = domain_counts.get(domain, 0) + 1
+
+    distribution = [
+        {"domain": domain, "count": count, "percentage": round(count / total, 3) if total > 0 else 0}
+        for domain, count in sorted(domain_counts.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    # Diversity score: 1 - sum of squared proportions (Herfindahl index)
+    if total > 1:
+        sum_squares = sum((count / total) ** 2 for count in domain_counts.values())
+        diversity_score = 1 - sum_squares
+    else:
+        diversity_score = 0.0
+
+    return jsonify({
+        'status': True,
+        'distribution': distribution,
+        'diversity_score': round(diversity_score, 3),
+        'total_sources': total,
+    })
+
+
 # ========== Notes with Version History ==========
 
 @api_bp.route('/notes', methods=['GET', 'POST'])
@@ -1444,3 +1832,563 @@ def api_note(note_id):
             return jsonify({'status': False, 'error': 'Not found'}), 404
         logging.info(f"User {user_id} deleted note {note_id}")
         return jsonify({'status': True})
+
+
+# ========== Comment Endpoints ==========
+
+
+@api_bp.route('/workspace-items/<int:item_id>/comments', methods=['GET'])
+def list_comments(item_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    comments = db.get_comments(item_id)
+    return jsonify({'status': True, 'comments': comments})
+
+
+@api_bp.route('/workspace-items/<int:item_id>/comments', methods=['POST'])
+def add_comment(item_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = request.json
+    body = (data.get('body') or '').strip()
+    if not body:
+        return jsonify({'status': False, 'error': 'Comment body required'}), 400
+    comment = db.add_comment(item_id, user_id, body)
+    logging.info(f"User {user_id} commented on workspace item {item_id}")
+    return jsonify({'status': True, 'comment': comment})
+
+
+@api_bp.route('/comments/<int:comment_id>/resolve', methods=['POST'])
+def resolve_comment(comment_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    if db.resolve_comment(comment_id, user_id):
+        logging.info(f"User {user_id} resolved comment {comment_id}")
+        return jsonify({'status': True})
+    return jsonify({'status': False, 'error': 'Comment not found'}), 404
+
+
+@api_bp.route('/comments/<int:comment_id>', methods=['DELETE'])
+def delete_comment(comment_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    if db.delete_comment(comment_id, user_id):
+        logging.info(f"User {user_id} deleted comment {comment_id}")
+        return jsonify({'status': True})
+    return jsonify({'status': False, 'error': 'Comment not found'}), 404
+
+
+# ========== Activity Feed Endpoint ==========
+
+
+@api_bp.route('/workspace/<int:workspace_id>/activity', methods=['GET'])
+@require_workspace_role('viewer')
+def workspace_activity(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    limit = request.args.get('limit', 50, type=int)
+    activity = db.get_workspace_activity(workspace_id, limit=limit)
+    return jsonify({'status': True, 'activity': activity})
+
+
+# ========== Search Alerts ==========
+
+@api_bp.route('/search-alerts', methods=['POST'])
+def create_search_alert():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = request.json
+    query = data.get('query', '').strip()
+    sources = data.get('sources', [])
+    frequency = data.get('frequency', 'daily')
+    if not query:
+        return jsonify({'status': False, 'error': 'Query required'}), 400
+    alert = db.create_search_alert(user_id, query, json.dumps(sources), frequency)
+    logging.info(f"User {user_id} created search alert for '{query}'")
+    return jsonify({'status': True, 'alert': alert})
+
+
+@api_bp.route('/search-alerts', methods=['GET'])
+def list_search_alerts():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    alerts = db.get_user_search_alerts(user_id)
+    return jsonify({'status': True, 'alerts': alerts})
+
+
+@api_bp.route('/search-alerts/<int:alert_id>', methods=['DELETE'])
+def delete_search_alert_route(alert_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    if db.delete_search_alert(alert_id, user_id):
+        return jsonify({'status': True})
+    return jsonify({'status': False, 'error': 'Not found'}), 404
+
+
+# ========== Notifications ==========
+
+@api_bp.route('/notifications', methods=['GET'])
+def list_notifications():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    unread_only = request.args.get('unread_only', '').lower() == 'true'
+    notifs = db.get_user_notifications(user_id, unread_only=unread_only)
+    return jsonify({'status': True, 'notifications': notifs})
+
+
+@api_bp.route('/notifications/<int:notification_id>/read', methods=['POST'])
+def mark_notification_read_route(notification_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    if db.mark_notification_read(notification_id, user_id):
+        return jsonify({'status': True})
+    return jsonify({'status': False, 'error': 'Not found'}), 404
+
+
+# ========== Semantic Search ==========
+
+@api_bp.route('/search/semantic', methods=['POST'])
+def semantic_search():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = request.json
+    query = data.get('query', '').strip()
+    workspace_id = data.get('workspace_id')
+    if not query:
+        return jsonify({'status': False, 'error': 'Query required'}), 400
+    query_embedding = embeddings.compute_simple_embedding(query)
+    results = db.semantic_search_files(user_id, query_embedding, top_k=5)
+    return jsonify({'status': True, 'results': results})
+
+
+# ========== Citation Graph (Semantic Scholar) ==========
+
+@api_bp.route('/citation-graph')
+def citation_graph():
+    paper_id = request.args.get('paper_id', '')
+    ref_type = request.args.get('type', 'citations')
+    if not paper_id:
+        return jsonify({'status': False, 'error': 'paper_id required'}), 400
+    if ref_type == 'citations':
+        results = semantic_scholar.get_citations(paper_id)
+    elif ref_type == 'references':
+        results = semantic_scholar.get_references(paper_id)
+    else:
+        return jsonify({'status': False, 'error': 'Invalid type'}), 400
+    return jsonify({'status': True, 'results': results})
+
+
+# ========== File Pages Search ==========
+
+@api_bp.route('/files/<int:file_id>/pages')
+def search_file_pages(file_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'status': False, 'error': 'Query required'}), 400
+    results = db.search_file_pages(file_id, q)
+    return jsonify({'status': True, 'results': results})
+
+
+# ========== Related by Keywords ==========
+
+@api_bp.route('/related-by-keywords')
+def related_by_keywords():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    title = request.args.get('title', '').strip()
+    source = request.args.get('source', '').strip()
+    if not title or not source:
+        return jsonify({'status': False, 'error': 'title and source required'}), 400
+
+    keywords = title[:100]
+    results = []
+    if source == 'wikipedia':
+        results = search.wikipedia(keywords, 5, user_id=user_id)
+    elif source == 'gbooks' or source == 'google books':
+        results = search.gbooks(keywords, 5, {}, user_id=user_id)
+    elif source == 'semantic_scholar':
+        results = search.semantic_scholar(keywords, 5, user_id=user_id)
+    elif source == 'openstax':
+        results = search.oer_search(keywords, 5, user_id=user_id)
+    else:
+        results = search.browse_serpapi_search(keywords, 5, source, {}, user_id=user_id)
+    return jsonify({'status': True, 'results': results})
+
+
+# ========== English Subject Routes ==========
+
+@api_bp.route('/english/prescribed-texts')
+def english_prescribed_texts():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'status': True, 'texts': list(english.PRESCRIBED_TEXTS.keys())})
+    result = english.find_prescribed_text(q)
+    return jsonify({'status': True, 'texts': [result] if result else []})
+
+
+@api_bp.route('/english/related-texts')
+def english_related_texts():
+    title = request.args.get('title', '').strip()
+    themes_str = request.args.get('themes', '')
+    themes = [t.strip() for t in themes_str.split(',') if t.strip()] if themes_str else None
+    if not title:
+        return jsonify({'status': False, 'error': 'title required'}), 400
+    results = english.find_related_texts(title, themes)
+    return jsonify({'status': True, 'results': results})
+
+
+@api_bp.route('/english/literary-criticism')
+def english_literary_criticism():
+    text = request.args.get('text', '').strip()
+    author = request.args.get('author', '').strip()
+    if not text:
+        return jsonify({'status': False, 'error': 'text required'}), 400
+    results = english.get_literary_criticism(text, author)
+    return jsonify({'status': True, 'results': results})
+
+
+# ========== Mathematics Subject Routes ==========
+
+@api_bp.route('/math/solve', methods=['POST'])
+def math_solve():
+    data = request.json
+    equation = data.get('equation', '').strip()
+    variable = data.get('variable', 'x')
+    if not equation:
+        return jsonify({'status': False, 'error': 'equation required'}), 400
+    result = mathematics.solve_equation(equation, variable)
+    return jsonify({'status': True, 'result': result})
+
+
+@api_bp.route('/math/differentiate', methods=['POST'])
+def math_differentiate():
+    data = request.json
+    expression = data.get('expression', '').strip()
+    variable = data.get('variable', 'x')
+    if not expression:
+        return jsonify({'status': False, 'error': 'expression required'}), 400
+    result = mathematics.differentiate(expression, variable)
+    return jsonify({'status': True, 'result': result})
+
+
+@api_bp.route('/math/integrate', methods=['POST'])
+def math_integrate():
+    data = request.json
+    expression = data.get('expression', '').strip()
+    variable = data.get('variable', 'x')
+    if not expression:
+        return jsonify({'status': False, 'error': 'expression required'}), 400
+    result = mathematics.integrate(expression, variable)
+    return jsonify({'status': True, 'result': result})
+
+
+@api_bp.route('/math/graph')
+def math_graph():
+    expr = request.args.get('expr', '').strip()
+    graph_type = request.args.get('type', 'function')
+    if not expr:
+        return jsonify({'status': False, 'error': 'expr required'}), 400
+    url = mathematics.get_desmos_embed_url(expr, graph_type)
+    return jsonify({'status': True, 'url': url})
+
+
+# ========== Legal Studies (AustLII) Routes ==========
+
+@api_bp.route('/legal/search-cases')
+def legal_search_cases():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'status': False, 'error': 'q required'}), 400
+    results = austlii.search_cases(q)
+    return jsonify({'status': True, 'results': results})
+
+
+@api_bp.route('/legal/search-legislation')
+def legal_search_legislation():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'status': False, 'error': 'q required'}), 400
+    results = austlii.search_cases(q)
+    return jsonify({'status': True, 'results': results})
+
+
+@api_bp.route('/legal/citation')
+def legal_citation():
+    case_name = request.args.get('case', '').strip()
+    if not case_name:
+        return jsonify({'status': False, 'error': 'case required'}), 400
+    return jsonify({
+        'status': True,
+        'citation': f'*{case_name}* [2024] HCA 1',
+        'components': {
+            'name': case_name,
+            'year': '2024',
+            'court': 'HCA',
+            'number': '1',
+        }
+    })
+
+
+# ========== Geography/Economics Data Routes ==========
+
+@api_bp.route('/abs/search')
+def abs_search():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'status': True, 'datasets': list(abs_data.DATASETS.keys())})
+    results = abs_data.search_datasets(q)
+    return jsonify({'status': True, 'datasets': results})
+
+
+@api_bp.route('/abs/data/<code>')
+def abs_data_route(code):
+    data = abs_data.get_dataset_data(code.upper())
+    if not data:
+        return jsonify({'status': False, 'error': 'Dataset not found'}), 404
+    return jsonify({'status': True, 'data': data})
+
+
+@api_bp.route('/rba/cash-rate')
+def rba_cash_rate():
+    data = rba_data.get_cash_rate()
+    return jsonify({'status': True, 'data': data})
+
+
+# ========== Creative Arts Routes ==========
+
+@api_bp.route('/art/search')
+def art_search():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'status': False, 'error': 'q required'}), 400
+    nga_results = gallery_search.search_nga(q)
+    ngv_results = gallery_search.search_ngv(q)
+    return jsonify({'status': True, 'results': nga_results + ngv_results})
+
+
+# ========== Aboriginal Studies (AIATSIS) Routes ==========
+
+@api_bp.route('/aiatsis/search')
+def aiatsis_search():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'status': False, 'error': 'q required'}), 400
+    results = aiatsis.search_catalogue(q)
+    return jsonify({'status': True, 'results': results})
+
+
+# ========== TAS Subject Routes ==========
+
+@api_bp.route('/tas/food')
+def tas_food():
+    q = request.args.get('q', '').strip()
+    api_key = request.args.get('api_key', '')
+    if not q:
+        return jsonify({'status': False, 'error': 'q required'}), 400
+    results = tas.search_food(q, api_key)
+    return jsonify({'status': True, 'results': results})
+
+
+@api_bp.route('/tas/materials')
+def tas_materials():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'status': False, 'error': 'q required'}), 400
+    results = tas.search_materials(q)
+    return jsonify({'status': True, 'results': results})
+
+
+# ========== Dashboard Route ==========
+
+@api_bp.route('/dashboard')
+def api_dashboard():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = dashboard.get_dashboard_data(user_id)
+    return jsonify({'status': True, 'dashboard': data})
+
+
+# ========== NESA Curriculum Routes ==========
+
+@api_bp.route('/nesa/courses', methods=['GET'])
+def nesa_courses():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    kla = request.args.get('kla')
+    courses = db.get_nesa_courses(kla=kla)
+    return jsonify({'status': True, 'courses': courses})
+
+
+@api_bp.route('/nesa/courses/<int:course_id>/outcomes', methods=['GET'])
+def nesa_course_outcomes(course_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    outcomes = db.get_course_outcomes(course_id)
+    return jsonify({'status': True, 'outcomes': outcomes})
+
+
+@api_bp.route('/nesa/suggest-outcomes', methods=['POST'])
+def nesa_suggest_outcomes():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = request.json
+    summary = data.get('summary', '')
+    course_id = data.get('course_id')
+    if not summary or not course_id:
+        return jsonify({'status': False, 'error': 'summary and course_id required'}), 400
+    suggestions = db.suggest_outcomes(summary, course_id)
+    return jsonify({'status': True, 'suggestions': suggestions})
+
+
+@api_bp.route('/workspace-items/<int:item_id>/outcomes', methods=['POST'])
+def tag_item_outcome(item_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = request.json
+    outcome_id = data.get('outcome_id')
+    if not outcome_id:
+        return jsonify({'status': False, 'error': 'outcome_id required'}), 400
+    result = db.tag_item_with_outcome(item_id, outcome_id)
+    if not result:
+        return jsonify({'status': False, 'error': 'Already tagged or not found'}), 400
+    return jsonify({'status': True, 'tag': result})
+
+
+@api_bp.route('/workspace/<int:workspace_id>/outcomes-report', methods=['GET'])
+def workspace_outcomes_report(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    outcomes = db.get_workspace_outcomes(workspace_id, user_id)
+    return jsonify({'status': True, 'outcomes': outcomes})
+
+
+# ========== Explain Rubric ==========
+
+@api_bp.route('/explain-rubric', methods=['POST'])
+def explain_rubric():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = request.json
+    criteria_text = data.get('criteria_text', '')
+    target_band = data.get('target_band', 'Band 6')
+    draft_text = data.get('draft_text', '')
+    if not criteria_text:
+        return jsonify({'status': False, 'error': 'criteria_text required'}), 400
+    result = answer.explain_rubric(criteria_text, target_band, draft_text)
+    return jsonify({'status': True, 'explanation': result.get('explanation', '')})
+
+
+# ========== Class/Teacher Routes ==========
+
+@api_bp.route('/classes/create', methods=['POST'])
+def create_class():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = request.json
+    name = data.get('name', '').strip()
+    course_id = data.get('course_id')
+    if not name:
+        return jsonify({'status': False, 'error': 'Name required'}), 400
+    cls = db.create_class(user_id, name, course_id=course_id)
+    return jsonify({'status': True, 'class': cls})
+
+
+@api_bp.route('/classes/join', methods=['POST'])
+def join_class():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = request.json
+    join_code = data.get('join_code', '').strip()
+    if not join_code:
+        return jsonify({'status': False, 'error': 'join_code required'}), 400
+    result = db.join_class(join_code, user_id)
+    if not result:
+        return jsonify({'status': False, 'error': 'Invalid join code'}), 404
+    return jsonify({'status': True, 'membership': result})
+
+
+@api_bp.route('/classes', methods=['GET'])
+def list_classes():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    teacher_classes = db.get_teacher_classes(user_id)
+    student_classes = db.get_student_classes(user_id)
+    return jsonify({'status': True, 'teaching': teacher_classes, 'enrolled': student_classes})
+
+
+@api_bp.route('/classes/<int:class_id>/students', methods=['GET'])
+def class_students(class_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    students = db.get_class_students(class_id)
+    return jsonify({'status': True, 'students': students})
+
+
+@api_bp.route('/classes/<int:class_id>/workspaces', methods=['GET'])
+def class_workspaces(class_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    workspaces = db.get_class_workspaces(class_id, user_id)
+    return jsonify({'status': True, 'workspaces': workspaces})
+
+
+@api_bp.route('/classes/<int:class_id>/push-workspace', methods=['POST'])
+def push_class_workspace(class_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    data = request.json
+    template_id = data.get('template_id')
+    if not template_id:
+        return jsonify({'status': False, 'error': 'template_id required'}), 400
+    from backend.workspace_routes import WORKSPACE_TEMPLATES
+    template = next((t for t in WORKSPACE_TEMPLATES if t['id'] == template_id), None)
+    if not template:
+        return jsonify({'status': False, 'error': 'Template not found'}), 404
+    students = db.get_class_students(class_id)
+    pushed = []
+    for s in students:
+        ws = db.create_workspace(s["id"], template["name"])
+        db.set_workspace_persona(ws["id"], s["id"], "tutor")
+        for section in template.get("structure", {}).get("note_sections", []):
+            db.create_workspace_note(s["id"], ws["id"], section, f"<h3>{section}</h3><p>Your notes here...</p>")
+        pushed.append({"student_id": s["id"], "workspace_id": ws["id"], "workspace_name": ws["name"]})
+    return jsonify({'status': True, 'pushed': pushed})
+
+
+@api_bp.route('/classes/<int:class_id>/analytics', methods=['GET'])
+def class_analytics(class_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    analytics = db.get_class_analytics(class_id, user_id)
+    if not analytics:
+        return jsonify({'status': False, 'error': 'Class not found or not your class'}), 404
+    return jsonify({'status': True, 'analytics': analytics})

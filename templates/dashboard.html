@@ -1,0 +1,83 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard - StudyLib{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 archive-page archive-page-dashboard">
+    <span class="archive-illustration illustration-books" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-flourish" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-oil-lamp" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-armillary-sphere" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-hourglass" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-telescope" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-candlestick" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-victorian-man" aria-hidden="true"></span>
+    <span class="archive-illustration illustration-scholar" aria-hidden="true"></span>
+    <div class="archive-content">
+        <div class="d-flex align-items-center justify-content-between mb-4">
+            <div>
+                <h3 class="archive-page-title mb-1">Research Dashboard</h3>
+                <p class="text-muted mb-0">Overview of your research activity and sources.</p>
+            </div>
+            <button class="btn btn-outline-secondary btn-secondary-wood btn-sm" id="refreshDashboardBtn">Refresh</button>
+        </div>
+
+        <div class="row g-4" id="dashboardOverviewCards">
+            <div class="col-md-3">
+                <div class="card surface-wood text-center p-3">
+                    <h5 class="display-6 fw-bold" id="totalWorkspaces">-</h5>
+                    <p class="text-muted small mb-0">Workspaces</p>
+                    <small class="text-success" id="activeWorkspaces"></small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card surface-wood text-center p-3">
+                    <h5 class="display-6 fw-bold" id="totalSources">-</h5>
+                    <p class="text-muted small mb-0">Sources</p>
+                    <small class="text-success" id="sourcesAdded7d"></small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card surface-wood text-center p-3">
+                    <h5 class="display-6 fw-bold" id="totalCitations">-</h5>
+                    <p class="text-muted small mb-0">Citations</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card surface-wood text-center p-3">
+                    <h5 class="display-6 fw-bold" id="domainDiversity">-</h5>
+                    <p class="text-muted small mb-0">Domain Diversity</p>
+                    <small class="text-muted" id="domainCount"></small>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4 mt-2">
+            <div class="col-md-6">
+                <div class="card surface-wood">
+                    <div class="card-header">
+                        <h5 class="mb-0">Top Domains</h5>
+                    </div>
+                    <div class="card-body" id="topDomainsContainer">
+                        <p class="text-muted small mb-0">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card surface-wood">
+                    <div class="card-header">
+                        <h5 class="mb-0">AI Usage (30 days)</h5>
+                    </div>
+                    <div class="card-body" id="aiUsageContainer">
+                        <p class="text-muted small mb-0">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
+{% endblock %}

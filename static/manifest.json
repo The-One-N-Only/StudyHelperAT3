@@ -1,0 +1,17 @@
+{
+    "name": "StudyLib - Academic Research Assistant",
+    "short_name": "StudyLib",
+    "description": "Your academic research assistant powered by Alexander AI",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#faf3e8",
+    "theme_color": "#5b3a1a",
+    "icons": [
+        {
+            "src": "/static/img/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}

@@ -37,7 +37,8 @@ def _unexpected_lookup(*_args, **_kwargs):
     ],
 )
 def test_answer_entry_points_fail_without_client(monkeypatch, invoke, expected):
-    monkeypatch.setattr(answer, "client", None, raising=False)
+    monkeypatch.setattr(answer, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(answer, "FALLBACK_MODE", "")
     monkeypatch.setattr(answer, "search_files_for_context", _unexpected_lookup)
     monkeypatch.setattr(answer, "gather_whitelisted_context", _unexpected_lookup)
     monkeypatch.setattr(answer.db, "get_uploaded_files", _unexpected_lookup)
@@ -67,8 +68,9 @@ class FakeAnthropicClient:
 
 
 def _hosted_answer_setup(monkeypatch, fake_client, model="configured-answer-model"):
-    monkeypatch.setattr(answer, "client", fake_client)
+    monkeypatch.setattr(answer, "_get_client", lambda: fake_client)
     monkeypatch.setattr(answer, "ANTHROPIC_API_KEY", "hosted-test-key")
+    monkeypatch.setattr(answer, "FALLBACK_MODE", "")
     monkeypatch.setattr(answer, "ANTHROPIC_MODEL", model)
     monkeypatch.setattr(
         answer,
@@ -230,6 +232,7 @@ def test_answer_chat_persists_successful_turn(monkeypatch):
     ]
     append_calls = []
     monkeypatch.setattr(db, "get_workspace", lambda user_id, workspace_id: {"id": workspace_id})
+    monkeypatch.setattr(db, "get_user_workspace_role", lambda ws_id, u_id: "owner")
     monkeypatch.setattr(
         db,
         "append_workspace_chat_turn",
@@ -260,6 +263,7 @@ def test_answer_chat_persists_successful_turn(monkeypatch):
 
 def test_answer_chat_rejects_wrong_workspace_owner(monkeypatch):
     monkeypatch.setattr(db, "get_workspace", lambda *_args: None)
+    monkeypatch.setattr(db, "get_user_workspace_role", lambda ws_id, u_id: None)
     monkeypatch.setattr(
         answer,
         "chat_with_sources",
@@ -280,6 +284,7 @@ def test_answer_chat_rejects_wrong_workspace_owner(monkeypatch):
 
 def test_answer_chat_does_not_persist_on_provider_failure(monkeypatch):
     monkeypatch.setattr(db, "get_workspace", lambda *_args: {"id": 4})
+    monkeypatch.setattr(db, "get_user_workspace_role", lambda ws_id, u_id: "owner")
     monkeypatch.setattr(
         db,
         "append_workspace_chat_turn",

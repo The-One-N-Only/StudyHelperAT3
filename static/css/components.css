@@ -614,4 +614,92 @@ input[type="date"].form-control {
     border-style: dashed !important;
 }
 
+/* ── Comment Thread ── */
+.comment-thread {
+    margin-top: 0.5rem;
+    border-top: 1px solid var(--border-color);
+    padding-top: 0.5rem;
+}
+.comment-item {
+    padding: 0.25rem 0;
+    font-size: 0.9rem;
+}
+.comment-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.comment-input {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+}
+
+/* ── Citation Dropdown ── */
+.citation-dropdown {
+    background: var(--surface-800);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.citation-option {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.citation-option:hover {
+    background: var(--surface-700);
+}
+
+/* Mobile: stack panels vertically */
+@media (max-width: 768px) {
+    .workspace-studio {
+        flex-direction: column !important;
+    }
+
+    .workspace-sidebar {
+        width: 100% !important;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .workspace-main {
+        width: 100% !important;
+    }
+
+    .workspace-chat-panel {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 50vh;
+        z-index: 1050;
+        border-radius: 12px 12px 0 0;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
+        transform: translateY(calc(100% - 60px));
+        transition: transform 0.3s ease;
+    }
+
+    .workspace-chat-panel.expanded {
+        transform: translateY(0);
+    }
+
+    .workspace-chat-panel .chat-handle {
+        display: block;
+        width: 40px;
+        height: 4px;
+        background: var(--text-muted);
+        border-radius: 2px;
+        margin: 8px auto;
+    }
+}
+
+/* Default: hide chat handle on desktop */
+.chat-handle {
+    display: none;
+}
+
 

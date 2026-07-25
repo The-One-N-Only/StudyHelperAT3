@@ -121,6 +121,70 @@ class StudyHelperAI {
   }
 
   /**
+   * Stream a chat response using SSE (Server-Sent Events)
+   * @param {Array} messages - Chat messages
+   * @param {number|null} workspaceId - Workspace ID
+   * @param {Object} callbacks - { onToken, onCitations, onError, onDone }
+   */
+  async chatStream(messages, workspaceId, callbacks = {}) {
+    const { onToken, onCitations, onError, onDone } = callbacks;
+
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': this.getCSRFToken()
+        },
+        body: JSON.stringify({ messages, workspace_id: workspaceId })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.type === 'token' && typeof onToken === 'function') {
+                onToken(parsed.content);
+              } else if (parsed.type === 'citations' && typeof onCitations === 'function') {
+                let citations = parsed.citations;
+                if (typeof citations === 'string') {
+                  try { citations = JSON.parse(citations); } catch (_) {}
+                }
+                this.currentCitations = Array.isArray(citations) ? citations : (citations.citations || []);
+                onCitations(this.currentCitations);
+              } else if (parsed.type === 'done' && typeof onDone === 'function') {
+                onDone();
+              }
+            } catch (_) {
+              if (typeof onToken === 'function') onToken(data);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Chat stream failed:', error);
+      if (typeof onError === 'function') onError(error.message);
+    }
+  }
+
+  /**
    * Set the current assessment task/note for context
    * @param {string} atn - The assessment task description
    */

@@ -41,6 +41,37 @@ def _looks_like_paywall(final_url: str, domain: str) -> bool:
     return False
 
 
+def _check_paywall_content(text: str) -> bool:
+    """Check if content looks paywalled."""
+    if not text or len(text) < 200:
+        return True
+    paywall_keywords = ["subscribe", "access denied", "subscription required",
+                        "purchase access", "pay per view", "pay-per-view",
+                        "subscribe to read", "this article is behind a paywall"]
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in paywall_keywords)
+
+
+def _wayback_fallback(url: str) -> Optional[str]:
+    """Query Wayback Machine API for an archived copy."""
+    try:
+        resp = requests.get(
+            "https://archive.org/wayback/available",
+            params={"url": url},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        snapshots = data.get("archived_snapshots", {})
+        closest = snapshots.get("closest", {})
+        if closest.get("status") == "200":
+            return closest.get("url")
+        return None
+    except Exception:
+        return None
+
+
 def fetch_source(url: str) -> dict:
     if not whitelist.is_allowed(url):
         raise ValueError("URL not allowed")
@@ -66,23 +97,28 @@ def fetch_source(url: str) -> dict:
             "domain": domain,
             "mode": "iframe",
             "fallback_url": url,
+            "wayback_url": None,
         }
 
     try:
         resp = requests.get(url, timeout=15, headers=HEADERS)
     except requests.Timeout:
-        return {"status": False, "error": "Request timed out"}
+        wayback_url = _wayback_fallback(url)
+        return {"status": False, "error": "Request timed out", "fallback_url": wayback_url or url, "wayback_url": wayback_url}
     except requests.RequestException:
-        return {"status": False, "error": "Failed to fetch source"}
+        wayback_url = _wayback_fallback(url)
+        return {"status": False, "error": "Failed to fetch source", "fallback_url": wayback_url or url, "wayback_url": wayback_url}
 
     if resp.status_code != 200:
+        wayback_url = _wayback_fallback(url)
         if resp.status_code in (401, 403, 429):
             return {
                 "status": False,
                 "error": "Source blocked by the remote site. Open it directly in a new tab.",
-                "fallback_url": url,
+                "fallback_url": wayback_url or url,
+                "wayback_url": wayback_url,
             }
-        return {"status": False, "error": "Failed to load source"}
+        return {"status": False, "error": "Failed to load source", "fallback_url": wayback_url or url, "wayback_url": wayback_url}
 
     final_domain = whitelist.get_domain(resp.url)
     if (
@@ -90,16 +126,23 @@ def fetch_source(url: str) -> dict:
         and final_domain not in PAYWALL_DOMAINS
         and _looks_like_paywall(resp.url, domain)
     ):
+        wayback_url = _wayback_fallback(url)
         return {
             "status": False,
             "error": "This content requires a login or subscription. Open it directly in a new tab.",
-            "fallback_url": url,
+            "fallback_url": wayback_url or url,
+            "wayback_url": wayback_url,
         }
 
     try:
         soup = BeautifulSoup(resp.text, "html.parser")
     except Exception:
         return {"status": False, "error": "Failed to parse source content"}
+
+    text = soup.get_text(separator=" ", strip=True)
+    wayback_url = None
+    if _check_paywall_content(text):
+        wayback_url = _wayback_fallback(url)
 
     for tag in soup(["script", "form", "input", "button", "select",
                      "textarea", "iframe", "object", "embed"]):
@@ -111,8 +154,6 @@ def fetch_source(url: str) -> dict:
 
     title = soup.title.string if soup.title else ""
 
-    text = soup.get_text(separator=" ", strip=True)
-
     return {
         "status": True,
         "html": str(soup),
@@ -121,4 +162,6 @@ def fetch_source(url: str) -> dict:
         "url": resp.url,
         "domain": whitelist.get_domain(resp.url),
         "mode": "iframe",
+        "fallback_url": wayback_url or url,
+        "wayback_url": wayback_url,
     }

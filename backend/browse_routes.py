@@ -30,6 +30,23 @@ def autocomplete_mesh():
     return jsonify({'status': True, 'suggestions': terms})
 
 
+@browse_bp.route('/usage')
+def usage_page():
+    if not session.get('user_id'):
+        return redirect(url_for('auth.login'))
+    logging.info(f"User {session['user_id']} accessed usage dashboard")
+    return render_template('usage.html')
+
+
+@browse_bp.route('/classes')
+def classes_page():
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('auth.login'))
+    logging.info(f"User {user_id} accessed classes page")
+    return render_template('classes.html')
+
+
 @browse_bp.route('/browse/global-search')
 def global_search():
     user_id = session.get('user_id')
@@ -72,3 +89,11 @@ def global_search():
 
     logging.info(f"User {user_id} performed global search for '{q}'")
     return render_template('global_results.html', query=q, results=results)
+
+
+@browse_bp.route('/dashboard')
+def dashboard_page():
+    if not session.get('user_id'):
+        return redirect(url_for('auth.login'))
+    logging.info(f"User {session['user_id']} accessed dashboard page")
+    return render_template('dashboard.html')

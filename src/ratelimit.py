@@ -52,3 +52,33 @@ def ip_rate_limit(max_requests: int = 30, window: int = 60):
     def key_func() -> str:
         return f"ip:{request.remote_addr or 'unknown'}"
     return rate_limit(key_func, max_requests, window)
+
+
+# Track login attempts by IP
+_login_attempts: dict[str, list[float]] = {}
+
+def check_login_rate_limit(max_attempts: int = 5, window: int = 300) -> tuple[bool, int]:
+    """
+    Returns (is_allowed, retry_after_seconds).
+    5 attempts per 5 minutes per IP.
+    """
+    ip = request.remote_addr or "unknown"
+    now = time.time()
+
+    if ip not in _login_attempts:
+        _login_attempts[ip] = []
+
+    _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < window]
+
+    if len(_login_attempts[ip]) >= max_attempts:
+        retry_after = int(window - (now - _login_attempts[ip][0]))
+        return False, retry_after
+
+    return True, 0
+
+
+def record_login_attempt():
+    ip = request.remote_addr or "unknown"
+    if ip not in _login_attempts:
+        _login_attempts[ip] = []
+    _login_attempts[ip].append(time.time())

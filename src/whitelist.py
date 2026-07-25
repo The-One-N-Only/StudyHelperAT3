@@ -2,23 +2,65 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Optional
 from urllib.parse import urlparse
 
-# Load whitelist on import
-with open(os.path.join(os.path.dirname(__file__), 'whitelist.json'), 'r') as f:
-    WHITELIST = json.load(f)
+# Load base whitelist
+_whitelist_path = os.path.join(os.path.dirname(__file__), 'whitelist.json')
+WHITELIST = json.load(open(_whitelist_path))
 
-def is_allowed(url: str) -> bool:
+# Load packs if available
+_packs_path = os.path.join(os.path.dirname(__file__), 'whitelist_packs.json')
+WHITELIST_PACKS = {}
+if os.path.exists(_packs_path):
+    WHITELIST_PACKS = json.load(open(_packs_path))
+
+KLA_TO_PACKS = {
+    "Science": ["science"],
+    "Mathematics": ["science"],
+    "English": ["humanities"],
+    "HSIE": ["humanities", "legal", "economics"],
+    "Creative Arts": ["creative_arts"],
+    "Languages": ["languages"],
+    "TAS": ["science"],
+    "PDHPE": ["science"],
+}
+
+
+def get_domains_for_kla(kla: Optional[str] = None) -> list[str]:
+    """Get merged domain/pattern list: base + KLA-specific packs."""
+    domains = list(WHITELIST.get("domains", []))
+    patterns = list(WHITELIST.get("domain_patterns", []))
+    for pack_name in KLA_TO_PACKS.get(kla, []):
+        pack = WHITELIST_PACKS.get(pack_name, {})
+        for d in pack.get("domains", []):
+            if d.startswith("*."):
+                suffix = d[2:]
+                if suffix not in [p[2:] for p in patterns if p.startswith("*.")]:
+                    patterns.append(d)
+            else:
+                if d not in domains:
+                    domains.append(d)
+    return domains + patterns
+
+
+def is_allowed(url: str, domains: Optional[list[str]] = None) -> bool:
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
         if parsed.scheme.lower() not in {"http", "https"} or not hostname:
             return False
-        # Check exact domains
-        if hostname in WHITELIST['domains']:
+        check_domains = domains if domains is not None else WHITELIST["domains"]
+        check_patterns = []
+        if domains is None:
+            check_patterns = WHITELIST["domain_patterns"]
+        else:
+            for d in domains:
+                if d.startswith("*."):
+                    check_patterns.append(d)
+        if hostname in check_domains:
             return True
-        # Check patterns
-        for pattern in WHITELIST['domain_patterns']:
+        for pattern in check_patterns:
             if pattern.startswith('*.'):
                 suffix = pattern[2:]
                 if hostname.endswith('.' + suffix):
@@ -27,6 +69,7 @@ def is_allowed(url: str) -> bool:
     except:
         return False
 
+
 def get_domain(url: str) -> str:
     try:
         parsed = urlparse(url)
@@ -34,33 +77,30 @@ def get_domain(url: str) -> str:
     except:
         return ''
 
-def get_whitelisted_domains() -> list[str]:
-    """Return the explicitly whitelisted domains from the whitelist configuration."""
+
+def get_whitelisted_domains(kla: Optional[str] = None) -> list[str]:
+    """Return the explicitly whitelisted domains, optionally filtered by KLA."""
     return list(WHITELIST.get('domains', []))
 
-def get_whitelisted_domain_patterns() -> list[str]:
-    """Return approved wildcard domain patterns from the whitelist configuration."""
+
+def get_whitelisted_domain_patterns(kla: Optional[str] = None) -> list[str]:
+    """Return approved wildcard domain patterns, optionally filtered by KLA."""
     return list(WHITELIST.get('domain_patterns', []))
 
-def get_whitelist_search_scope() -> str:
-    """Generate a SerpAPI site scope covering every whitelisted domain pattern."""
+
+def get_whitelist_search_scope(kla: Optional[str] = None) -> str:
+    """Generate a SerpAPI site scope covering base + KLA-specific domains."""
+    domains = get_domains_for_kla(kla)
     scope_parts = []
-    
-    # Add exact domains
-    for domain in WHITELIST.get('domains', []):
-        scope_parts.append(f"site:{domain}")
-    
-    # Add wildcard patterns (converting *.edu to *.edu pattern)
-    for pattern in WHITELIST.get('domain_patterns', []):
-        if pattern.startswith('*.'):
-            # For patterns like *.edu, use site pattern for Google Custom Search
-            scope_parts.append(f"site:{pattern}")
-    
+    for entry in domains:
+        if entry.startswith("*."):
+            scope_parts.append(f"site:{entry}")
+        else:
+            scope_parts.append(f"site:{entry}")
     return " OR ".join(scope_parts) if scope_parts else ""
 
+
 def get_display_name_for_domain(domain: str) -> str:
-    """Get a user-friendly display name for a domain."""
-    # Domain name mapping for nicer display
     domain_names = {
         'en.wikipedia.org': 'Wikipedia',
         'web.md': 'WebMD',
@@ -77,12 +117,9 @@ def get_display_name_for_domain(domain: str) -> str:
         'www.bbc.co.uk': 'BBC',
         'www.nationalgeographic.com': 'National Geographic',
     }
-    
     if domain in domain_names:
         return domain_names[domain]
     if domain.startswith('*.'):
         return f"All {domain[2:]} sites"
-    
-    # For unknown domains, clean up the domain name
     domain_clean = domain.replace('www.', '').replace('.com', '').replace('.org', '').replace('.net', '').replace('.edu', '')
     return domain_clean.title()

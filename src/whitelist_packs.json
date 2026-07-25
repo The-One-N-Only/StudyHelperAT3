@@ -1,0 +1,51 @@
+{
+    "base": {
+        "description": "Core academic domains always searched",
+        "domains": [
+            "*.edu.au", "*.gov.au", "*.edu", "*.gov",
+            "en.wikipedia.org", "books.google.com", "scholar.google.com"
+        ]
+    },
+    "science": {
+        "description": "Science-specific domains",
+        "domains": [
+            "pubmed.ncbi.nlm.nih.gov", "sciencedirect.com", "link.springer.com",
+            "arxiv.org", "semanticscholar.org", "core.ac.uk", "doaj.org"
+        ]
+    },
+    "humanities": {
+        "description": "Humanities & social sciences",
+        "domains": [
+            "jstor.org", "trove.nla.gov.au", "britishlibrary.com",
+            "poetryfoundation.org", "gutenberg.org"
+        ]
+    },
+    "legal": {
+        "description": "Legal studies",
+        "domains": [
+            "austlii.edu.au", "legislation.nsw.gov.au", "hcourt.gov.au",
+            "lawcouncil.au", "classic.austlii.edu.au"
+        ]
+    },
+    "economics": {
+        "description": "Economics & business",
+        "domains": [
+            "rba.gov.au", "abs.gov.au", "asx.com.au", "treasury.gov.au",
+            "imf.org", "oecd.org"
+        ]
+    },
+    "creative_arts": {
+        "description": "Creative arts & culture",
+        "domains": [
+            "nga.gov.au", "artgallery.nsw.gov.au", "moma.org",
+            "metmuseum.org", "australianmusictheatre.com"
+        ]
+    },
+    "languages": {
+        "description": "Languages & linguistics",
+        "domains": [
+            "bbc.com", "lemonde.fr", "elpais.com", "dw.com",
+            "wordreference.com", "linguee.com"
+        ]
+    }
+}

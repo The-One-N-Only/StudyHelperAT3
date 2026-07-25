@@ -675,6 +675,26 @@ export function initBrowse(root) {
                                         <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterPubMed" value="pubmed">
                                         <label class="form-check-label" for="filterPubMed">PubMed</label>
                                     </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterAustLII" value="austlii">
+                                        <label class="form-check-label" for="filterAustLII">AustLII Case Law</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterAIATSIS" value="aiatsis">
+                                        <label class="form-check-label" for="filterAIATSIS">AIATSIS</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterArtGallery" value="art_gallery">
+                                        <label class="form-check-label" for="filterArtGallery">Art Gallery (NGA/NGV)</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterSemanticScholar" value="semantic_scholar">
+                                        <label class="form-check-label" for="filterSemanticScholar">Semantic Scholar</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterOpenStax" value="openstax">
+                                        <label class="form-check-label" for="filterOpenStax">OpenStax (OER)</label>
+                                    </div>
                                     <details class="mt-2" id="whitelistDetails">
                                         <summary class="small text-muted" style="cursor: pointer;">More whitelisted sites</summary>
                                         <div id="whitelistCheckboxes" class="ps-2 border-start mt-2"></div>
@@ -1154,6 +1174,9 @@ function getDisplayNameForSource(source) {
     if (source === 'pubmed') return 'PubMed';
     if (source === 'britannica') return 'Britannica';
     if (source === 'natgeo') return 'National Geographic';
+    if (source === 'austlii') return 'AustLII Case Law';
+    if (source === 'aiatsis') return 'AIATSIS';
+    if (source === 'art_gallery') return 'Art Gallery (NGA/NGV)';
     if (source === 'whitelist') return 'Whitelisted Sources';
     if (source.startsWith('whitelist_')) {
         const domain = source.slice('whitelist_'.length);
@@ -1180,6 +1203,9 @@ function itemMatchesSource(item, source) {
     if (source === 'natgeo') {
         return sourceName === 'natgeo';
     }
+    if (source === 'austlii') return sourceName === 'austlii';
+    if (source === 'aiatsis') return sourceName === 'aiatsis';
+    if (source === 'art_gallery') return sourceName === 'national gallery of australia' || sourceName === 'national gallery of victoria';
     if (source === 'whitelist') {
         return !['wikipedia', 'pubmed', 'gbooks', 'britannica', 'natgeo'].includes(sourceName);
     }
@@ -1352,6 +1378,9 @@ function groupResultsBySource(results) {
             else if (sourceName === 'pubmed') source = 'pubmed';
             else if (sourceName === 'britannica') source = 'britannica';
             else if (sourceName === 'natgeo') source = 'natgeo';
+            else if (sourceName === 'austlii') source = 'austlii';
+            else if (sourceName === 'aiatsis') source = 'aiatsis';
+            else if (sourceName === 'national gallery of australia' || sourceName === 'national gallery of victoria') source = 'art_gallery';
             else {
                 try {
                     source = `whitelist_${new URL(item.source_url).hostname}`;
@@ -1914,6 +1943,22 @@ function renderResults(results) {
     });
     resultsContainer.appendChild(row);
 
+    // Add "Create Alert" button
+    if (results.length > 0 && lastSearchQuery) {
+        const alertBar = document.createElement('div');
+        alertBar.className = 'text-center mb-2';
+        alertBar.innerHTML = `
+            <button class="btn btn-sm btn-outline-warning" id="createAlertBtn" type="button">
+                <i class="bi bi-bell"></i> Create Alert for "${escapeHtml(lastSearchQuery)}"
+            </button>
+        `;
+        resultsContainer.appendChild(alertBar);
+        const alertBtn = alertBar.querySelector('#createAlertBtn');
+        if (alertBtn) {
+            alertBtn.addEventListener('click', () => showCreateAlertDialog(lastSearchQuery, getSelectedSources()));
+        }
+    }
+
     // Add "Load More" button if there are results
     if (results.length > 0) {
         const loadMoreUnavailable = !hasBufferedGroupedResults();
@@ -1962,4 +2007,155 @@ function showNoResults() {
         description: 'Try adjusting your search terms or filters.'
     });
     syncBrowseLoadingState(resultsContainer);
+}
+
+
+/* ── Search Alert Dialog ── */
+
+function showCreateAlertDialog(query, sources) {
+    const existing = document.getElementById('alertDialogModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'alertDialogModal';
+    modal.className = 'modal fade show d-block';
+    modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-bell"></i> Create Search Alert</h5>
+                    <button type="button" class="btn-close" id="closeAlertDialog"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-muted">Get notified when new results appear for:</p>
+                    <p class="fw-semibold">${escapeHtml(query)}</p>
+                    <div class="mb-3">
+                        <label class="form-label">Check frequency</label>
+                        <select class="form-select" id="alertFrequency">
+                            <option value="daily">Daily</option>
+                            <option value="weekly" selected>Weekly</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="cancelAlertBtn">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmAlertBtn">Create Alert</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+
+    modal.querySelector('#closeAlertDialog').addEventListener('click', () => modal.remove());
+    modal.querySelector('#cancelAlertBtn').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    modal.querySelector('#confirmAlertBtn').addEventListener('click', async () => {
+        const frequency = modal.querySelector('#alertFrequency').value;
+        try {
+            const resp = await fetch('/api/search-alerts', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({query, sources, frequency})
+            });
+            const data = await resp.json();
+            if (data.status) {
+                showToast('Search alert created!', 'success');
+                modal.remove();
+            } else {
+                showToast(data.error || 'Failed to create alert', 'danger');
+            }
+        } catch (e) {
+            showToast('Failed to create alert', 'danger');
+        }
+    });
+}
+
+
+/* ── Citation Graph ── */
+
+window.showCitationGraph = function(paperId, title) {
+    const existing = document.getElementById('citationGraphModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'citationGraphModal';
+    modal.className = 'modal fade show d-block';
+    modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Citation Graph: ${escapeHtml(title || paperId)}</h5>
+                    <button type="button" class="btn-close" id="closeCitationGraph"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-pills mb-3" id="citationTabs">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-type="citations" id="citationTabCitations">Cited By</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-type="references" id="citationTabReferences">References</button>
+                        </li>
+                    </ul>
+                    <div id="citationResults" class="small">
+                        <div class="text-center py-4"><div class="spinner-border" role="status"></div></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="closeCitationFooter">Close</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+
+    function closeModal() { modal.remove(); }
+    modal.querySelector('#closeCitationGraph').addEventListener('click', closeModal);
+    modal.querySelector('#closeCitationFooter').addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+    function loadCitations(type) {
+        const container = modal.querySelector('#citationResults');
+        container.innerHTML = '<div class="text-center py-4"><div class="spinner-border" role="status"></div></div>';
+        fetch(`/api/citation-graph?paper_id=${encodeURIComponent(paperId)}&type=${type}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.status || !data.results || data.results.length === 0) {
+                    container.innerHTML = '<p class="text-muted text-center py-3">No results found.</p>';
+                    return;
+                }
+                let html = '<div class="list-group">';
+                data.results.forEach(p => {
+                    html += `
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <strong>${escapeHtml(p.title || 'Untitled')}</strong>
+                                    <p class="mb-0 text-muted small">${escapeHtml((p.snippet || '').slice(0, 200))}</p>
+                                    ${p.citation_count != null ? `<span class="badge bg-info me-1">${p.citation_count} citations</span>` : ''}
+                                    <span class="badge bg-secondary">${p.relation === 'cited_by' ? 'Cited by' : 'Reference'}</span>
+                                </div>
+                                ${p.source_url ? `<a href="${escapeHtml(p.source_url)}" target="_blank" class="btn btn-sm btn-outline-secondary">Open</a>` : ''}
+                            </div>
+                        </div>`;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            })
+            .catch(() => {
+                container.innerHTML = '<p class="text-danger text-center">Failed to load citations.</p>';
+            });
+    }
+
+    modal.querySelector('#citationTabCitations').addEventListener('click', () => {
+        modal.querySelectorAll('#citationTabs .nav-link').forEach(t => t.classList.remove('active'));
+        modal.querySelector('#citationTabCitations').classList.add('active');
+        loadCitations('citations');
+    });
+    modal.querySelector('#citationTabReferences').addEventListener('click', () => {
+        modal.querySelectorAll('#citationTabs .nav-link').forEach(t => t.classList.remove('active'));
+        modal.querySelector('#citationTabReferences').classList.add('active');
+        loadCitations('references');
+    });
+
+    loadCitations('citations');
 }

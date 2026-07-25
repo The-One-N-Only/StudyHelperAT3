@@ -33,6 +33,11 @@ async function bootstrapPage() {
                 const module = await import('./pages/global-search.js');
                 break;
             }
+            case 'classes': {
+                const module = await import('./pages/classes.js');
+                module.initClasses(root);
+                break;
+            }
             default:
                 break;
         }

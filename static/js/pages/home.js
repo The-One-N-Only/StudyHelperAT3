@@ -373,6 +373,12 @@ function showTemplateDialog(folderId = null) {
                     <button type="button" class="btn-close" id="templateDialogClose"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Subject (optional)</label>
+                        <select class="form-select" id="subjectSelect">
+                            <option value="">No subject</option>
+                        </select>
+                    </div>
                     <p class="text-muted">Select a template to pre-populate your workspace with organized sections.</p>
                     <div class="row g-3" id="templateCards"></div>
                     <hr>
@@ -386,6 +392,19 @@ function showTemplateDialog(folderId = null) {
 
     dialog.querySelector('#templateDialogClose').addEventListener('click', () => dialog.remove());
     dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+
+    // Load subjects
+    const subjectSelect = dialog.querySelector('#subjectSelect');
+    fetch('/api/nesa/courses').then(r => r.json()).then(data => {
+        if (data.status) {
+            data.courses.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = `${c.course_name} (${c.kla})`;
+                subjectSelect.appendChild(opt);
+            });
+        }
+    });
 
     const cardsContainer = dialog.querySelector('#templateCards');
 
@@ -405,27 +424,29 @@ function showTemplateDialog(folderId = null) {
                         </div>
                     </div>`;
                 card.querySelector('.template-card').addEventListener('click', () => {
+                    const courseId = subjectSelect.value ? parseInt(subjectSelect.value) : null;
                     dialog.remove();
-                    createWorkspaceWithTemplate(tmpl, folderId);
+                    createWorkspaceWithTemplate(tmpl, folderId, courseId);
                 });
                 cardsContainer.appendChild(card);
             });
         });
 
     dialog.querySelector('#blankWorkspaceBtn').addEventListener('click', () => {
+        const courseId = subjectSelect.value ? parseInt(subjectSelect.value) : null;
         dialog.remove();
-        createBlankWorkspace(folderId);
+        createBlankWorkspace(folderId, courseId);
     });
 }
 
-async function createWorkspaceWithTemplate(template, folderId) {
+async function createWorkspaceWithTemplate(template, folderId, courseId = null) {
     const name = prompt('Workspace name:', template.name);
     if (!name) return;
     try {
         const resp = await fetch('/api/workspaces', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, parent_id: folderId})
+            body: JSON.stringify({name, parent_id: folderId, course_id: courseId})
         });
         const data = await resp.json();
         if (!data.status) throw new Error('Failed');
@@ -442,8 +463,55 @@ async function createWorkspaceWithTemplate(template, folderId) {
     }
 }
 
-function createBlankWorkspace(folderId) {
-    startInlineWorkspaceCreate(document.querySelector('.workspace-card-add')?.closest('.col'), folderId);
+function createBlankWorkspace(folderId, courseId = null) {
+    startInlineWorkspaceCreate(document.querySelector('.workspace-card-add')?.closest('.col'), folderId, courseId);
+}
+
+function startInlineWorkspaceCreate(cardElement, folderId = null, courseId = null) {
+    if (!cardElement) { showTemplateDialog(folderId); return; }
+    if (cardElement.dataset.editing === 'true') return;
+    cardElement.dataset.editing = 'true';
+    const cardBody = cardElement.querySelector('.card-body');
+    const originalHTML = cardBody.innerHTML;
+    cardBody.innerHTML = `
+        <div class="d-flex flex-column justify-content-center align-items-center gap-3 w-100">
+            <label for="inlineWorkspaceName" class="h5 mb-0">Create new workspace</label>
+            <input type="text" id="inlineWorkspaceName" class="form-control text-center" placeholder="Enter workspace name..." autocomplete="off" maxlength="25">
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary btn-sm" id="inlineCreateBtn" type="button">Create</button>
+                <button class="btn btn-outline-secondary btn-sm" id="inlineCancelBtn" type="button">Cancel</button>
+            </div>
+        </div>`;
+    const input = cardBody.querySelector('#inlineWorkspaceName');
+    const createBtn = cardBody.querySelector('#inlineCreateBtn');
+    const cancelBtn = cardBody.querySelector('#inlineCancelBtn');
+    const submitCreate = async () => {
+        const name = input.value.trim();
+        if (!name) return;
+        try {
+            const response = await fetch('/api/workspaces', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, parent_id: folderId, course_id: courseId })
+            });
+            const data = await response.json();
+            if (!data.status) throw new Error('Create failed');
+            showToast('Workspace created', 'success');
+            window.location.href = `/workspace/${data.workspace.id}`;
+        } catch (error) {
+            showToast('Unable to create workspace', 'danger');
+            cardBody.innerHTML = originalHTML;
+            cardElement.dataset.editing = 'false';
+        }
+    };
+    const cancelEdit = () => { cardBody.innerHTML = originalHTML; cardElement.dataset.editing = 'false'; };
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') { event.preventDefault(); submitCreate(); }
+        else if (event.key === 'Escape') { event.preventDefault(); cancelEdit(); }
+    });
+    createBtn.addEventListener('click', submitCreate);
+    cancelBtn.addEventListener('click', cancelEdit);
+    requestAnimationFrame(() => input.focus());
 }
 
 // ── Context Menu ──
@@ -662,55 +730,6 @@ async function deleteWorkspace(id) {
     } catch (error) {
         showToast('Unable to delete workspace', 'danger');
     }
-}
-
-// ── Inline create ──
-
-function startInlineWorkspaceCreate(cardElement, folderId = null) {
-    if (!cardElement) { showTemplateDialog(folderId); return; }
-    if (cardElement.dataset.editing === 'true') return;
-    cardElement.dataset.editing = 'true';
-    const cardBody = cardElement.querySelector('.card-body');
-    const originalHTML = cardBody.innerHTML;
-    cardBody.innerHTML = `
-        <div class="d-flex flex-column justify-content-center align-items-center gap-3 w-100">
-            <label for="inlineWorkspaceName" class="h5 mb-0">Create new workspace</label>
-            <input type="text" id="inlineWorkspaceName" class="form-control text-center" placeholder="Enter workspace name..." autocomplete="off" maxlength="25">
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary btn-sm" id="inlineCreateBtn" type="button">Create</button>
-                <button class="btn btn-outline-secondary btn-sm" id="inlineCancelBtn" type="button">Cancel</button>
-            </div>
-        </div>`;
-    const input = cardBody.querySelector('#inlineWorkspaceName');
-    const createBtn = cardBody.querySelector('#inlineCreateBtn');
-    const cancelBtn = cardBody.querySelector('#inlineCancelBtn');
-    const submitCreate = async () => {
-        const name = input.value.trim();
-        if (!name) return;
-        try {
-            const response = await fetch('/api/workspaces', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, parent_id: folderId })
-            });
-            const data = await response.json();
-            if (!data.status) throw new Error('Create failed');
-            showToast('Workspace created', 'success');
-            window.location.href = `/workspace/${data.workspace.id}`;
-        } catch (error) {
-            showToast('Unable to create workspace', 'danger');
-            cardBody.innerHTML = originalHTML;
-            cardElement.dataset.editing = 'false';
-        }
-    };
-    const cancelEdit = () => { cardBody.innerHTML = originalHTML; cardElement.dataset.editing = 'false'; };
-    input.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') { event.preventDefault(); submitCreate(); }
-        else if (event.key === 'Escape') { event.preventDefault(); cancelEdit(); }
-    });
-    createBtn.addEventListener('click', submitCreate);
-    cancelBtn.addEventListener('click', cancelEdit);
-    requestAnimationFrame(() => input.focus());
 }
 
 function showCreateFolderDialog() {

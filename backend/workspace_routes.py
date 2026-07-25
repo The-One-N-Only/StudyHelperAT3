@@ -37,6 +37,23 @@ WORKSPACE_TEMPLATES = [
             "note_sections": ["Theme 1", "Theme 2", "Theme 3", "Comparison Notes", "Synthesis"],
             "source_groups": ["Theme 1 Sources", "Theme 2 Sources", "Theme 3 Sources"]
         }
+    },
+    {
+        "id": "major_work",
+        "name": "Major Work / Depth Study",
+        "description": "Structured scaffold for long-form projects: proposals, checkpoints, source logs, drafts, and reflections",
+        "icon": "bi bi-journal-richtext",
+        "structure": {
+            "note_sections": [
+                "Proposal & Planning",
+                "Source Log & Annotations",
+                "Checkpoint 1",
+                "Draft",
+                "Peer Feedback",
+                "Final Reflection"
+            ],
+            "source_groups": ["Primary Sources", "Secondary Sources", "References"]
+        }
     }
 ]
 
@@ -57,7 +74,7 @@ def workspace(workspace_id):
         return redirect(url_for('index'))
 
     logging.info(f"User {user_id} accessed workspace {workspace_id}")
-    return render_template('workspace.html', workspace_id=workspace_id, workspace_name=workspace['name'])
+    return render_template('workspace.html', workspace_id=workspace_id, workspace_name=workspace['name'], course_id=workspace.get('course_id'), course_name=workspace.get('course_name'), course_kla=workspace.get('course_kla'))
 
 
 # ── Folder Endpoints ──
@@ -211,6 +228,106 @@ def set_persona(workspace_id):
         return jsonify({'status': False, 'error': 'Invalid persona or workspace not found'}), 400
     logging.info(f"User {session['user_id']} set persona '{persona}' for workspace {workspace_id}")
     return jsonify({'status': True, 'persona': result['persona']})
+
+
+# ── Workspace Members / Invite Endpoints ──
+
+@workspace_bp.route('/workspace/<int:workspace_id>/invite', methods=['POST'])
+def generate_invite(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    ws = db.get_workspace(user_id, workspace_id)
+    if not ws:
+        return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+    role = db.get_user_workspace_role(workspace_id, user_id)
+    if role != 'owner':
+        return jsonify({'status': False, 'error': 'Only the owner can generate invites'}), 403
+    data = request.json or {}
+    invite_role = data.get('role', 'viewer')
+    token = db.generate_invite_token(workspace_id, invite_role)
+    invite_url = url_for('workspace.accept_invite', token=token, _external=True)
+    return jsonify({'status': True, 'invite_url': invite_url, 'token': token})
+
+
+@workspace_bp.route('/workspace/join/<token>')
+def accept_invite(token):
+    if not session.get('user_id'):
+        return redirect(url_for('auth.login'))
+    user_id = session['user_id']
+    result = db.verify_invite_token(token)
+    if not result:
+        return redirect(url_for('index'))
+    workspace_id, role = result
+    ws = db.get_workspace(user_id, workspace_id)
+    if ws:
+        return redirect(url_for('workspace.workspace', workspace_id=workspace_id))
+    db.add_workspace_member(workspace_id, user_id, role=role)
+    logging.info(f"User {user_id} joined workspace {workspace_id} via invite with role {role}")
+    return redirect(url_for('workspace.workspace', workspace_id=workspace_id))
+
+
+@workspace_bp.route('/workspace/<int:workspace_id>/members', methods=['GET'])
+def list_members(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    ws = db.get_workspace(user_id, workspace_id)
+    if not ws:
+        return jsonify({'status': False, 'error': 'Workspace not found'}), 404
+    members = db.get_workspace_members(workspace_id)
+    return jsonify({'status': True, 'members': members})
+
+
+@workspace_bp.route('/workspace/<int:workspace_id>/members/<int:member_id>/remove', methods=['POST'])
+def remove_member(workspace_id, member_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    role = db.get_user_workspace_role(workspace_id, user_id)
+    if role != 'owner':
+        return jsonify({'status': False, 'error': 'Only owner can remove members'}), 403
+    if db.remove_workspace_member(workspace_id, member_id):
+        return jsonify({'status': True})
+    return jsonify({'status': False, 'error': 'Member not found'}), 404
+
+
+@workspace_bp.route('/workspace/<int:workspace_id>/members/<int:member_id>/role', methods=['POST'])
+def update_member_role(workspace_id, member_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    role = db.get_user_workspace_role(workspace_id, user_id)
+    if role != 'owner':
+        return jsonify({'status': False, 'error': 'Only owner can update roles'}), 403
+    data = request.json
+    new_role = data.get('role', 'viewer')
+    if new_role not in ('editor', 'viewer'):
+        return jsonify({'status': False, 'error': 'Invalid role'}), 400
+    if db.update_member_role(workspace_id, member_id, new_role):
+        return jsonify({'status': True})
+    return jsonify({'status': False, 'error': 'Member not found'}), 404
+
+
+@workspace_bp.route('/workspace/<int:workspace_id>/add-member', methods=['POST'])
+def add_member_by_username(workspace_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'status': False, 'error': 'Not logged in'}), 401
+    role = db.get_user_workspace_role(workspace_id, user_id)
+    if role != 'owner':
+        return jsonify({'status': False, 'error': 'Only owner can add members'}), 403
+    data = request.json
+    username = data.get('username', '').strip()
+    if not username:
+        return jsonify({'status': False, 'error': 'Username required'}), 400
+    user = db.get_user_by_username(username)
+    if not user:
+        return jsonify({'status': False, 'error': 'User not found'}), 404
+    if db.add_workspace_member(workspace_id, user.id, role='viewer'):
+        logging.info(f"User {user_id} added member {user.id} to workspace {workspace_id}")
+        return jsonify({'status': True})
+    return jsonify({'status': False, 'error': 'Already a member'}), 400
 
 
 @workspace_bp.route('/workspace/<int:workspace_id>/restore', methods=['POST'])

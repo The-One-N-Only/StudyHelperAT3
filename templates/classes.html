@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+
+{% block title %}Classes - StudyLib{% endblock %}
+
+{% block content %}
+<div id="pageRoot" data-page="classes"></div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/pages/classes.js') }}"></script>
+{% endblock %}

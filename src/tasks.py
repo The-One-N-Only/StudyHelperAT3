@@ -83,3 +83,45 @@ task_queue = BackgroundTaskQueue(max_workers=2)
 
 def generate_task_id() -> str:
     return str(uuid.uuid4())
+
+
+def check_search_alerts(app) -> None:
+    """Check due search alerts and create notifications for new results."""
+    import src.db as db
+    import src.search as search
+    import json
+
+    with app.app_context():
+        due = db.get_due_search_alerts()
+        for alert in due:
+            try:
+                sources = json.loads(alert["sources_json"])
+                results = []
+                for source in sources:
+                    if source == "wikipedia":
+                        results.extend(search.wikipedia(alert["query"], 10, user_id=alert["user_id"]))
+                    elif source == "gbooks":
+                        results.extend(search.gbooks(alert["query"], 10, {}, user_id=alert["user_id"]))
+                    elif source == "semantic_scholar":
+                        results.extend(search.semantic_scholar(alert["query"], 10, user_id=alert["user_id"]))
+                    elif source:
+                        try:
+                            results.extend(search.browse_serpapi_search(alert["query"], 10, source, {}, user_id=alert["user_id"]))
+                        except Exception:
+                            pass
+
+                new_ids = [str(r.get("id", "")) for r in results if r.get("id")]
+                old_ids = json.loads(alert.get("last_result_ids_json", "[]"))
+                new_results = [r for r in results if str(r.get("id", "")) not in old_ids]
+
+                if new_results:
+                    db.create_notification(
+                        user_id=alert["user_id"],
+                        title=f"New results for: {alert['query']}",
+                        message=f"Found {len(new_results)} new result(s) for your saved alert '{alert['query']}'",
+                        notification_type="search_alert",
+                    )
+
+                db.update_search_alert_check(alert["id"], new_ids)
+            except Exception as e:
+                logger.error(f"Search alert check failed for alert {alert['id']}: {e}")

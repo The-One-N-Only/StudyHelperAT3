@@ -92,6 +92,11 @@ export function createCard(item, query = '') {
     `;
 
     const itemId = String(item.id ?? '');
+    const readingTime = computeReadingTime(item);
+    const readingTimeBadge = document.createElement('small');
+    readingTimeBadge.className = 'text-muted reading-time-badge ms-1';
+    readingTimeBadge.textContent = readingTime;
+    card.querySelector('.card-description')?.after(readingTimeBadge);
     const image = card.querySelector('.card-img-top');
     const saveButton = card.querySelector('.save-btn');
     const viewButton = card.querySelector('.view-btn');
@@ -174,6 +179,16 @@ export function resolveResultImage(item) {
         kind: sourceUrl === remoteUrl ? 'remote' : 'fallback',
     };
 }
+
+export function computeReadingTime(item) {
+    const text = (item.description || item.abstract || item.summary || '').trim();
+    if (!text) return '';
+    const words = text.split(/\s+/).length;
+    const minutes = Math.ceil(words / 200);
+    if (minutes < 1) return '< 1 min read';
+    return `${minutes} min read`;
+}
+
 
 if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {

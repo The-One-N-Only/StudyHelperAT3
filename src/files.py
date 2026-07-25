@@ -89,6 +89,41 @@ def extract_text(file_path: str, file_type: str) -> str:
         return ""
 
 
+def extract_text_pages(file_path: str, file_type: str) -> list[str]:
+    """Extract text per page for PDFs, returns list of page texts."""
+    if file_type == "pdf":
+        try:
+            doc = fitz.open(file_path)
+            pages = []
+            try:
+                for page in doc:
+                    pages.append(page.get_text())
+            except TypeError:
+                for i in range(doc.page_count):
+                    page = doc.load_page(i)
+                    pages.append(page.get_text())
+            doc.close()
+            return pages
+        except Exception:
+            return []
+    return []
+
+
+def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+    if not text:
+        return []
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        if end >= len(text):
+            chunks.append(text[start:])
+            break
+        chunks.append(text[start:end])
+        start += chunk_size - overlap
+    return chunks
+
+
 def extract_text_ocr(filepath: str, file_type: str) -> str:
     try:
         import pytesseract
