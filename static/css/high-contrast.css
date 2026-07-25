@@ -1,0 +1,111 @@
+/* High Contrast / Minimal Theme */
+body, .archive-page, .archive-content {
+    background: #000 !important;
+    color: #fff !important;
+}
+
+a, .btn-link, .navbar-brand {
+    color: #ff0 !important;
+    text-decoration: underline !important;
+}
+
+a:hover, a:focus {
+    color: #ffa500 !important;
+}
+
+.card, .surface-wood, .modal-content, .offcanvas, .dropdown-menu,
+.browse-dropdown-menu, .upload-zone, .chat-messages {
+    background: #1a1a1a !important;
+    border: 1px solid #555 !important;
+    box-shadow: none !important;
+    background-image: none !important;
+}
+
+h1, h2, h3, h4, h5, h6, .archive-page-title, .card-title, .navbar-brand {
+    color: #fff !important;
+}
+
+p, .text-muted, small, .card-text, .form-label, .nav-link {
+    color: #ddd !important;
+}
+
+.btn, .btn-brass, .btn-secondary-wood, .btn-secondary-leather, .btn-ghost {
+    min-height: 44px !important;
+    min-width: 44px !important;
+    padding: 10px 16px !important;
+    background: #333 !important;
+    color: #fff !important;
+    border: 2px solid #888 !important;
+    background-image: none !important;
+    text-decoration: none !important;
+}
+
+.btn-primary, .btn-brass {
+    background: #0044cc !important;
+    border-color: #4488ff !important;
+    color: #fff !important;
+}
+
+.btn-primary:hover, .btn-brass:hover {
+    background: #0033aa !important;
+    border-color: #66aaff !important;
+}
+
+.form-control, .form-select, .input-group-text, .form-check-input {
+    background: #222 !important;
+    color: #fff !important;
+    border: 2px solid #888 !important;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #ff0 !important;
+    box-shadow: none !important;
+}
+
+*:focus-visible {
+    outline: 3px solid #ffd700 !important;
+    outline-offset: 3px !important;
+    box-shadow: none !important;
+}
+
+.candle-glow, .archive-illustration, .browse-empty-engraving,
+.illustration-books, .illustration-flourish, .illustration-oil-lamp,
+.illustration-armillary-sphere, .illustration-hourglass, .illustration-telescope,
+.illustration-candlestick, .illustration-victorian-man, .illustration-scholar,
+.illustration-compass, .illustration-sextant, .illustration-open-book {
+    display: none !important;
+}
+
+img:not([src*="profile"]) {
+    filter: none !important;
+    opacity: 1 !important;
+}
+
+.border, .border-bottom, .border-top, .border-start, .border-end {
+    border-color: #555 !important;
+}
+
+.badge, .archive-count-badge, .archive-category-badge {
+    background: #444 !important;
+    color: #fff !important;
+}
+
+.workspace-menu-dropdown {
+    background: #222 !important;
+    border: 1px solid #666 !important;
+}
+
+[data-bs-theme="dark"] body,
+[data-bs-theme="dark"] .archive-page,
+[data-bs-theme="dark"] .archive-content {
+    background: #000 !important;
+    color: #fff !important;
+}
+
+[data-bs-theme="dark"] .card,
+[data-bs-theme="dark"] .surface-wood,
+[data-bs-theme="dark"] .modal-content,
+[data-bs-theme="dark"] .offcanvas {
+    background: #111 !important;
+    border-color: #444 !important;
+}

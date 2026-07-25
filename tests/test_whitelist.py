@@ -1,5 +1,7 @@
 import pytest
+
 import src.whitelist as whitelist
+
 
 def test_allowed_exact_domain():
     assert whitelist.is_allowed("https://en.wikipedia.org/wiki/Test") == True

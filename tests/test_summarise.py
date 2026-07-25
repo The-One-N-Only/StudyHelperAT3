@@ -5,7 +5,6 @@ import pytest
 import src.db as db
 import src.summarise as summarise
 
-
 HOSTED_KEY = "hosted-test-key"
 HOSTED_MODEL = "configured-summarise-model"
 AI_NOT_CONFIGURED_ERROR = (

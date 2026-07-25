@@ -3,6 +3,33 @@
 import { openViewer } from './viewer.js';
 window.openViewer = openViewer;
 
+function initSwipeToClose(offcanvasElement) {
+    let startX = 0;
+    let startY = 0;
+    let swiping = false;
+
+    offcanvasElement.addEventListener('touchstart', (e) => {
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        swiping = true;
+    }, { passive: true });
+
+    offcanvasElement.addEventListener('touchmove', (e) => {
+        if (!swiping) return;
+        const touch = e.touches[0];
+        const diffX = touch.clientX - startX;
+        const diffY = touch.clientY - startY;
+        if (Math.abs(diffX) > Math.abs(diffY) && diffX < -50) {
+            swiping = false;
+            const instance = bootstrap.Offcanvas.getInstance(offcanvasElement);
+            if (instance) instance.hide();
+        }
+    }, { passive: true });
+
+    offcanvasElement.addEventListener('touchend', () => { swiping = false; }, { passive: true });
+}
+
 function initNavigation() {
     const brandMenuButton = document.getElementById('brandMenuButton');
     const navOffcanvasElement = document.getElementById('navSidebarOffcanvas');
@@ -115,6 +142,7 @@ function initWorkspacesDropdown() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initNavigation();
+    initSwipeToClose(document.getElementById('navSidebarOffcanvas'));
     initWorkspacesDropdown();
     const sidebarBrowseLink = document.querySelector('#navSidebarOffcanvas a[href="/browse"]');
     if (sidebarBrowseLink) {

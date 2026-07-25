@@ -1,6 +1,7 @@
 "use strict";
 
 import { showToast } from '../toast.js';
+import { showEmptyState } from '../components/empty-state.js';
 import { createCard } from '../card.js';
 
 let pageRoot = null;
@@ -69,13 +70,11 @@ function renderSavedGroups(groups) {
     container.innerHTML = '';
 
     if (!groups || groups.length === 0) {
-        container.innerHTML = `
-            <div class="text-center py-5">
-                <span class="browse-empty-engraving" aria-hidden="true"></span>
-                <h5>No saved sources yet</h5>
-                <p class="text-muted">Save sources from your Browse searches and they will appear here, grouped by your search query.</p>
-            </div>
-        `;
+        showEmptyState(container, {
+            icon: 'saved',
+            title: 'No saved sources yet',
+            description: 'Save sources while browsing.'
+        });
         return;
     }
 

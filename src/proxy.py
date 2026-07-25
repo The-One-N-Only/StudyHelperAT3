@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -39,7 +41,7 @@ def _looks_like_paywall(final_url: str, domain: str) -> bool:
     return False
 
 
-def fetch_source(url):
+def fetch_source(url: str) -> dict:
     if not whitelist.is_allowed(url):
         raise ValueError("URL not allowed")
 

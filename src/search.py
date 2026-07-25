@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
@@ -5,11 +7,13 @@ import math
 import os
 import re
 from collections.abc import Mapping
+from typing import Any, Optional
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import requests
 import src.whitelist as whitelist
 import src.db as db
+from src.cache import cache
 
 USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
@@ -44,7 +48,7 @@ class SerpApiProviderError(RuntimeError):
     """Raised when SerpAPI cannot provide a usable first result page."""
 
 
-def _bounded_search_count(num_results, maximum=CUSTOM_SEARCH_MAX_RESULTS):
+def _bounded_search_count(num_results: int, maximum: int = CUSTOM_SEARCH_MAX_RESULTS) -> int:
     try:
         requested = int(num_results)
     except (TypeError, ValueError):
@@ -52,7 +56,7 @@ def _bounded_search_count(num_results, maximum=CUSTOM_SEARCH_MAX_RESULTS):
     return min(max(requested, 0), maximum)
 
 
-def _browse_source_scope(source):
+def _browse_source_scope(source: str) -> tuple[str, Optional[str]]:
     if source in BROWSE_SOURCE_DOMAINS:
         domain, source_name = BROWSE_SOURCE_DOMAINS[source]
         return f"site:{domain}", source_name
@@ -73,7 +77,7 @@ def _browse_source_scope(source):
     return "", None
 
 
-def _browse_serp_query(query, scope, filters):
+def _browse_serp_query(query: str, scope: str, filters: dict) -> str:
     if " OR " in scope:
         scope = f"({scope})"
     terms = [str(query).strip(), scope]
@@ -93,11 +97,11 @@ def _browse_serp_query(query, scope, filters):
     return " ".join(term for term in terms if term)
 
 
-def _host_matches_suffix(hostname, suffix):
+def _host_matches_suffix(hostname: str, suffix: str) -> bool:
     return hostname == suffix or hostname.endswith(f".{suffix}")
 
 
-def _validate_url(value, max_length):
+def _validate_url(value: str, max_length: int) -> Any:
     """Return a parsed urlsplit result if `value` is a safe-looking HTTPs URL;
     otherwise None.  Only applies universal safety checks — no host whitelist."""
     if not isinstance(value, str) or not value or len(value) > max_length:
@@ -121,7 +125,7 @@ def _validate_url(value, max_length):
     return parsed
 
 
-def _safe_browse_image_url(value):
+def _safe_browse_image_url(value: str) -> str:
     """Return a bounded HTTPS image URL from an approved host, else empty."""
     if isinstance(value, str) and value.startswith("http://"):
         value = "https://" + value[len("http://"):]
@@ -141,7 +145,7 @@ def _safe_browse_image_url(value):
     return normalized
 
 
-def _safe_google_books_url(source_url):
+def _safe_google_books_url(source_url: str) -> Any:
     """Return a parsed urlsplit of a safe Books URL, or None."""
     parsed = _validate_url(source_url, ITEM_THUMB_URL_MAX_LENGTH)
     if parsed is None:
@@ -151,7 +155,7 @@ def _safe_google_books_url(source_url):
     return parsed
 
 
-def _google_books_volume_id(value):
+def _google_books_volume_id(value: Any) -> str:
     """Extract a valid Google Books volume ID from a URL string or item dict.
     For dict items only trusts a raw source_id when the link proves Books origin.
     For bare strings only performs URL-parsing extraction (no raw-ID guesswork)."""
@@ -188,7 +192,7 @@ def _google_books_volume_id(value):
     )
 
 
-def _google_books_cover_url(value):
+def _google_books_cover_url(value: Any) -> str:
     """Build a Google Books cover URL from a URL string (volume-ID extraction) or item dict."""
     if isinstance(value, dict):
         volume_id = _google_books_volume_id(value)
@@ -207,7 +211,7 @@ def _google_books_cover_url(value):
     )
 
 
-def _browse_result_image_url(item):
+def _browse_result_image_url(item: dict) -> str:
     """Return the best available image URL for a search result item."""
     source_id = item.get("source_id", "")
     cover_url = (
@@ -260,7 +264,7 @@ def _browse_result_image_url(item):
     return ""
 
 
-def _make_search_cache_key(query, source_or_scope, filters_dict, num_results):
+def _make_search_cache_key(query: str, source_or_scope: str, filters_dict: dict, num_results: int) -> str:
     parts = [
         str(query).strip().lower(),
         str(source_or_scope).strip().lower(),
@@ -275,7 +279,7 @@ def _make_search_cache_key(query, source_or_scope, filters_dict, num_results):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def browse_serpapi_search(query, num_results, source, filters, *, user_id):
+def browse_serpapi_search(query: str, num_results: int, source: str, filters: dict, *, user_id: int) -> list[dict]:
     """Return whitelisted SerpAPI results for one Browse source group."""
     if not SERP_API_KEY:
         raise SerpApiConfigurationError("SERP_API_KEY is not configured")
@@ -284,6 +288,11 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
     scope, fixed_source_name = _browse_source_scope(source)
     if target == 0 or not scope:
         return []
+
+    # Try Redis/memory cache first
+    cached_results = cache.get("search", query=query, source=source, filters=filters, num_results=target)
+    if cached_results is not None:
+        return cached_results
 
     cache_key = _make_search_cache_key(query, source, filters, target)
     cached = db.get_search_cache(cache_key)
@@ -395,18 +404,19 @@ def browse_serpapi_search(query, num_results, source, filters, *, user_id):
     if results:
         item_ids = json.dumps([r["id"] for r in results])
         db.set_search_cache(cache_key, item_ids)
+        cache.set("search", results, ttl=300, query=query, source=source, filters=filters, num_results=target)
 
     return results
 
 
-def normalize_identity_text(value):
+def normalize_identity_text(value: Any) -> str:
     """Return case-folded, collapsed whitespace for untrusted scalar input."""
     if value is None or not isinstance(value, (str, int, float, bool)):
         return ""
     return " ".join(str(value).split()).casefold()
 
 
-def canonical_source_url(value):
+def canonical_source_url(value: str) -> str:
     """Return normalized absolute HTTP(S) URL without fragment, or empty string."""
     if not isinstance(value, str):
         return ""
@@ -448,7 +458,7 @@ def canonical_source_url(value):
     return urlunsplit((scheme, netloc, parsed.path, parsed.query, ""))
 
 
-def result_identity(item):
+def result_identity(item: Mapping) -> Optional[tuple]:
     """Return source/id, URL, display tuple, or None in approved priority order."""
     if not isinstance(item, Mapping):
         return None
@@ -484,7 +494,7 @@ def result_identity(item):
     return None
 
 
-def with_response_dedupe_metadata(item):
+def with_response_dedupe_metadata(item: Mapping) -> dict:
     """Return a result copy carrying the server's canonical dedupe keys."""
     if not isinstance(item, Mapping):
         return item
@@ -502,7 +512,7 @@ def with_response_dedupe_metadata(item):
     return response_item
 
 
-def deduplicate_results(results):
+def deduplicate_results(results: Any) -> list[dict]:
     """Keep first item from each identity/URL connected component, in order."""
     if results is None or isinstance(results, (str, bytes, Mapping)):
         return []
@@ -565,7 +575,11 @@ def deduplicate_results(results):
     ]
 
 
-def wikipedia(query, num_results, *, user_id):
+def wikipedia(query: str, num_results: int, *, user_id: int) -> list[dict]:
+    cached_results = cache.get("wikipedia", query=query, num_results=num_results)
+    if cached_results is not None:
+        return cached_results
+
     search_url = "https://en.wikipedia.org/w/api.php"
     headers = {"User-Agent": USER_AGENT}
     params = {
@@ -619,12 +633,19 @@ def wikipedia(query, num_results, *, user_id):
             }
             if item_data["source_url"] and whitelist.is_allowed(item_data["source_url"]):
                 results.append(db.get_or_create_item(item_data, user_id, True))
+        cache.set("wikipedia", results, ttl=300, query=query, num_results=num_results)
         return results
     except Exception:
         logging.exception("Wikipedia search failed")
         return []
 
-def gbooks(query, num_results, filters, *, user_id):
+def gbooks(query: str, num_results: int, filters: dict, *, user_id: int) -> list[dict]:
+    # Try Redis/memory cache
+    filter_key = tuple(sorted(filters.items())) if filters else ()
+    cached_results = cache.get("gbooks", query=query, num_results=num_results, filters=filter_key)
+    if cached_results is not None:
+        return cached_results
+
     params = {
         "q": query,
         "maxResults": min(max(int(num_results), 0), 40)
@@ -670,19 +691,26 @@ def gbooks(query, num_results, filters, *, user_id):
                         "accessViewStatus": access.get("accessViewStatus", "NONE"),
                     }
                     results.append(response_item)
+            filter_key = tuple(sorted(filters.items())) if filters else ()
+            cache.set("gbooks", results, ttl=300, query=query, num_results=num_results, filters=filter_key)
             return results
         return []
     except:
         return []
 
 
-def _search_serpapi(query, num_results, scope, *, user_id):
+def _search_serpapi(query: str, num_results: int, scope: str, *, user_id: int) -> list[dict]:
     """Search whitelisted academic sites using SerpApi."""
     if not SERP_API_KEY or not scope:
         return []
 
     try:
         target = _bounded_search_count(num_results)
+
+        # Try Redis/memory cache first
+        cached_results = cache.get("search", query=query, scope=scope, num_results=target)
+        if cached_results is not None:
+            return cached_results
 
         cache_key = _make_search_cache_key(query, scope, {}, target)
         cached = db.get_search_cache(cache_key)
@@ -766,13 +794,42 @@ def _search_serpapi(query, num_results, scope, *, user_id):
         if results:
             item_ids = json.dumps([r["id"] for r in results])
             db.set_search_cache(cache_key, item_ids)
+            cache.set("search", results, ttl=300, query=query, scope=scope, num_results=target)
         return results
     except Exception:
-        logging.exception("browse_serpapi_search failed for source %s", source)
+        logging.exception("_search_serpapi failed for scope %s", scope)
         return []
 
 
-def whitelist_search(query, num_results, domains=None, *, user_id):
+def get_related_sources(item_id: int, user_id: int, limit: int = 5) -> list[dict]:
+    """Find items saved by users who also saved the given item, excluding the current user's own items."""
+    try:
+        import src.db as db_mod
+        with db_mod.SessionLocal() as session:
+            subq = (
+                session.query(db_mod.UserToSaved.user_id)
+                .filter(db_mod.UserToSaved.item_id == item_id)
+                .filter(db_mod.UserToSaved.user_id != user_id)
+                .subquery()
+            )
+            related = (
+                session.query(db_mod.Item)
+                .join(db_mod.UserToSaved, db_mod.UserToSaved.item_id == db_mod.Item.id)
+                .filter(db_mod.UserToSaved.user_id.in_(subq))
+                .filter(db_mod.UserToSaved.item_id != item_id)
+                .filter(db_mod.UserToSaved.user_id != user_id)
+                .group_by(db_mod.Item.id)
+                .order_by(db_mod.func.count(db_mod.Item.id).desc())
+                .limit(limit)
+                .all()
+            )
+            return [db_mod._item_to_dict(item) for item in related]
+    except Exception:
+        logging.exception("Failed to get related sources")
+        return []
+
+
+def whitelist_search(query: str, num_results: int, domains: Optional[list[str]] = None, *, user_id: int) -> list[dict]:
     """Search approved academic domains through SerpAPI only."""
     if not SERP_API_KEY:
         raise SerpApiConfigurationError("SERP_API_KEY is not configured")

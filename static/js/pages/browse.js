@@ -1,6 +1,7 @@
 "use strict";
 
 import { showToast } from '../toast.js';
+import { showEmptyState } from '../components/empty-state.js';
 import { createCard } from '../card.js';
 import { fetchBrowseSummary } from '../browse-summary.js';
 
@@ -362,12 +363,65 @@ function getInitialBrowseQuery() {
     }
 }
 
-function updateBrowseUrl(query) {
+function restoreFiltersFromUrl() {
+    try {
+        const params = new URLSearchParams(window.location?.search || '');
+        const dateFrom = params.get('date_from');
+        const dateTo = params.get('date_to');
+        const readingLevel = params.get('reading_level');
+        const sourceTypes = params.get('source_types');
+        const contentType = params.get('content_type');
+        const sorting = params.get('sorting');
+
+        if (dateFrom) {
+            const el = pageRoot.querySelector('#filterDateFrom');
+            if (el) el.value = dateFrom;
+        }
+        if (dateTo) {
+            const el = pageRoot.querySelector('#filterDateTo');
+            if (el) el.value = dateTo;
+        }
+        if (readingLevel) {
+            const el = pageRoot.querySelector('#filterReadingLevel');
+            if (el) el.value = readingLevel;
+        }
+        if (sourceTypes) {
+            const types = sourceTypes.split(',');
+            pageRoot.querySelectorAll('.source-type-checkbox').forEach((cb) => {
+                cb.checked = types.includes(cb.value);
+            });
+        }
+        if (contentType) {
+            const el = pageRoot.querySelector('#filterContentType');
+            if (el) el.value = contentType;
+        }
+        if (sorting) {
+            const el = pageRoot.querySelector('#filterSorting');
+            if (el) el.value = sorting;
+        }
+    } catch (_err) {}
+}
+
+function updateBrowseUrl(query, filters) {
     if (!window.history?.replaceState) return;
 
     const pathname = window.location?.pathname || '/browse';
     const params = new URLSearchParams(window.location?.search || '');
     params.set('q', query);
+    if (filters) {
+        if (filters.date_from) params.set('date_from', filters.date_from);
+        else params.delete('date_from');
+        if (filters.date_to) params.set('date_to', filters.date_to);
+        else params.delete('date_to');
+        if (filters.reading_level) params.set('reading_level', filters.reading_level);
+        else params.delete('reading_level');
+        if (filters.source_types && filters.source_types.length) params.set('source_types', filters.source_types.join(','));
+        else params.delete('source_types');
+        if (filters.content_type) params.set('content_type', filters.content_type);
+        else params.delete('content_type');
+        if (filters.sorting) params.set('sorting', filters.sorting);
+        else params.delete('sorting');
+    }
     const queryString = params.toString();
     window.history.replaceState({}, '', `${pathname}${queryString ? `?${queryString}` : ''}`);
 }
@@ -577,10 +631,24 @@ export function initBrowse(root) {
                             <div class="input-group input-group-lg browse-search-group w-100">
                                 <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
                                 <input type="text" class="form-control browse-search-input" id="searchInput" placeholder="Search verified academic sources...">
+                                <button class="btn btn-outline-secondary btn-sm" id="booleanModeToggle" type="button" title="Toggle Boolean search mode (AND, OR, NOT)" style="border-radius:0;">B</button>
                                 <button class="btn btn-primary btn-brass" id="goBtn" type="button">Go</button>
                                 <button class="btn btn-outline-secondary archive-dropdown dropdown-toggle" type="button" id="filtersDropdown" aria-expanded="false" aria-controls="browseFiltersMenu">Filters</button>
                             </div>
-                            <div class="browse-dropdown-menu archive-dropdown-menu p-3" id="browseFiltersMenu" aria-labelledby="filtersDropdown" style="min-width: 320px;">
+                            <div id="booleanHelper" class="mt-2 p-2 border rounded bg-body-tertiary" style="display:none;">
+                                <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                                    <small class="text-muted me-2">Boolean operators:</small>
+                                    <button class="btn btn-sm btn-outline-success boolean-chip" data-term="AND">AND</button>
+                                    <button class="btn btn-sm btn-outline-primary boolean-chip" data-term="OR">OR</button>
+                                    <button class="btn btn-sm btn-outline-danger boolean-chip" data-term="NOT">NOT</button>
+                                    <i class="bi bi-info-circle text-muted ms-2" title="Use AND, OR, NOT (case-insensitive). Precedence: NOT > AND > OR. Phrase: &quot;exact phrase&quot;" style="cursor:help;"></i>
+                                </div>
+                                <div id="booleanParsedDisplay" class="small"></div>
+                            </div>
+                            <div id="meshAutocompleteContainer" class="position-relative" style="display:none;">
+                                <div id="meshAutocompleteDropdown" class="position-absolute w-100 bg-body border rounded-2 shadow-sm" style="z-index:1200;max-height:200px;overflow-y:auto;display:none;"></div>
+                            </div>
+                            <div class="browse-dropdown-menu archive-dropdown-menu p-3" id="browseFiltersMenu" aria-labelledby="filtersDropdown" style="min-width: 340px;">
                                 <div class="mb-3">
                                     <label class="form-label mb-2">Sources</label>
                                     <div class="form-check mb-2 pb-2 border-bottom">
@@ -603,10 +671,22 @@ export function initBrowse(root) {
                                         <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterNatGeo" value="natgeo" checked>
                                         <label class="form-check-label" for="filterNatGeo">National Geographic</label>
                                     </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input browse-source-checkbox" type="checkbox" id="filterPubMed" value="pubmed">
+                                        <label class="form-check-label" for="filterPubMed">PubMed</label>
+                                    </div>
                                     <details class="mt-2" id="whitelistDetails">
                                         <summary class="small text-muted" style="cursor: pointer;">More whitelisted sites</summary>
                                         <div id="whitelistCheckboxes" class="ps-2 border-start mt-2"></div>
                                     </details>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label mb-2">Date range</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="date" class="form-control" id="filterDateFrom" placeholder="From date">
+                                        <span class="input-group-text">to</span>
+                                        <input type="date" class="form-control" id="filterDateTo" placeholder="To date">
+                                    </div>
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label mb-2">Year range</label>
@@ -614,6 +694,36 @@ export function initBrowse(root) {
                                         <input type="number" class="form-control" id="filterYearFrom" placeholder="From" min="1900" max="2030">
                                         <input type="number" class="form-control" id="filterYearTo" placeholder="To" min="1900" max="2030">
                                     </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label mb-2">Source type</label>
+                                    <div class="d-flex flex-wrap gap-2" id="sourceTypeFilters">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input source-type-checkbox" type="checkbox" id="stBooks" value="books" checked>
+                                            <label class="form-check-label" for="stBooks">Books</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input source-type-checkbox" type="checkbox" id="stArticles" value="articles" checked>
+                                            <label class="form-check-label" for="stArticles">Articles</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input source-type-checkbox" type="checkbox" id="stWikipedia" value="wikipedia" checked>
+                                            <label class="form-check-label" for="stWikipedia">Wikipedia</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input source-type-checkbox" type="checkbox" id="stOther" value="other" checked>
+                                            <label class="form-check-label" for="stOther">Other</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label mb-2">Reading level</label>
+                                    <select class="form-select" id="filterReadingLevel">
+                                        <option value="">Any</option>
+                                        <option value="basic">Basic</option>
+                                        <option value="intermediate">Intermediate</option>
+                                        <option value="advanced">Advanced</option>
+                                    </select>
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label mb-2">Content type</label>
@@ -636,6 +746,10 @@ export function initBrowse(root) {
                                 </div>
                             </div>
                         </div>
+                        <div class="d-flex gap-2 mt-2">
+                            <button class="btn btn-sm btn-outline-secondary" id="searchHistoryBtn" type="button"><i class="bi bi-clock-history me-1"></i>Search History</button>
+                        </div>
+                        <div id="searchHistoryPanel" class="mt-2 border rounded p-2 bg-body" style="display:none;max-height:300px;overflow-y:auto;"></div>
                     </div>
                 </div>
             </div>
@@ -657,7 +771,11 @@ export function initBrowse(root) {
     const initialQuery = getInitialBrowseQuery();
 
     registerEvents(initGeneration);
+    registerBooleanEvents();
+    registerMeshAutocomplete();
+    registerSearchHistoryEvents();
     renderSidebar();
+    restoreFiltersFromUrl();
     restoreBrowseState();
 
     browseSourceReadiness = loadWhitelistDomains().then((domains) => {
@@ -742,6 +860,293 @@ function registerEvents(initGeneration) {
 
     syncMasterSourceCheckbox();
 }
+
+function registerBooleanEvents() {
+    const toggleBtn = pageRoot.querySelector('#booleanModeToggle');
+    const helper = pageRoot.querySelector('#booleanHelper');
+    const parsedDisplay = pageRoot.querySelector('#booleanParsedDisplay');
+    const searchInput = pageRoot.querySelector('#searchInput');
+
+    if (!toggleBtn || !helper) return;
+
+    let booleanActive = false;
+
+    toggleBtn.addEventListener('click', () => {
+        booleanActive = !booleanActive;
+        helper.style.display = booleanActive ? 'block' : 'none';
+        toggleBtn.classList.toggle('btn-outline-secondary', !booleanActive);
+        toggleBtn.classList.toggle('btn-success', booleanActive);
+        toggleBtn.title = booleanActive ? 'Boolean mode active' : 'Toggle Boolean search mode (AND, OR, NOT)';
+        if (!booleanActive) {
+            parsedDisplay.innerHTML = '';
+        } else {
+            parseAndDisplayBoolean(searchInput.value);
+        }
+    });
+
+    helper.querySelectorAll('.boolean-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+            const term = chip.dataset.term;
+            const cursorPos = searchInput.selectionStart;
+            const val = searchInput.value;
+            const before = val.slice(0, cursorPos);
+            const after = val.slice(cursorPos);
+            searchInput.value = before + (before && !before.endsWith(' ') ? ' ' : '') + term + (after && !after.startsWith(' ') ? ' ' : '') + after;
+            searchInput.focus();
+            searchInput.selectionStart = searchInput.selectionEnd = cursorPos + term.length + 1;
+            parseAndDisplayBoolean(searchInput.value);
+        });
+    });
+
+    searchInput.addEventListener('input', () => {
+        if (booleanActive) {
+            parseAndDisplayBoolean(searchInput.value);
+        }
+    });
+}
+
+function parseAndDisplayBoolean(query) {
+    const parsedDisplay = pageRoot.querySelector('#booleanParsedDisplay');
+    if (!parsedDisplay) return;
+    if (!query.trim()) {
+        parsedDisplay.innerHTML = '';
+        return;
+    }
+    fetch('/api/parse-boolean-query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query })
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status) {
+                renderBooleanTree(data.parsed, parsedDisplay);
+            }
+        })
+        .catch(() => {});
+}
+
+function renderBooleanTree(node, container) {
+    if (typeof node === 'string') {
+        container.innerHTML = `<span class="badge bg-secondary me-1">${escapeHtml(node)}</span>`;
+        return;
+    }
+    if (node.type === 'not') {
+        container.innerHTML = `
+            <span class="badge bg-danger me-1">NOT</span>
+            <span class="d-inline-block">${renderBooleanNode(node.operand)}</span>
+        `;
+        return;
+    }
+    const leftHtml = renderBooleanNode(node.left);
+    const rightHtml = renderBooleanNode(node.right);
+    const color = node.type === 'and' ? 'success' : 'primary';
+    const label = node.type === 'and' ? 'AND' : 'OR';
+    container.innerHTML = `
+        <span class="d-inline-flex align-items-center gap-1 flex-wrap">
+            <span class="d-inline-block">${leftHtml}</span>
+            <span class="badge bg-${color} me-1">${label}</span>
+            <span class="d-inline-block">${rightHtml}</span>
+        </span>
+    `;
+}
+
+function renderBooleanNode(node) {
+    if (typeof node === 'string') {
+        return `<span class="badge bg-secondary me-1">${escapeHtml(node)}</span>`;
+    }
+    if (node.type === 'not') {
+        return `
+            <span class="badge bg-danger me-1">NOT</span>
+            <span class="d-inline-flex align-items-center gap-1 flex-wrap">${renderBooleanNode(node.operand)}</span>
+        `;
+    }
+    const color = node.type === 'and' ? 'success' : 'primary';
+    const label = node.type === 'and' ? 'AND' : 'OR';
+    return `
+        <span class="d-inline-flex align-items-center gap-1 flex-wrap">
+            <span class="d-inline-block">${renderBooleanNode(node.left)}</span>
+            <span class="badge bg-${color} me-1">${label}</span>
+            <span class="d-inline-block">${renderBooleanNode(node.right)}</span>
+        </span>
+    `;
+}
+
+function registerMeshAutocomplete() {
+    const searchInput = pageRoot.querySelector('#searchInput');
+    const meshContainer = pageRoot.querySelector('#meshAutocompleteContainer');
+    const meshDropdown = pageRoot.querySelector('#meshAutocompleteDropdown');
+    if (!searchInput || !meshContainer || !meshDropdown) return;
+
+    let debounceTimer = null;
+    let isPubMedMode = false;
+
+    function checkPubMedMode() {
+        const sourceCheckboxes = getSourceCheckboxes();
+        const pubmedChecked = sourceCheckboxes.some(cb => cb.value === 'pubmed' && cb.checked);
+        const singlePubmed = sourceCheckboxes.filter(cb => cb.checked).length === 1 && pubmedChecked;
+        isPubMedMode = singlePubmed;
+        meshContainer.style.display = isPubMedMode ? 'block' : 'none';
+        if (!isPubMedMode) meshDropdown.style.display = 'none';
+    }
+
+    function doMeshAutocomplete(query) {
+        if (!query || query.length < 2) {
+            meshDropdown.style.display = 'none';
+            return;
+        }
+        fetch('/browse/autocomplete-mesh?q=' + encodeURIComponent(query))
+            .then(r => r.json())
+            .then(data => {
+                if (!data.status || !data.suggestions || data.suggestions.length === 0) {
+                    meshDropdown.style.display = 'none';
+                    return;
+                }
+                meshDropdown.innerHTML = '';
+                data.suggestions.forEach((term) => {
+                    const item = document.createElement('button');
+                    item.type = 'button';
+                    item.className = 'dropdown-item d-block w-100 text-start px-3 py-2';
+                    item.textContent = term;
+                    item.addEventListener('click', () => {
+                        searchInput.value = term;
+                        meshDropdown.style.display = 'none';
+                        performSearch({ initGeneration: browseInitGeneration });
+                    });
+                    meshDropdown.appendChild(item);
+                });
+                meshDropdown.style.display = 'block';
+            })
+            .catch(() => { meshDropdown.style.display = 'none'; });
+    }
+
+    searchInput.addEventListener('input', () => {
+        checkPubMedMode();
+        if (!isPubMedMode) return;
+        clearTimeout(debounceTimer);
+        const val = searchInput.value.trim();
+        if (val.length < 2) {
+            meshDropdown.style.display = 'none';
+            return;
+        }
+        debounceTimer = setTimeout(() => doMeshAutocomplete(val), 300);
+    });
+
+    searchInput.addEventListener('blur', () => {
+        setTimeout(() => { meshDropdown.style.display = 'none'; }, 200);
+    });
+
+    searchInput.addEventListener('focus', () => {
+        if (isPubMedMode && searchInput.value.trim().length >= 2) {
+            doMeshAutocomplete(searchInput.value.trim());
+        }
+    });
+
+    // Also check on source change
+    document.addEventListener('change', (e) => {
+        if (e.target?.classList?.contains('browse-source-checkbox')) {
+            checkPubMedMode();
+        }
+    });
+
+    checkPubMedMode();
+}
+
+function registerSearchHistoryEvents() {
+    const historyBtn = pageRoot.querySelector('#searchHistoryBtn');
+    const historyPanel = pageRoot.querySelector('#searchHistoryPanel');
+    if (!historyBtn || !historyPanel) return;
+
+    historyBtn.addEventListener('click', () => {
+        if (historyPanel.style.display === 'block') {
+            historyPanel.style.display = 'none';
+            return;
+        }
+        fetchSearchHistory();
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!historyBtn.contains(e.target) && !historyPanel.contains(e.target)) {
+            historyPanel.style.display = 'none';
+        }
+    });
+}
+
+function fetchSearchHistory() {
+    const historyPanel = pageRoot.querySelector('#searchHistoryPanel');
+    if (!historyPanel) return;
+    fetch('/api/search-history?limit=20')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.status) {
+                historyPanel.innerHTML = '<div class="text-muted small p-2">Failed to load history.</div>';
+                historyPanel.style.display = 'block';
+                return;
+            }
+            const history = data.history || [];
+            if (history.length === 0) {
+                historyPanel.innerHTML = '<div class="text-muted small p-2">No search history yet.</div>';
+                historyPanel.style.display = 'block';
+                return;
+            }
+            let html = '<div class="d-flex justify-content-between align-items-center mb-2"><strong class="small">Recent searches</strong><button class="btn btn-sm btn-outline-danger" id="clearSearchHistoryBtn">Clear All</button></div>';
+            history.forEach((entry) => {
+                const time = new Date(entry.created_at * 1000).toLocaleString();
+                const sources = Array.isArray(entry.source_filters) ? entry.source_filters.join(', ') : '';
+                html += `
+                    <button class="btn btn-sm btn-outline-secondary w-100 text-start mb-1 history-item d-flex justify-content-between align-items-center" data-query="${escapeHtml(entry.query)}" data-sources='${escapeHtml(JSON.stringify(entry.source_filters))}'>
+                        <span class="text-truncate me-2">${escapeHtml(entry.query)}</span>
+                        <small class="text-muted flex-shrink-0">${escapeHtml(time)}</small>
+                    </button>
+                `;
+            });
+            historyPanel.innerHTML = html;
+            historyPanel.style.display = 'block';
+
+            const clearBtn = historyPanel.querySelector('#clearSearchHistoryBtn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    fetch('/api/search-history', { method: 'DELETE' })
+                        .then(r => r.json())
+                        .then(() => {
+                            historyPanel.innerHTML = '<div class="text-muted small p-2">History cleared.</div>';
+                        });
+                });
+            }
+
+            historyPanel.querySelectorAll('.history-item').forEach((item) => {
+                item.addEventListener('click', () => {
+                    const query = item.dataset.query;
+                    const sources = JSON.parse(item.dataset.sources || '[]');
+                    const searchInput = pageRoot.querySelector('#searchInput');
+                    if (searchInput) searchInput.value = query;
+                    if (sources.length > 0) {
+                        const sourceCheckboxes = new Map(
+                            getSourceCheckboxes().map(cb => [cb.value, cb])
+                        );
+                        getSourceCheckboxes().forEach(cb => cb.checked = sources.includes(cb.value));
+                        syncMasterSourceCheckbox();
+                    }
+                    historyPanel.style.display = 'none';
+                    performSearch({ initGeneration: browseInitGeneration });
+                });
+            });
+        })
+        .catch(() => {
+            historyPanel.innerHTML = '<div class="text-muted small p-2">Error loading history.</div>';
+            historyPanel.style.display = 'block';
+        });
+}
+
+function saveSearchToHistory(query, sources, numResults) {
+    fetch('/api/search-history/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, source_filters: sources, num_results: numResults })
+    }).catch(() => {});
+}
+
 
 function getDisplayNameForSource(source) {
     if (source === 'wikipedia') return 'Wikipedia';
@@ -1217,10 +1622,20 @@ function buildFilters() {
     const yearFrom = pageRoot.querySelector('#filterYearFrom').value.trim();
     const yearTo = pageRoot.querySelector('#filterYearTo').value.trim();
     const contentType = pageRoot.querySelector('#filterContentType').value;
+    const dateFrom = pageRoot.querySelector('#filterDateFrom').value.trim();
+    const dateTo = pageRoot.querySelector('#filterDateTo').value.trim();
+    const readingLevel = pageRoot.querySelector('#filterReadingLevel').value;
 
     if (yearFrom) filters.min_date = yearFrom;
     if (yearTo) filters.max_date = yearTo;
+    if (dateFrom) filters.date_from = dateFrom;
+    if (dateTo) filters.date_to = dateTo;
     if (contentType) filters.content_type = contentType;
+    if (readingLevel) filters.reading_level = readingLevel;
+
+    const sourceTypeCheckboxes = pageRoot.querySelectorAll('.source-type-checkbox:checked');
+    const sourceTypes = Array.from(sourceTypeCheckboxes).map(cb => cb.value);
+    if (sourceTypes.length > 0) filters.source_types = sourceTypes;
 
     return filters;
 }
@@ -1465,6 +1880,7 @@ async function performSearch(options = {}) {
         showPartialSourceWarning(result);
         if (currentSearchResults.length) {
             void loadSearchSummary(query, generation);
+            saveSearchToHistory(query, sources, currentSearchResults.length);
         }
     } catch (error) {
         if (generation !== searchGeneration) return;
@@ -1540,6 +1956,10 @@ async function loadMoreResults() {
 
 function showNoResults() {
     const resultsContainer = pageRoot.querySelector('#resultsContainer');
-    resultsContainer.innerHTML = '<div class="text-center"><i class="bi bi-search display-4 text-muted" aria-hidden="true"></i><h5>No results found</h5></div>';
+    showEmptyState(resultsContainer, {
+        icon: 'search',
+        title: 'No results found',
+        description: 'Try adjusting your search terms or filters.'
+    });
     syncBrowseLoadingState(resultsContainer);
 }

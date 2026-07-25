@@ -7,6 +7,7 @@ class StudyHelperAI {
   constructor() {
     this.conversationHistory = [];
     this.currentATN = null;
+    this.currentCitations = [];
   }
 
   /**
@@ -104,6 +105,9 @@ class StudyHelperAI {
         content: data.response
       });
 
+      this.currentCitations = data.citations || [];
+      data.citations = this.currentCitations;
+
       return data;
     } catch (error) {
       console.error('Chat failed:', error);
@@ -192,17 +196,73 @@ class StudyHelperAI {
       return `<div class="error">Error: ${this._escapeHtml(response.error)}</div>`;
     }
 
-    const answer = this._formatMarkdown(response.answer || response.response || '');
+    const answer = this._formatWithCitations(response.answer || response.response || '', response.citations || []);
+    const citations = response.citations || [];
 
     let html = '<div class="response">';
     html += `<div class="answer">${answer}</div>`;
-    
-    if (response.sources) {
+
+    // Sources section with citations
+    if (citations.length > 0) {
+      html += '<div class="sources-section mt-3 pt-2 border-top"><h6 class="fw-bold mb-2" style="color: var(--bs-primary);">Sources</h6>';
+      citations.forEach(c => {
+        const url = c.source_url ? ` href="${this._escapeHtml(c.source_url)}" target="_blank" rel="noopener noreferrer"` : '';
+        html += `<div class="d-flex align-items-start gap-2 mb-2 small">
+          <sup class="fw-bold" style="color: var(--bs-primary);">[${c.index}]</sup>
+          <div>
+            <strong>${this._escapeHtml(c.title)}</strong>
+            ${url ? `<a${url} class="ms-1"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
+            ${c.snippet ? `<div class="text-muted">${this._escapeHtml(c.snippet)}</div>` : ''}
+          </div>
+        </div>`;
+      });
+      html += '</div>';
+    } else if (response.sources && response.sources.length > 0) {
       html += this.formatSources(response.sources);
     }
 
     html += '</div>';
     return html;
+  }
+
+  _formatWithCitations(text, citations) {
+    let safe = this._escapeHtml(text);
+    // Convert citation markers [1], [2] etc to sup elements with tooltips
+    safe = safe.replace(/\[(\d+)\]/g, (match, num) => {
+      const cite = citations.find(c => c.index === parseInt(num));
+      const title = cite ? cite.title : `Source ${num}`;
+      const escapedTitle = this._escapeHtml(title);
+      return `<sup class="citation-ref" data-index="${num}" title="${escapedTitle}" style="cursor:pointer;color:var(--bs-primary);font-weight:bold;text-decoration:none;">[${num}]</sup>`;
+    });
+    safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    safe = safe.replace(/\n/g, '<br>');
+    return safe;
+  }
+
+  /**
+   * Fetch follow-up question suggestions from the backend
+   * @param {number} workspaceId
+   * @param {string} lastResponse
+   * @returns {Promise<Array>}
+   */
+  async fetchFollowUpQuestions(workspaceId, lastResponse) {
+    try {
+      const resp = await fetch('/api/chat/suggest-questions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': this.getCSRFToken()
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          last_response: lastResponse
+        })
+      });
+      const data = await resp.json();
+      return data.status ? data.questions : [];
+    } catch {
+      return [];
+    }
   }
 
   _escapeHtml(text) {

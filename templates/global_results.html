@@ -1,0 +1,12 @@
+{% extends "layout.html" %}
+{% block title %}Global Search - StudyLib{% endblock %}
+{% block content %}
+<div id="pageRoot" data-page="global-search" data-query="{{ query }}"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+window.GLOBAL_SEARCH_QUERY = {{ query|tojson }};
+window.GLOBAL_SEARCH_RESULTS = {{ results|tojson }};
+</script>
+<script type="module" src="{{ url_for('static', filename='js/pages/global-search.js') }}"></script>
+{% endblock %}

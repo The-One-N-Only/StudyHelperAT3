@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import requests
 import os
+from typing import Any, Optional
 from urllib.parse import quote
 import json
 import src.db as db
@@ -21,7 +24,7 @@ SEARCH_PARAMS = {
 }
 
 
-def _build_search_query(query, mesh_terms=None, min_date=None, max_date=None):
+def _build_search_query(query: str, mesh_terms: Optional[list[str]] = None, min_date: Optional[str] = None, max_date: Optional[str] = None) -> str:
     """Build a PubMed search query with optional filters."""
     search_parts = [query]
 
@@ -35,7 +38,7 @@ def _build_search_query(query, mesh_terms=None, min_date=None, max_date=None):
     return " AND ".join(search_parts) if len(search_parts) > 1 else query
 
 
-def search(query, num_results=20, mesh_terms=None, min_date=None, max_date=None, *, user_id):
+def search(query: str, num_results: int = 20, mesh_terms: Optional[list[str]] = None, min_date: Optional[str] = None, max_date: Optional[str] = None, *, user_id: int) -> list[dict[str, Any]]:
     """
     Search PubMed using ESearch.
 
@@ -87,7 +90,7 @@ def search(query, num_results=20, mesh_terms=None, min_date=None, max_date=None,
         return []
 
 
-def _fetch_articles(pmids, user_id):
+def _fetch_articles(pmids: list[str], user_id: int) -> list[dict[str, Any]]:
     """
     Fetch detailed article information using EFetch.
 
@@ -140,7 +143,7 @@ def _fetch_articles(pmids, user_id):
         return []
 
 
-def _parse_article(article_elem):
+def _parse_article(article_elem: ET.Element) -> Optional[dict[str, Any]]:
     """
     Parse a PubmedArticle XML element into our item format.
 
@@ -273,7 +276,7 @@ def _parse_article(article_elem):
         return None
 
 
-def get_related_articles(pmid, num_results=10, *, user_id):
+def get_related_articles(pmid: str, num_results: int = 10, *, user_id: int) -> list[dict[str, Any]]:
     """
     Find articles related to a given PubMed ID using ELink.
 
@@ -323,7 +326,7 @@ def get_related_articles(pmid, num_results=10, *, user_id):
         return []
 
 
-def get_mesh_terms(query, num_results=20):
+def get_mesh_terms(query: str, num_results: int = 20) -> list[str]:
     """
     Get suggested MeSH terms for a search query.
 

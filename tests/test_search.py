@@ -1,9 +1,8 @@
 import pytest
 
+import src.citations as citations
 import src.search as search
 import src.whitelist as whitelist
-import src.citations as citations
-
 
 # ---------------------------------------------------------------------------
 # Citation formatting
@@ -127,12 +126,16 @@ def test_gbooks_clamps_max_results(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_browse_routes_return_missing_serpapi_configuration(monkeypatch):
-    import app as flask_app
-    monkeypatch.setattr(flask_app.search, "SERP_API_KEY", "")
+    from conftest import flask_app
+
+    import src.search as search_mod
+    from backend.api_routes import browse_search
+    monkeypatch.setattr(search_mod, "SERP_API_KEY", "")
     expected = "Browse search is not configured. Add SERP_API_KEY and restart StudyLib."
-    with flask_app.app.test_request_context("/api/browse/search", method="POST", json={"query": "archive", "source": "wikipedia", "num_results": 10}):
-        flask_app.session["user_id"] = 4
-        response, status = flask_app.browse_search()
+    with flask_app.test_request_context("/api/browse/search", method="POST", json={"query": "archive", "source": "wikipedia", "num_results": 10}):
+        from flask import session
+        session["user_id"] = 4
+        response, status = browse_search()
     assert status == 503
     assert response.get_json() == {"status": False, "error": expected}
 
@@ -143,7 +146,7 @@ def test_browse_routes_return_missing_serpapi_configuration(monkeypatch):
 
 @pytest.fixture
 def client():
-    from app import app as flask_app
+    from conftest import flask_app
     flask_app.config['TESTING'] = True
     with flask_app.test_client() as c:
         with c.session_transaction() as s:
@@ -285,8 +288,8 @@ class TestEndToEndThumbnailFlow:
 # ---------------------------------------------------------------------------
 
 def _parallel_search_demo(label, query, num_results, sources, user_id=1):
-    import time
     import concurrent.futures
+    import time
 
     print("=" * 70)
     print(label)
@@ -359,6 +362,7 @@ if __name__ == "__main__":
     import sys
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from dotenv import load_dotenv
+
     import src.pubmed as pubmed
     load_dotenv()
 

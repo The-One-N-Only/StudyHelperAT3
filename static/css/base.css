@@ -1,0 +1,96 @@
+/* Smooth theme transitions */
+*, *::before, *::after {
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+button, .btn, a, input, select, textarea {
+    transition: none; /* Don't transition interactive element colours */
+}
+
+body {
+    min-height: 100vh;
+    background-color: var(--paper-50);
+    color: var(--ink-900);
+    font-family: var(--font-body);
+    font-size: calc(var(--font-body-size, 14px) * var(--font-size-modifier, 1));
+}
+
+p, li, .text-muted, .small, .card-text, .form-control, .form-label {
+    font-size: calc(1em * var(--font-size-modifier, 1));
+}
+
+h1 { font-size: calc(2.5rem * var(--font-size-modifier, 1)); }
+h2 { font-size: calc(2rem * var(--font-size-modifier, 1)); }
+h3 { font-size: calc(1.75rem * var(--font-size-modifier, 1)); }
+h4 { font-size: calc(1.5rem * var(--font-size-modifier, 1)); }
+h5 { font-size: calc(1.25rem * var(--font-size-modifier, 1)); }
+h6 { font-size: calc(1rem * var(--font-size-modifier, 1)); }
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.navbar-brand {
+    color: var(--ink-900);
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-wrap: balance;
+}
+
+p {
+    text-wrap: pretty;
+}
+
+[data-bs-theme="dark"] body {
+    min-height: 100vh;
+    color: var(--text-primary);
+    background:
+        radial-gradient(ellipse 60% 40% at 50% 0%, hsl(32 45% 18% / 0.5), transparent 60%),
+        var(--bg-950);
+    background-attachment: fixed;
+    font-family: var(--font-body);
+}
+
+[data-bs-theme="dark"] h1,
+[data-bs-theme="dark"] h2,
+[data-bs-theme="dark"] h3,
+[data-bs-theme="dark"] h4,
+[data-bs-theme="dark"] h5,
+[data-bs-theme="dark"] h6,
+[data-bs-theme="dark"] .navbar-brand {
+    color: var(--gold-100);
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-wrap: balance;
+}
+
+[data-bs-theme="dark"] p {
+    text-wrap: pretty;
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor ::selection,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor ::selection {
+    background: var(--gilt-300);
+    color: var(--ink-900);
+}
+
+:root:not([data-bs-theme="dark"]) .notes-box .ql-editor ::-moz-selection,
+:root:not([data-bs-theme="dark"]) #noteEditorModal .ql-editor ::-moz-selection {
+    background: var(--gilt-300);
+    color: var(--ink-900);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-editor ::selection,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor ::selection {
+    background: var(--gold-500);
+    color: var(--bg-950);
+}
+
+[data-bs-theme="dark"] .notes-box .ql-editor ::-moz-selection,
+[data-bs-theme="dark"] #noteEditorModal .ql-editor ::-moz-selection {
+    background: var(--gold-500);
+    color: var(--bg-950);
+}

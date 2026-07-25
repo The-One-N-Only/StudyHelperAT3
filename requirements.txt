@@ -12,3 +12,9 @@ openpyxl>=3.1.0
 reportlab>=4.2.0
 pytest>=8.0.0
 anthropic>=0.25.0
+python-pptx>=1.0.0
+# pytesseract (requires Tesseract binary installed separately: https://github.com/tesseract-ocr/tesseract)
+alembic>=1.13.0
+redis>=5.0.0
+python-pptx>=1.0.0
+gunicorn>=21.2.0

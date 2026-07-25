@@ -1,0 +1,498 @@
+/* Hide scrollbar on scroll rows */
+.scroll-row {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.scroll-row::-webkit-scrollbar {
+    display: none;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--paper-400);
+    border: 2px solid var(--paper-50);
+    border-radius: 999px;
+}
+
+* {
+    scrollbar-color: var(--paper-400) transparent;
+    scrollbar-width: thin;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: var(--gold-700);
+    border: 2px solid var(--surface-800);
+    border-radius: var(--radius-pill);
+}
+
+[data-bs-theme="dark"] * {
+    scrollbar-color: var(--gold-700) transparent;
+    scrollbar-width: thin;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    :root:not([data-bs-theme="dark"]) *,
+    :root:not([data-bs-theme="dark"]) *::before,
+    :root:not([data-bs-theme="dark"]) *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-delay: 0s !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    .ai-overview-spinner {
+        animation: none;
+    }
+}
+
+/* Responsive: 991.98px */
+@media screen and (max-width: 991.98px) {
+    :root:not([data-bs-theme="dark"]) .archive-page-upload > .illustration-sextant {
+        display: none;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-workspace .workspace-right-panel {
+        min-height: auto;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-workspace .resizable-panel {
+        max-width: none;
+        min-width: 0;
+        resize: none;
+        width: 100%;
+    }
+
+    [data-bs-theme="dark"] .archive-page-upload > .illustration-sextant {
+        display: none;
+    }
+
+    [data-bs-theme="dark"] .archive-page-workspace .workspace-right-panel {
+        min-height: auto;
+    }
+
+    [data-bs-theme="dark"] .archive-page-workspace .resizable-panel {
+        max-width: none;
+        min-width: 0;
+        resize: none;
+        width: 100%;
+    }
+}
+
+/* Responsive: 767.98px */
+@media screen and (max-width: 767.98px) {
+    :root:not([data-bs-theme="dark"]) .archive-page-browse {
+        overflow: visible;
+    }
+
+    :root:not([data-bs-theme="dark"]) .browse-results-layout {
+        flex-direction: column;
+        height: auto !important;
+    }
+
+    :root:not([data-bs-theme="dark"]) #sidebarContainer.browse-sidebar {
+        border-bottom: 1px solid hsl(33 30% 60% / 0.30);
+        border-right: 0 !important;
+        max-width: none;
+        min-width: 0 !important;
+        overflow-y: visible !important;
+        width: 100% !important;
+    }
+
+    :root:not([data-bs-theme="dark"]) .browse-search-group {
+        align-items: stretch;
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+    }
+
+    :root:not([data-bs-theme="dark"]) .browse-results-pane {
+        overflow-y: visible !important;
+        width: 100%;
+    }
+
+    :root:not([data-bs-theme="dark"]) .browse-results-row .col,
+    :root:not([data-bs-theme="dark"]) .browse-results-row .result-card {
+        min-width: 0;
+        width: 100%;
+    }
+
+    :root:not([data-bs-theme="dark"]) .browse-search-group .input-group-text {
+        display: none;
+    }
+
+    :root:not([data-bs-theme="dark"]) .browse-search-input {
+        min-width: 0;
+        width: 100%;
+    }
+
+    [data-bs-theme="dark"] .archive-page-browse {
+        overflow: visible;
+    }
+
+    [data-bs-theme="dark"] .browse-results-layout {
+        flex-direction: column;
+        height: auto !important;
+    }
+
+    [data-bs-theme="dark"] #sidebarContainer.browse-sidebar {
+        border-right: 0 !important;
+        border-bottom: 1px solid hsl(35 40% 45% / 0.18);
+        max-width: none;
+        min-width: 0;
+        overflow-y: visible !important;
+        width: 100% !important;
+    }
+
+    [data-bs-theme="dark"] .browse-results-pane {
+        overflow-y: visible !important;
+        width: 100%;
+    }
+
+    [data-bs-theme="dark"] .browse-results-row .col,
+    [data-bs-theme="dark"] .browse-results-row .result-card {
+        min-width: 0;
+        width: 100%;
+    }
+
+    [data-bs-theme="dark"] .browse-search-group {
+        align-items: stretch;
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+    }
+
+    [data-bs-theme="dark"] .browse-search-group .input-group-text {
+        display: none;
+    }
+
+    [data-bs-theme="dark"] .browse-search-input {
+        min-width: 0;
+    }
+}
+
+/* Responsive: 575.98px */
+@media screen and (max-width: 575.98px) {
+    .browse-empty-state {
+        min-height: 18rem;
+    }
+
+    .browse-empty-state,
+    .loader-container {
+        padding: 1rem 0.5rem;
+    }
+
+    .browse-empty-engraving {
+        width: min(24rem, 100%);
+    }
+
+    .browse-loader-art {
+        max-height: clamp(1rem, calc(100vh - 20rem), 22rem);
+        width: min(22rem, 100%);
+    }
+
+    :root:not([data-bs-theme="dark"]) .browse-dropdown-menu {
+        left: 0;
+        max-width: 100%;
+        min-width: 0 !important;
+        right: auto;
+        width: 100%;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-upload > .illustration-compass {
+        height: 120px;
+        left: -2rem;
+        width: 120px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-books,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-books {
+        bottom: 0;
+        height: 160px;
+        left: 0;
+        width: 240px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-compass,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-compass {
+        height: 180px;
+        left: 1rem;
+        top: 1rem;
+        width: 180px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-sextant,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-sextant {
+        height: 200px;
+        right: 1rem;
+        top: 24%;
+        width: 200px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-scholar,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-scholar {
+        height: 150px;
+        right: 1rem;
+        top: 1rem;
+        width: 150px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-telescope,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-telescope {
+        height: 140px;
+        left: 32%;
+        top: 1rem;
+        width: 220px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-armillary-sphere,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-armillary-sphere {
+        height: 160px;
+        right: 14rem;
+        top: 1rem;
+        width: 160px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-victorian-man,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-victorian-man {
+        height: 220px;
+        left: 1rem;
+        top: 13rem;
+        width: 180px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-candlestick,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-candlestick {
+        bottom: 0;
+        height: 200px;
+        right: 0;
+        width: 100px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-oil-lamp,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-oil-lamp {
+        bottom: 0;
+        height: 180px;
+        left: 20%;
+        width: 120px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-auth .illustration-hourglass,
+    :root:not([data-bs-theme="dark"]) .archive-page-user .illustration-hourglass {
+        bottom: 0;
+        height: 160px;
+        right: 30%;
+        width: 100px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page .archive-page-title {
+        font-size: 1.65rem;
+    }
+
+    :root:not([data-bs-theme="dark"]) .archive-page-home .workspace-card {
+        min-height: 190px;
+    }
+
+    :root:not([data-bs-theme="dark"]) .upload-zone {
+        padding: 2.5rem 1.25rem !important;
+    }
+
+    :root:not([data-bs-theme="dark"]) .chat-message {
+        max-width: 88%;
+    }
+
+    :root:not([data-bs-theme="dark"]) .chat-message-agent {
+        max-width: calc(88% - 2.9rem);
+    }
+
+    [data-bs-theme="dark"] .archive-page-title {
+        font-size: 1.65rem;
+    }
+
+    [data-bs-theme="dark"] .workspace-card {
+        min-height: 190px;
+    }
+
+    [data-bs-theme="dark"] .upload-zone {
+        padding: 2.5rem 1.25rem !important;
+    }
+
+    [data-bs-theme="dark"] .archive-page-upload > .illustration-compass {
+        height: 120px;
+        left: -2rem;
+        width: 120px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-compass,
+    [data-bs-theme="dark"] .archive-page-user .illustration-compass {
+        height: 180px;
+        left: 1rem;
+        top: 1rem;
+        width: 180px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-books,
+    [data-bs-theme="dark"] .archive-page-user .illustration-books {
+        bottom: 0;
+        height: 160px;
+        left: 0;
+        width: 240px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-compass,
+    [data-bs-theme="dark"] .archive-page-user .illustration-compass {
+        height: 180px;
+        left: 1rem;
+        top: 1rem;
+        width: 180px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-sextant,
+    [data-bs-theme="dark"] .archive-page-user .illustration-sextant {
+        height: 200px;
+        right: 1rem;
+        top: 24%;
+        width: 200px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-scholar,
+    [data-bs-theme="dark"] .archive-page-user .illustration-scholar {
+        height: 150px;
+        right: 1rem;
+        top: 1rem;
+        width: 150px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-telescope,
+    [data-bs-theme="dark"] .archive-page-user .illustration-telescope {
+        height: 140px;
+        left: 32%;
+        top: 1rem;
+        width: 220px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-armillary-sphere,
+    [data-bs-theme="dark"] .archive-page-user .illustration-armillary-sphere {
+        height: 160px;
+        right: 14rem;
+        top: 1rem;
+        width: 160px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-victorian-man,
+    [data-bs-theme="dark"] .archive-page-user .illustration-victorian-man {
+        height: 220px;
+        left: 1rem;
+        top: 13rem;
+        width: 180px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-candlestick,
+    [data-bs-theme="dark"] .archive-page-user .illustration-candlestick {
+        bottom: 0;
+        height: 200px;
+        right: 0;
+        width: 100px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-oil-lamp,
+    [data-bs-theme="dark"] .archive-page-user .illustration-oil-lamp {
+        bottom: 0;
+        height: 180px;
+        left: 20%;
+        width: 120px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-hourglass,
+    [data-bs-theme="dark"] .archive-page-user .illustration-hourglass {
+        bottom: 0;
+        height: 160px;
+        right: 30%;
+        width: 100px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-sextant,
+    [data-bs-theme="dark"] .archive-page-user .illustration-sextant {
+        height: 200px;
+        right: 1rem;
+        top: 24%;
+        width: 200px;
+    }
+
+    [data-bs-theme="dark"] .archive-page-auth .illustration-books,
+    [data-bs-theme="dark"] .archive-page-user .illustration-books {
+        bottom: 0;
+        height: 160px;
+        left: 0;
+        width: 240px;
+    }
+
+    [data-bs-theme="dark"] .illustration-telescope {
+        --illustration-image: url("/static/img/illustrations/telescope.svg");
+    }
+
+    [data-bs-theme="dark"] .illustration-hourglass {
+        --illustration-image: url("/static/img/illustrations/hourglass.svg");
+    }
+
+    [data-bs-theme="dark"] .illustration-armillary-sphere {
+        --illustration-image: url("/static/img/illustrations/armillary-sphere.svg");
+    }
+
+    [data-bs-theme="dark"] .illustration-oil-lamp {
+        --illustration-image: url("/static/img/illustrations/oil-lamp.svg");
+    }
+
+    [data-bs-theme="dark"] .illustration-scholar {
+        --illustration-image: url("/static/img/illustrations/browse-scholar.svg");
+    }
+
+    [data-bs-theme="dark"] .illustration-victorian-man {
+        --illustration-image: url("/static/img/illustrations/victorian-man.svg");
+    }
+
+    [data-bs-theme="dark"] .chat-message {
+        max-width: 88%;
+    }
+}
+
+/* Windows High Contrast accessibility */
+@media (forced-colors: active) {
+    :root:not([data-bs-theme="dark"]) .archive-wordmark:focus-visible,
+    :root:not([data-bs-theme="dark"]) .icon-button:focus-visible,
+    :root:not([data-bs-theme="dark"]) .btn:focus-visible,
+    :root:not([data-bs-theme="dark"]) .btn-close:focus-visible,
+    :root:not([data-bs-theme="dark"]) .form-check-input:focus,
+    :root:not([data-bs-theme="dark"]) .form-check-input:focus-visible,
+    :root:not([data-bs-theme="dark"]) .form-control:focus,
+    :root:not([data-bs-theme="dark"]) .form-select:focus,
+    :root:not([data-bs-theme="dark"]) .archive-dropdown:focus-visible,
+    :root:not([data-bs-theme="dark"]) .navbar-brand:focus-visible,
+    :root:not([data-bs-theme="dark"]) .workspace-tabs .nav-link:focus-visible,
+    :root:not([data-bs-theme="dark"]) .workspace-source-item:focus-visible,
+    :root:not([data-bs-theme="dark"]) #navSidebarOffcanvas .list-group-item:focus-visible,
+    :root:not([data-bs-theme="dark"]) input:focus-visible,
+    :root:not([data-bs-theme="dark"]) select:focus-visible,
+    :root:not([data-bs-theme="dark"]) textarea:focus-visible,
+    :root:not([data-bs-theme="dark"]) a:focus-visible {
+        outline: 2px solid Highlight;
+        outline-offset: 2px;
+    }
+}

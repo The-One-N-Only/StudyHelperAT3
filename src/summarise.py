@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import os
 import requests
 import json
 import logging
+from typing import Optional
 import src.whitelist as whitelist
 import src.proxy as proxy
 
@@ -52,7 +55,7 @@ def _parse_ai_json_response(content: str) -> dict:
     return {}
 
 
-def summarise_url(url, title=None, atn=None, user_id=None) -> dict:
+def summarise_url(url: str, title: Optional[str] = None, atn: Optional[str] = None, user_id: Optional[int] = None) -> dict:
     if not ANTHROPIC_API_KEY:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
@@ -86,7 +89,7 @@ def summarise_url(url, title=None, atn=None, user_id=None) -> dict:
         return {"status": False, "error": AI_PROVIDER_ERROR}
 
 
-def summarise_file(file_id, user_id, atn=None) -> dict:
+def summarise_file(file_id: int, user_id: int, atn: Optional[str] = None) -> dict:
     if not ANTHROPIC_API_KEY:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
@@ -116,6 +119,30 @@ def summarise_file(file_id, user_id, atn=None) -> dict:
     except Exception:
         logging.exception("Anthropic request failed while summarising file")
         return {"status": False, "error": AI_PROVIDER_ERROR}
+
+
+def suggest_tags(title: str, snippet: str) -> list:
+    """Suggest 3-5 academic topic tags for a source using AI."""
+    if not ANTHROPIC_API_KEY:
+        return []
+    try:
+        prompt = (
+            f"Suggest 3-5 academic topic tags for this source.\n\n"
+            f"Title: {title}\n"
+            f"Snippet: {snippet[:1000]}\n\n"
+            f"Return ONLY a JSON array of short single-word or two-word tags, nothing else."
+        )
+        content = _anthropic_request(prompt)
+        import re
+        match = re.search(r'\[.*?\]', content, re.DOTALL)
+        if match:
+            tags = json.loads(match.group())
+            if isinstance(tags, list):
+                return [str(t).strip() for t in tags[:5]]
+        return []
+    except Exception:
+        logging.exception("Tag suggestion failed")
+        return []
 
 
 def summarise_search_results(query: str, results: list[dict], atn: str | None = None) -> dict:

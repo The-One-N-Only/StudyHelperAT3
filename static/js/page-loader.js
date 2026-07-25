@@ -29,6 +29,10 @@ async function bootstrapPage() {
                 module.initSaved(root);
                 break;
             }
+            case 'global-search': {
+                const module = await import('./pages/global-search.js');
+                break;
+            }
             default:
                 break;
         }

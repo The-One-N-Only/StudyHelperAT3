@@ -1,7 +1,7 @@
 {% extends 'layout.html' %}
 {% block title %}User Profile - StudyLib{% endblock %}
 {% block content %}
-<main class="container py-5 archive-page archive-page-auth">
+<div class="container py-5 archive-page archive-page-auth" aria-label="User profile page">
     <span class="archive-illustration illustration-compass" aria-hidden="true"></span>
     <span class="archive-illustration illustration-sextant" aria-hidden="true"></span>
     <span class="archive-illustration illustration-books" aria-hidden="true"></span>
@@ -26,37 +26,44 @@
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <div class="mb-3">
                                 <label for="name" class="form-label">Full Name</label>
-                                <input type="text" id="name" name="name" class="form-control" maxlength="255" value="{{ user.name or '' }}">
+                                <input type="text" id="name" name="name" class="form-control" maxlength="255" value="{{ user.name or '' }}" aria-describedby="profileNameHelp">
+                                <div id="profileNameHelp" class="form-text">Your display name.</div>
                             </div>
                             <div class="mb-3">
                                 <label for="username" class="form-label">Username</label>
-                                <input type="text" id="username" name="username" class="form-control" required maxlength="255" value="{{ user.username or '' }}">
+                                <input type="text" id="username" name="username" class="form-control" required maxlength="255" value="{{ user.username or '' }}" aria-describedby="profileUsernameHelp">
+                                <div id="profileUsernameHelp" class="form-text">Your unique username.</div>
                             </div>
                             <div class="mb-3">
                                 <label for="email" class="form-label">Email</label>
-                                <input type="email" id="email" name="email" class="form-control" required maxlength="255" value="{{ user.email or '' }}">
+                                <input type="email" id="email" name="email" class="form-control" required maxlength="255" value="{{ user.email or '' }}" aria-describedby="profileEmailHelp">
+                                <div id="profileEmailHelp" class="form-text">Your email address.</div>
                             </div>
                             <div class="mb-3">
                                 <label for="gender" class="form-label">Gender</label>
-                                <select id="gender" name="gender" class="form-select">
+                                <select id="gender" name="gender" class="form-select" aria-describedby="profileGenderHelp">
                                     <option value="gentleman" {{ 'selected' if gender == 'gentleman' else '' }}>Gentleman</option>
                                     <option value="lady" {{ 'selected' if gender == 'lady' else '' }}>Lady</option>
                                     <option value="secret" {{ 'selected' if gender == 'secret' else '' }}>I'll never tell...</option>
-                                </select>
-                            </div>
-                            <hr>
-                            <div class="mb-3">
-                                <label for="old_password" class="form-label">Current Password</label>
-                                <input type="password" id="old_password" name="old_password" class="form-control" maxlength="255" autocomplete="current-password">
-                            </div>
-                            <div class="mb-3">
-                                <label for="new_password" class="form-label">New Password (leave blank to keep current)</label>
-                                <input type="password" id="new_password" name="new_password" class="form-control" maxlength="255" autocomplete="new-password">
-                            </div>
-                            <div class="mb-3">
-                                <label for="confirm_password" class="form-label">Confirm New Password</label>
-                                <input type="password" id="confirm_password" name="confirm_password" class="form-control" maxlength="255" autocomplete="new-password">
-                            </div>
+                            </select>
+                            <div id="profileGenderHelp" class="form-text">How you would like to be addressed.</div>
+                        </div>
+                        <hr>
+                        <div class="mb-3">
+                            <label for="old_password" class="form-label">Current Password</label>
+                            <input type="password" id="old_password" name="old_password" class="form-control" maxlength="255" autocomplete="current-password" aria-describedby="oldPasswordHelp">
+                            <div id="oldPasswordHelp" class="form-text">Required to change your password.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">New Password (leave blank to keep current)</label>
+                            <input type="password" id="new_password" name="new_password" class="form-control" maxlength="255" autocomplete="new-password" aria-describedby="newPasswordHelp">
+                            <div id="newPasswordHelp" class="form-text">Leave blank to keep your current password.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirm_password" class="form-label">Confirm New Password</label>
+                            <input type="password" id="confirm_password" name="confirm_password" class="form-control" maxlength="255" autocomplete="new-password" aria-describedby="confirmNewPasswordHelp">
+                            <div id="confirmNewPasswordHelp" class="form-text">Re-enter your new password.</div>
+                        </div>
                             <button type="submit" class="btn btn-primary w-100">Save Changes</button>
                         </form>
                     </div>
@@ -64,5 +71,5 @@
             </div>
         </div>
     </div>
-</main>
+</div>
 {% endblock %}

@@ -2,12 +2,14 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from conftest import flask_app
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import src.answer as answer
 import src.db as db
-
+import src.summarise as summarise
+from backend.api_routes import answer_chat, browse_summary
 
 AI_NOT_CONFIGURED_ERROR = (
     "Alexander is not configured. Add ANTHROPIC_API_KEY and restart StudyLib."
@@ -205,114 +207,116 @@ def test_workspace_chat_inserts_and_isolates_owners(isolated_workspace_db):
     assert len(db.get_workspace_chat_messages(ids["first_workspace"], ids["first_user"])) == 4
 
 
-def test_workspace_deletion_cleans_chat_messages(isolated_workspace_db):
+def test_workspace_soft_delete(isolated_workspace_db):
     ids = isolated_workspace_db
     assert db.append_workspace_chat_turn(ids["first_user"], ids["first_workspace"], "Question", "Answer") is True
     assert db.delete_workspace(ids["first_workspace"], ids["first_user"]) is True
 
+    # Soft-delete: workspace gets deleted_at set, messages preserved
     with ids["session"]() as session:
+        ws = session.query(db.Workspace).filter_by(id=ids["first_workspace"]).first()
+        assert ws is not None
+        assert ws.deleted_at is not None
+        # Permanently delete to clean up
+        db.permanently_delete_workspace(ids["first_workspace"], ids["first_user"])
         assert session.query(db.WorkspaceChatMessage).count() == 0
 
 
 def test_answer_chat_persists_successful_turn(monkeypatch):
-    import app as flask_app
-
     messages = [
         {"role": "user", "content": "Earlier"},
         {"role": "assistant", "content": "Earlier answer"},
         {"role": "user", "content": "Latest question"},
     ]
     append_calls = []
-    monkeypatch.setattr(flask_app.db, "get_workspace", lambda user_id, workspace_id: {"id": workspace_id})
+    monkeypatch.setattr(db, "get_workspace", lambda user_id, workspace_id: {"id": workspace_id})
     monkeypatch.setattr(
-        flask_app.db,
+        db,
         "append_workspace_chat_turn",
-        lambda *args: append_calls.append(args) or True,
+        lambda *args, **kwargs: append_calls.append(args) or True,
         raising=False,
     )
     monkeypatch.setattr(
-        flask_app.answer,
+        answer,
         "chat_with_sources",
-        lambda received, user_id, atn=None: {
+        lambda received, user_id, atn=None, **kw: {
             "status": True,
             "response": "Hosted answer",
             "sources": [],
         },
     )
 
-    with flask_app.app.test_request_context(
+    with flask_app.test_request_context(
         "/api/answer/chat", method="POST",
         json={"messages": messages, "workspace_id": 4},
     ):
-        flask_app.session["user_id"] = 9
-        response = flask_app.answer_chat()
+        from flask import session
+        session["user_id"] = 9
+        response = answer_chat()
 
     assert response.get_json()["response"] == "Hosted answer"
     assert append_calls == [(9, 4, "Latest question", "Hosted answer")]
 
 
 def test_answer_chat_rejects_wrong_workspace_owner(monkeypatch):
-    import app as flask_app
-
-    monkeypatch.setattr(flask_app.db, "get_workspace", lambda *_args: None)
+    monkeypatch.setattr(db, "get_workspace", lambda *_args: None)
     monkeypatch.setattr(
-        flask_app.answer,
+        answer,
         "chat_with_sources",
         lambda *_args, **_kwargs: pytest.fail("provider called for wrong workspace owner"),
     )
 
-    with flask_app.app.test_request_context(
+    with flask_app.test_request_context(
         "/api/answer/chat", method="POST",
         json={"messages": [{"role": "user", "content": "Question"}], "workspace_id": 4},
     ):
-        flask_app.session["user_id"] = 9
-        response, status = flask_app.answer_chat()
+        from flask import session
+        session["user_id"] = 9
+        response, status = answer_chat()
 
     assert status == 404
     assert response.get_json() == {"status": False, "error": "Workspace not found"}
 
 
 def test_answer_chat_does_not_persist_on_provider_failure(monkeypatch):
-    import app as flask_app
-
-    monkeypatch.setattr(flask_app.db, "get_workspace", lambda *_args: {"id": 4})
+    monkeypatch.setattr(db, "get_workspace", lambda *_args: {"id": 4})
     monkeypatch.setattr(
-        flask_app.db,
+        db,
         "append_workspace_chat_turn",
         lambda *_args: pytest.fail("failed provider response was persisted"),
         raising=False,
     )
     monkeypatch.setattr(
-        flask_app.answer,
+        answer,
         "chat_with_sources",
         lambda *_args, **_kwargs: {"status": False, "error": AI_PROVIDER_ERROR},
     )
 
-    with flask_app.app.test_request_context(
+    with flask_app.test_request_context(
         "/api/answer/chat", method="POST",
         json={"messages": [{"role": "user", "content": "Question"}], "workspace_id": 4},
     ):
-        flask_app.session["user_id"] = 9
-        response = flask_app.answer_chat()
+        from flask import session
+        session["user_id"] = 9
+        response = answer_chat()
 
     assert response.get_json() == {"status": False, "error": AI_PROVIDER_ERROR}
 
 
 def test_browse_summary_returns_summariser_dict(monkeypatch):
-    import app as flask_app
-
     expected = {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
     monkeypatch.setattr(
-        flask_app.summarise,
+        summarise,
         "summarise_search_results",
         lambda *_args, **_kwargs: expected,
     )
 
-    with flask_app.app.test_request_context(
+    with flask_app.test_request_context(
         "/api/browse/summary", method="POST",
         json={"query": "history", "results": []},
     ):
-        flask_app.session["user_id"] = 7
-        response = flask_app.browse_summary()
+        from flask import session
+        session["user_id"] = 7
+        response = browse_summary()
 
     assert response.get_json() == expected
