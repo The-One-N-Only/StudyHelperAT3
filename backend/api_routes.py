@@ -501,9 +501,9 @@ def create_workspace():
     if not user_id:
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
 
-    if not request.json:
+    data = request.get_json(silent=True)
+    if not data:
         return jsonify({'status': False, 'error': 'Request must be JSON'}), 400
-    data = request.json
     name = data.get('name', 'New Workspace').strip()[:25]
     if not name:
         return jsonify({'status': False, 'error': 'Workspace name is required'}), 400

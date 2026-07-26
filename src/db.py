@@ -663,182 +663,86 @@ def get_class_analytics(class_id: int, teacher_user_id: int) -> dict:
 
 def setup_db() -> None:
     Base.metadata.create_all(bind=engine)
-    with engine.connect() as conn:
-        # Add password_hash if missing
-        result = conn.execute(text("PRAGMA table_info(users)"))
-        columns = [row[1] for row in result]
-        if 'password_hash' not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+    _is_sqlite = "sqlite" in engine.url.render_as_string(hide_password=False)
 
-        # Add gender if missing (default 'gentleman' for existing users)
-        if 'gender' not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN gender VARCHAR(16) NOT NULL DEFAULT 'gentleman'"))
+    # SQLite-specific migration block — skipped on PostgreSQL (all columns exist via create_all)
+    if _is_sqlite:
+        with engine.connect() as conn:
+            result = conn.execute(text("PRAGMA table_info(users)"))
+            columns = [row[1] for row in result]
+            if 'password_hash' not in columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+            if 'gender' not in columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN gender VARCHAR(16) NOT NULL DEFAULT 'gentleman'"))
+            if 'time_created' not in columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN time_created INTEGER"))
+            if 'deleted_at' not in columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN deleted_at INTEGER"))
 
-        # Add PubMed metadata columns if missing
-        result = conn.execute(text("PRAGMA table_info(items)"))
-        columns = [row[1] for row in result]
+            result = conn.execute(text("PRAGMA table_info(items)"))
+            columns = [row[1] for row in result]
+            for col_name, col_type in {'abstract': 'TEXT', 'authors': 'TEXT', 'journal': 'VARCHAR(255)', 'year': 'VARCHAR(4)', 'volume': 'VARCHAR(32)', 'issue': 'VARCHAR(32)', 'doi': 'VARCHAR(255)'}.items():
+                if col_name not in columns:
+                    conn.execute(text(f"ALTER TABLE items ADD COLUMN {col_name} {col_type}"))
 
-        new_columns = {
-            'abstract': 'TEXT',
-            'authors': 'TEXT',
-            'journal': 'VARCHAR(255)',
-            'year': 'VARCHAR(4)',
-            'volume': 'VARCHAR(32)',
-            'issue': 'VARCHAR(32)',
-            'doi': 'VARCHAR(255)'
-        }
+            result = conn.execute(text("PRAGMA table_info(workspace_items)"))
+            columns = [row[1] for row in result]
+            if 'workspace_id' not in columns:
+                conn.execute(text("ALTER TABLE workspace_items ADD COLUMN workspace_id INTEGER"))
+            if 'archived' not in columns:
+                conn.execute(text("ALTER TABLE workspace_items ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0"))
+            if 'deleted_at' not in columns:
+                conn.execute(text("ALTER TABLE workspace_items ADD COLUMN deleted_at INTEGER"))
 
-        for col_name, col_type in new_columns.items():
-            if col_name not in columns:
-                conn.execute(text(f"ALTER TABLE items ADD COLUMN {col_name} {col_type}"))
+            result = conn.execute(text("PRAGMA table_info(notes)"))
+            columns = [row[1] for row in result]
+            if 'workspace_id' not in columns:
+                conn.execute(text("ALTER TABLE notes ADD COLUMN workspace_id INTEGER"))
 
-        # Add workspace_id to workspace_items if missing
-        result = conn.execute(text("PRAGMA table_info(workspace_items)"))
-        columns = [row[1] for row in result]
-        if 'workspace_id' not in columns:
-            conn.execute(text("ALTER TABLE workspace_items ADD COLUMN workspace_id INTEGER"))
+            result = conn.execute(text("PRAGMA table_info(user_to_saved)"))
+            columns = [row[1] for row in result]
+            if 'query' not in columns:
+                conn.execute(text("ALTER TABLE user_to_saved ADD COLUMN query VARCHAR(1023)"))
 
-        # Add workspace_id to notes if missing
-        result = conn.execute(text("PRAGMA table_info(notes)"))
-        columns = [row[1] for row in result]
-        if 'workspace_id' not in columns:
-            conn.execute(text("ALTER TABLE notes ADD COLUMN workspace_id INTEGER"))
+            for tbl, ddl in {
+                "search_cache": "CREATE TABLE IF NOT EXISTS search_cache (cache_key VARCHAR(64) PRIMARY KEY, item_ids TEXT NOT NULL, time_cached INTEGER NOT NULL)",
+                "search_history": "CREATE TABLE IF NOT EXISTS search_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, query VARCHAR(1023) NOT NULL, source_filters TEXT NOT NULL DEFAULT '[]', num_results INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES users (id))",
+                "ai_usage_log": "CREATE TABLE IF NOT EXISTS ai_usage_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, endpoint VARCHAR(64) NOT NULL, model VARCHAR(64) NOT NULL, input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL, cost_estimate FLOAT NOT NULL, created_at INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES users (id))",
+                "user_sessions": "CREATE TABLE IF NOT EXISTS user_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, session_token VARCHAR(128) NOT NULL, ip_address VARCHAR(45) NOT NULL DEFAULT '', user_agent VARCHAR(512) NOT NULL DEFAULT '', last_active INTEGER, created_at INTEGER NOT NULL, FOREIGN KEY (user_id) REFERENCES users (id))",
+            }.items():
+                result = conn.execute(text(f"PRAGMA table_info({tbl})"))
+                if not [row[1] for row in result]:
+                    conn.execute(text(ddl))
 
-        # Add query column to user_to_saved if missing
-        result = conn.execute(text("PRAGMA table_info(user_to_saved)"))
-        columns = [row[1] for row in result]
-        if 'query' not in columns:
-            conn.execute(text("ALTER TABLE user_to_saved ADD COLUMN query VARCHAR(1023)"))
+            result = conn.execute(text("PRAGMA table_info(workspaces)"))
+            columns = [row[1] for row in result]
+            if 'persona' not in columns:
+                conn.execute(text("ALTER TABLE workspaces ADD COLUMN persona VARCHAR(32) NOT NULL DEFAULT 'formal'"))
+            if 'parent_id' not in columns:
+                conn.execute(text("ALTER TABLE workspaces ADD COLUMN parent_id INTEGER REFERENCES workspaces(id)"))
+            if 'archived' not in columns:
+                conn.execute(text("ALTER TABLE workspaces ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0"))
+            if 'deleted_at' not in columns:
+                conn.execute(text("ALTER TABLE workspaces ADD COLUMN deleted_at INTEGER"))
+            if 'folder_id' not in columns:
+                conn.execute(text("ALTER TABLE workspaces ADD COLUMN folder_id INTEGER REFERENCES workspace_folders(id)"))
+            if 'course_id' not in columns:
+                conn.execute(text("ALTER TABLE workspaces ADD COLUMN course_id INTEGER REFERENCES nesa_courses(id)"))
 
-        # Add search_cache table if missing
-        result = conn.execute(text("PRAGMA table_info(search_cache)"))
-        columns = [row[1] for row in result]
-        if not columns:
-            conn.execute(text("""
-                CREATE TABLE search_cache (
-                    cache_key VARCHAR(64) PRIMARY KEY,
-                    item_ids TEXT NOT NULL,
-                    time_cached INTEGER NOT NULL
-                )
-            """))
+            result = conn.execute(text("PRAGMA table_info(workspace_chat_messages)"))
+            columns = [row[1] for row in result]
+            if 'citations' not in columns:
+                conn.execute(text("ALTER TABLE workspace_chat_messages ADD COLUMN citations JSON"))
+            if 'author_name' not in columns:
+                conn.execute(text("ALTER TABLE workspace_chat_messages ADD COLUMN author_name VARCHAR(254)"))
 
-        # Add search_history table if missing
-        result = conn.execute(text("PRAGMA table_info(search_history)"))
-        columns = [row[1] for row in result]
-        if not columns:
-            conn.execute(text("""
-                CREATE TABLE search_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    query VARCHAR(1023) NOT NULL,
-                    source_filters TEXT NOT NULL DEFAULT '[]',
-                    num_results INTEGER NOT NULL DEFAULT 0,
-                    created_at INTEGER NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                )
-            """))
+            result = conn.execute(text("PRAGMA table_info(uploaded_files)"))
+            columns = [row[1] for row in result]
+            if 'file_hash' not in columns:
+                conn.execute(text("ALTER TABLE uploaded_files ADD COLUMN file_hash VARCHAR(64) NOT NULL DEFAULT ''"))
 
-        # Add persona to workspaces if missing
-        result = conn.execute(text("PRAGMA table_info(workspaces)"))
-        columns = [row[1] for row in result]
-        if 'persona' not in columns:
-            conn.execute(text("ALTER TABLE workspaces ADD COLUMN persona VARCHAR(32) NOT NULL DEFAULT 'formal'"))
-
-        # Add citations to workspace_chat_messages if missing
-        result = conn.execute(text("PRAGMA table_info(workspace_chat_messages)"))
-        columns = [row[1] for row in result]
-        if 'citations' not in columns:
-            conn.execute(text("ALTER TABLE workspace_chat_messages ADD COLUMN citations JSON"))
-
-        # Add parent_id/archived/deleted_at to workspaces if missing
-        result = conn.execute(text("PRAGMA table_info(workspaces)"))
-        columns = [row[1] for row in result]
-        if 'parent_id' not in columns:
-            conn.execute(text("ALTER TABLE workspaces ADD COLUMN parent_id INTEGER REFERENCES workspaces(id)"))
-        if 'archived' not in columns:
-            conn.execute(text("ALTER TABLE workspaces ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0"))
-        if 'deleted_at' not in columns:
-            conn.execute(text("ALTER TABLE workspaces ADD COLUMN deleted_at INTEGER"))
-        if 'folder_id' not in columns:
-            conn.execute(text("ALTER TABLE workspaces ADD COLUMN folder_id INTEGER REFERENCES workspace_folders(id)"))
-
-        # Add archived/deleted_at to workspace_items if missing
-        result = conn.execute(text("PRAGMA table_info(workspace_items)"))
-        columns = [row[1] for row in result]
-        if 'archived' not in columns:
-            conn.execute(text("ALTER TABLE workspace_items ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0"))
-        if 'deleted_at' not in columns:
-            conn.execute(text("ALTER TABLE workspace_items ADD COLUMN deleted_at INTEGER"))
-
-        # Add file_hash to uploaded_files if missing
-        result = conn.execute(text("PRAGMA table_info(uploaded_files)"))
-        columns = [row[1] for row in result]
-        if 'file_hash' not in columns:
-            conn.execute(text("ALTER TABLE uploaded_files ADD COLUMN file_hash VARCHAR(64) NOT NULL DEFAULT ''"))
-
-        # Add ai_usage_log table if missing
-        result = conn.execute(text("PRAGMA table_info(ai_usage_log)"))
-        columns = [row[1] for row in result]
-        if not columns:
-            conn.execute(text("""
-                CREATE TABLE ai_usage_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    endpoint VARCHAR(64) NOT NULL,
-                    model VARCHAR(64) NOT NULL,
-                    input_tokens INTEGER NOT NULL,
-                    output_tokens INTEGER NOT NULL,
-                    cost_estimate FLOAT NOT NULL,
-                    created_at INTEGER NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                )
-            """))
-
-        # Add time_created to users if missing
-        result = conn.execute(text("PRAGMA table_info(users)"))
-        columns = [row[1] for row in result]
-        if 'time_created' not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN time_created INTEGER"))
-
-        # Add deleted_at to users if missing
-        result = conn.execute(text("PRAGMA table_info(users)"))
-        columns = [row[1] for row in result]
-        if 'deleted_at' not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN deleted_at INTEGER"))
-
-        # Create user_sessions table if missing
-        result = conn.execute(text("PRAGMA table_info(user_sessions)"))
-        columns = [row[1] for row in result]
-        if not columns:
-            conn.execute(text("""
-                CREATE TABLE user_sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    session_token VARCHAR(128) NOT NULL,
-                    ip_address VARCHAR(45) NOT NULL DEFAULT '',
-                    user_agent VARCHAR(512) NOT NULL DEFAULT '',
-                    last_active INTEGER,
-                    created_at INTEGER NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
-                )
-            """))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_sessions_session_token ON user_sessions(session_token)"))
-
-        # Add course_id to workspaces if missing
-        result = conn.execute(text("PRAGMA table_info(workspaces)"))
-        columns = [row[1] for row in result]
-        if 'course_id' not in columns:
-            conn.execute(text("ALTER TABLE workspaces ADD COLUMN course_id INTEGER REFERENCES nesa_courses(id)"))
-
-        # Add author_name to workspace_chat_messages if missing
-        result = conn.execute(text("PRAGMA table_info(workspace_chat_messages)"))
-        columns = [row[1] for row in result]
-        if 'author_name' not in columns:
-            conn.execute(text("ALTER TABLE workspace_chat_messages ADD COLUMN author_name VARCHAR(254)"))
-
-        conn.commit()
-
-    # Create new tables if they don't exist (handled by create_all above)
+            conn.commit()
 
     # Seed NESA courses after tables exist
     try:
