@@ -501,6 +501,8 @@ def create_workspace():
     if not user_id:
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
 
+    if not request.json:
+        return jsonify({'status': False, 'error': 'Request must be JSON'}), 400
     data = request.json
     name = data.get('name', 'New Workspace').strip()[:25]
     if not name:
@@ -508,7 +510,11 @@ def create_workspace():
     parent_id = data.get('parent_id')
     folder_id = data.get('folder_id')
     course_id = data.get('course_id')
-    workspace = db.create_workspace(user_id, name, parent_id=parent_id, folder_id=folder_id, course_id=course_id)
+    try:
+        workspace = db.create_workspace(user_id, name, parent_id=parent_id, folder_id=folder_id, course_id=course_id)
+    except Exception as e:
+        logging.error(f"Failed to create workspace for user {user_id}: {e}")
+        return jsonify({'status': False, 'error': 'Failed to create workspace'}), 500
     logging.info(f"User {user_id} created workspace: {name}")
     return jsonify({'status': True, 'workspace': workspace})
 
