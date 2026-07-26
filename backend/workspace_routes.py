@@ -160,7 +160,9 @@ def apply_template(workspace_id):
     user_id = session.get('user_id')
     if not user_id:
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
-    data = request.json
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({'status': False, 'error': 'Request must be JSON'}), 400
     template_id = data.get('template_id')
     if not template_id:
         return jsonify({'status': False, 'error': 'template_id required'}), 400
@@ -171,9 +173,12 @@ def apply_template(workspace_id):
     if not ws:
         return jsonify({'status': False, 'error': 'Workspace not found'}), 404
     structure = template['structure']
-    # Create note sections as notes
-    for section in structure.get('note_sections', []):
-        db.create_workspace_note(user_id, workspace_id, section, f"<h3>{section}</h3><p>Your notes here...</p>")
+    try:
+        for section in structure.get('note_sections', []):
+            db.create_workspace_note(user_id, workspace_id, section, f"<h3>{section}</h3><p>Your notes here...</p>")
+    except Exception as e:
+        logging.error(f"Failed to apply template '{template_id}' to workspace {workspace_id}: {e}")
+        return jsonify({'status': False, 'error': 'Failed to create template notes'}), 500
     logging.info(f"User {user_id} applied template '{template_id}' to workspace {workspace_id}")
     return jsonify({'status': True, 'template': template})
 

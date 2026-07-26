@@ -96,3 +96,62 @@ def test_bulk_delete_no_session_returns_redirect():
     with flask_app.test_client() as c:
         resp = c.post("/api/workspace-items/bulk-delete", json={})
         assert resp.status_code == 302
+
+
+# ── apply-template tests ──
+
+def _call_apply_template(workspace_id=1, body=None):
+    ctx = flask_app.test_request_context(
+        f"/workspace/{workspace_id}/apply-template", method="POST",
+        json=body or {"template_id": "essay"}
+    )
+    ctx.push()
+    from flask import session
+    session["user_id"] = 1
+    from backend.workspace_routes import apply_template
+    result = apply_template(workspace_id)
+    ctx.pop()
+    if isinstance(result, tuple):
+        return result[0], result[1]
+    return result, result.status_code
+
+
+def test_apply_template_rejects_missing_body():
+    ctx = flask_app.test_request_context(
+        "/workspace/1/apply-template", method="POST", content_type="application/json"
+    )
+    ctx.push()
+    from flask import session
+    session["user_id"] = 1
+    from backend.workspace_routes import apply_template
+    result = apply_template(1)
+    ctx.pop()
+    resp, status = (result[0], result[1]) if isinstance(result, tuple) else (result, result.status_code)
+    assert status == 400
+    assert resp.get_json()["status"] is False
+
+
+def test_apply_template_rejects_empty_template_id():
+    resp, status = _call_apply_template(1, {"template_id": ""})
+    assert status == 400
+
+
+def test_apply_template_rejects_unknown_template():
+    resp, status = _call_apply_template(1, {"template_id": "nonexistent"})
+    assert status == 404
+
+
+def test_apply_template_rejects_missing_workspace(monkeypatch):
+    monkeypatch.setattr(db_mod, "get_workspace", lambda *a: None)
+    resp, status = _call_apply_template(99)
+    assert status == 404
+
+
+def test_apply_template_handles_note_creation_failure(monkeypatch):
+    monkeypatch.setattr(db_mod, "get_workspace", lambda *a: {"id": 1, "name": "Test"})
+    def _broken_note(*a, **kw):
+        raise RuntimeError("Note insert failure")
+    monkeypatch.setattr(db_mod, "create_workspace_note", _broken_note)
+    resp, status = _call_apply_template(1)
+    assert status == 500
+    assert resp.get_json()["status"] is False
