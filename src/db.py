@@ -23,7 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
-engine = create_engine("sqlite:///server.db", echo=False)
+engine = create_engine(os.environ.get("DATABASE_URL", "sqlite:///server.db"), echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 _SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret')
