@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 300">
+  <g fill="#36261B">
+    <!-- Main vertical drip / teardrop -->
+    <path d="M 50,25
+             C 70,25 78,50 76,80
+             C 74,112 65,158 54,205
+             C 52,225 50,252 50,270
+             C 50,252 48,225 46,205
+             C 35,158 26,112 24,80
+             C 22,50 30,25 50,25 Z"/>
+
+    <!-- Secondary smaller drip -->
+    <path d="M 68,88
+             C 78,88 82,102 80,124
+             C 78,142 74,165 71,180
+             C 70,165 68,142 66,124
+             C 64,102 62,90 68,88 Z"/>
+
+    <!-- Detached droplet -->
+    <ellipse cx="50" cy="282" rx="3.5" ry="5"/>
+    <ellipse cx="74" cy="192" rx="2.5" ry="3.5"/>
+  </g>
+</svg>

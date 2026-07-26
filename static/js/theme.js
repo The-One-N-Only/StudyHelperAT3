@@ -9,6 +9,9 @@
     var targetY = window.innerHeight * 0.3;
     var currentX = targetX;
     var currentY = targetY;
+    var glowOpacity = 0.82;
+    var targetOpacity = 0.82;
+    var flickerTimer = 0;
     var animationFrame = null;
 
     // ── Font Size ──
@@ -78,12 +81,30 @@
     }
 
     function animateGlow() {
-        currentX += (targetX - currentX) * 0.25;
-        currentY += (targetY - currentY) * 0.25;
-        cursorGlow.style.left = currentX + 'px';
-        cursorGlow.style.top = currentY + 'px';
+        if (!cursorGlow) return;
+        
+        // Smooth position following (slower for flame-like drift)
+        currentX += (targetX - currentX) * 0.15;
+        currentY += (targetY - currentY) * 0.15;
+        
+        // Flicker logic - randomized opacity and micro-position jitter
+        flickerTimer++;
+        if (flickerTimer % 3 === 0) {
+            targetOpacity = 0.65 + Math.random() * 0.3;
+        }
+        glowOpacity += (targetOpacity - glowOpacity) * 0.2;
+        
+        var jitterX = (Math.random() - 0.5) * 6;
+        var jitterY = (Math.random() - 0.5) * 8;
+        var jitterScaleX = 1 + (Math.random() - 0.5) * 0.04;
+        var jitterScaleY = 1 + (Math.random() - 0.5) * 0.06;
+        
+        cursorGlow.style.left = (currentX + jitterX) + 'px';
+        cursorGlow.style.top = (currentY + jitterY) + 'px';
+        cursorGlow.style.opacity = glowOpacity;
+        
         var isMoving = Math.abs(targetX - currentX) > 0.5 || Math.abs(targetY - currentY) > 0.5;
-        animationFrame = isMoving ? requestAnimationFrame(animateGlow) : null;
+        animationFrame = requestAnimationFrame(animateGlow);
     }
 
     function trackPointer(event) {
@@ -97,6 +118,9 @@
     function startGlow() {
         if (!cursorGlow || !finePointer.matches) return;
         window.addEventListener("pointermove", trackPointer, { passive: true });
+        if (animationFrame === null) {
+            animationFrame = requestAnimationFrame(animateGlow);
+        }
     }
 
     function stopGlow() {
@@ -109,8 +133,14 @@
 
     function syncGlow() {
         var isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
-        if (isDark && finePointer.matches) startGlow();
-        else stopGlow();
+        if (isDark && finePointer.matches) {
+            startGlow();
+        } else {
+            stopGlow();
+            if (cursorGlow) {
+                cursorGlow.style.opacity = 0;
+            }
+        }
     }
 
     function toggleTheme() {
@@ -202,6 +232,15 @@
 
     document.addEventListener("DOMContentLoaded", function () {
         cursorGlow = document.querySelector(".candle-glow");
+        // Initialize position to center-ish of viewport
+        targetX = window.innerWidth / 2;
+        targetY = window.innerHeight * 0.4;
+        currentX = targetX;
+        currentY = targetY;
+        if (cursorGlow) {
+            cursorGlow.style.left = currentX + 'px';
+            cursorGlow.style.top = currentY + 'px';
+        }
         var themeBtn = document.getElementById("themeToggle");
         if (themeBtn) {
             themeBtn.addEventListener("click", toggleTheme);

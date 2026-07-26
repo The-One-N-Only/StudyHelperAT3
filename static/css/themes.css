@@ -1009,6 +1009,49 @@
     width: 180px;
 }
 
+:root:not([data-bs-theme="dark"]) .archive-page .illustration-ink-splash-1 {
+    bottom: -20px;
+    height: 280px;
+    right: -20px;
+    width: 280px;
+    opacity: 0.05;
+}
+:root:not([data-bs-theme="dark"]) .archive-page .illustration-ink-splash-2 {
+    height: 160px;
+    left: -10px;
+    top: 30%;
+    width: 120px;
+    opacity: 0.05;
+}
+:root:not([data-bs-theme="dark"]) .archive-page .illustration-ink-splash-3 {
+    height: 200px;
+    left: 60%;
+    top: -20px;
+    width: 80px;
+    opacity: 0.05;
+}
+[data-bs-theme="dark"] .archive-page .illustration-ink-splash-1 {
+    bottom: -20px;
+    height: 280px;
+    right: -20px;
+    width: 280px;
+    opacity: 0.06;
+}
+[data-bs-theme="dark"] .archive-page .illustration-ink-splash-2 {
+    height: 160px;
+    left: -10px;
+    top: 30%;
+    width: 120px;
+    opacity: 0.06;
+}
+[data-bs-theme="dark"] .archive-page .illustration-ink-splash-3 {
+    height: 200px;
+    left: 60%;
+    top: -20px;
+    width: 80px;
+    opacity: 0.06;
+}
+
 :root:not([data-bs-theme="dark"]) .illustration-candlestick {
     --illustration-image: url("/static/img/illustrations/candlestick.svg");
     opacity: 0.10;
@@ -1044,14 +1087,43 @@
     opacity: 0.10;
 }
 
+:root:not([data-bs-theme="dark"]) .illustration-ink-splash-1 {
+    --illustration-image: url("/static/img/illustrations/ink-splash-1.svg");
+    opacity: 0.06;
+}
+:root:not([data-bs-theme="dark"]) .illustration-ink-splash-2 {
+    --illustration-image: url("/static/img/illustrations/ink-splash-2.svg");
+    opacity: 0.06;
+}
+:root:not([data-bs-theme="dark"]) .illustration-ink-splash-3 {
+    --illustration-image: url("/static/img/illustrations/ink-splash-3.svg");
+    opacity: 0.06;
+}
+:root:not([data-bs-theme="dark"]) .illustration-filigree {
+    --illustration-image: url("/static/img/illustrations/filigree-ornament.svg");
+    opacity: 0.08;
+}
+
+[data-bs-theme="dark"] .illustration-ink-splash-1 {
+    --illustration-image: url("/static/img/illustrations/ink-splash-1.svg");
+}
+[data-bs-theme="dark"] .illustration-ink-splash-2 {
+    --illustration-image: url("/static/img/illustrations/ink-splash-2.svg");
+}
+[data-bs-theme="dark"] .illustration-ink-splash-3 {
+    --illustration-image: url("/static/img/illustrations/ink-splash-3.svg");
+}
+[data-bs-theme="dark"] .illustration-filigree {
+    --illustration-image: url("/static/img/illustrations/filigree-ornament.svg");
+}
+
 /* ── Candlelit Archive: shared materials and controls ── */
 @media (hover: none), (pointer: coarse) {
     [data-bs-theme="dark"] .archive-illustration {
         opacity: 0.10;
     }
-
     [data-bs-theme="dark"] .candle-glow {
-        display: none;
+        opacity: 0.4;
     }
 }
 
@@ -1143,6 +1215,40 @@
 
 [data-bs-theme="dark"] .btn-ghost:hover {
     border-color: var(--gold-700);
+    color: var(--gold-100);
+}
+
+/* ── Book-cloth textured button ── */
+:root:not([data-bs-theme="dark"]) .btn-book-cloth {
+    background-color: var(--paper-200);
+    background-image: 
+        linear-gradient(rgb(226 213 198 / 0.6), rgb(226 213 198 / 0.6)),
+        repeating-linear-gradient(90deg, transparent, transparent 2px, hsl(33 20% 55% / 0.08) 2px, hsl(33 20% 55% / 0.08) 3px);
+    background-blend-mode: normal;
+    background-repeat: repeat, repeat;
+    background-size: auto, 6px 100%;
+    border: 1px solid hsl(33 30% 60% / 0.50);
+    border-radius: var(--radius-button);
+    color: var(--ink-900);
+}
+:root:not([data-bs-theme="dark"]) .btn-book-cloth:hover {
+    border-color: var(--gilt-900);
+    color: var(--ink-900);
+}
+[data-bs-theme="dark"] .btn-book-cloth {
+    background-color: var(--surface-800);
+    background-image: 
+        linear-gradient(hsl(30 43% 12% / 0.4), hsl(30 43% 12% / 0.4)),
+        repeating-linear-gradient(90deg, transparent, transparent 2px, hsl(35 40% 45% / 0.08) 2px, hsl(35 40% 45% / 0.08) 3px);
+    background-blend-mode: normal;
+    background-repeat: repeat, repeat;
+    background-size: auto, 6px 100%;
+    border: 1px solid hsl(35 40% 45% / 0.22);
+    border-radius: var(--radius-button);
+    color: var(--gold-300);
+}
+[data-bs-theme="dark"] .btn-book-cloth:hover {
+    border-color: var(--gold-500);
     color: var(--gold-100);
 }
 
@@ -1312,19 +1418,67 @@
     --illustration-image: url("/static/img/illustrations/scrollwork-flourish.svg");
 }
 
-/* ── Candlelit Archive: candle glow ── */
+/* ── Deckled (torn) paper edge ── */
+.deckled-edge {
+    border-image: url("/static/img/textures/deckled-edge.svg") 20 0 0 0 repeat;
+    border-width: 12px 0 0 0;
+    border-style: solid;
+    border-image-slice: 20 0 0 0;
+    padding-top: 8px;
+}
+.deckled-edge-bottom {
+    border-image: url("/static/img/textures/deckled-edge.svg") 0 0 20 0 repeat;
+    border-width: 0 0 12px 0;
+    border-style: solid;
+    border-image-slice: 0 0 20 0;
+    padding-bottom: 8px;
+}
+
+/* ── Embossed / debossed card effect ── */
+.card-embossed {
+    box-shadow: 
+        inset 0 1px 0 hsl(33 30% 70% / 0.25),
+        inset 0 -1px 0 hsl(33 30% 30% / 0.15),
+        var(--shadow-parchment-raised);
+}
+[data-bs-theme="dark"] .card-embossed {
+    box-shadow: 
+        inset 0 1px 0 hsl(35 40% 60% / 0.10),
+        inset 0 -1px 0 hsl(28 60% 4% / 0.4),
+        var(--shadow-warm-raised);
+}
+
+/* ── Candlelit Archive: candle flame glow ── */
 [data-bs-theme="dark"] .candle-glow {
     position: fixed;
     top: 0;
     left: 0;
-    width: 400px;
-    height: 400px;
-    background: radial-gradient(circle, hsl(35 80% 68% / 0.28) 0%, hsl(35 80% 68% / 0.06) 35%, transparent 65%);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
+    width: 280px;
+    height: 480px;
     pointer-events: none;
-    z-index: 9999;
-    will-change: transform;
+    z-index: var(--z-candle-glow);
+    will-change: transform, opacity;
+    mix-blend-mode: screen;
+    background:
+        /* inner bright core */
+        radial-gradient(ellipse 25% 30% at 50% 55%, hsl(40 100% 92% / 0.30) 0%, transparent 50%),
+        /* main flame body */
+        radial-gradient(ellipse 35% 42% at 50% 50%, hsl(35 100% 78% / 0.18) 0%, transparent 55%),
+        /* outer warm glow */
+        radial-gradient(ellipse 45% 52% at 50% 48%, hsl(30 85% 55% / 0.08) 0%, transparent 65%);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    animation: candle-flicker 2.5s ease-in-out infinite;
+}
+
+@keyframes candle-flicker {
+    0%, 100% { opacity: 0.82; transform: translate(-50%, -50%) scaleX(1) scaleY(1) rotate(0deg); }
+    12% { opacity: 0.92; transform: translate(-50%, -50%) scaleX(0.97) scaleY(1.04) rotate(0.4deg); }
+    25% { opacity: 0.75; transform: translate(-50%, -50%) scaleX(1.03) scaleY(0.94) rotate(-0.3deg); }
+    37% { opacity: 0.95; transform: translate(-50%, -50%) scaleX(0.98) scaleY(1.06) rotate(0.5deg); }
+    50% { opacity: 0.78; transform: translate(-50%, -50%) scaleX(1.01) scaleY(0.96) rotate(-0.2deg); }
+    62% { opacity: 0.88; transform: translate(-50%, -50%) scaleX(0.96) scaleY(1.03) rotate(0.3deg); }
+    75% { opacity: 0.72; transform: translate(-50%, -50%) scaleX(1.02) scaleY(0.92) rotate(-0.4deg); }
+    87% { opacity: 0.9; transform: translate(-50%, -50%) scaleX(0.99) scaleY(1.02) rotate(0.2deg); }
 }
 
 /* ── Candlelit Archive: navbar, wordmark, sidebar ── */
@@ -2117,4 +2271,19 @@
 [data-bs-theme="dark"] .notes-box .ql-editor a,
 [data-bs-theme="dark"] #noteEditorModal .ql-editor a {
     color: var(--gold-300);
+}
+
+/* ── Filigree ornamental divider ── */
+.filigree-divider {
+    background-image: url("/static/img/illustrations/filigree-ornament.svg");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    height: 30px;
+    margin: 1.5rem 0;
+    opacity: 0.15;
+    width: 100%;
+}
+[data-bs-theme="dark"] .filigree-divider {
+    opacity: 0.12;
 }

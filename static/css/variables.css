@@ -59,6 +59,8 @@
     --bs-link-color: var(--ink-700);
     --bs-link-hover-color: var(--rubric-700);
     --bs-body-font-family: var(--font-body);
+    --candle-flame-color: hsl(35 100% 75% / 0.35);
+    --ink-splash-opacity: 0.06;
 }
 
 :root:not([data-bs-theme="dark"]) {
@@ -73,12 +75,12 @@
     color-scheme: dark;
     --illum-color: var(--gold-500);
 
-    --bg-950: #0A0A0A;
-    --bg-900: #14100B;
-    --surface-800: #22170B;
-    --surface-700: #2E1F0F;
-    --surface-600: #3D2914;
-    --surface-500: #4D3319;
+    --bg-950: #030303;
+    --bg-900: #0B0805;
+    --surface-800: #171007;
+    --surface-700: #22150A;
+    --surface-600: #2E1D0D;
+    --surface-500: #3B2610;
 
     --gold-100: #EDD9B5;
     --gold-300: #C9A876;
@@ -129,4 +131,6 @@
     --bs-danger: var(--danger-rust);
     --bs-link-color: var(--gold-300);
     --bs-link-hover-color: var(--gold-100);
+    --candle-flame-color: hsl(35 100% 75% / 0.35);
+    --ink-splash-opacity: 0.06;
 }

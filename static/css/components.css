@@ -702,4 +702,17 @@ input[type="date"].form-control {
     display: none;
 }
 
+/* ── Embossed card inner glow ── */
+.card-embossed {
+    border-radius: var(--radius-panel);
+    transition: box-shadow 150ms ease;
+}
+
+/* ── Filigree divider ── */
+.filigree-divider {
+    display: block;
+    pointer-events: none;
+    user-select: none;
+}
+
 

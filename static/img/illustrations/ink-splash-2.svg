@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">
+  <g fill="#36261B">
+    <!-- Medium organic splats -->
+    <path d="M 75,92 C 88,86 96,98 88,108 C 82,114 72,106 75,92 Z"/>
+    <path d="M 195,52 C 210,46 218,60 208,72 C 198,80 188,64 195,52 Z"/>
+    <path d="M 225,148 C 240,142 248,156 236,166 C 226,174 214,160 225,148 Z"/>
+    <path d="M 55,162 C 64,158 72,166 66,174 C 60,180 50,170 55,162 Z"/>
+    <path d="M 145,35 C 156,30 162,40 154,48 C 148,54 140,45 145,35 Z"/>
+
+    <!-- Medium dots -->
+    <circle cx="120" cy="108" r="4.5"/>
+    <circle cx="260" cy="88" r="4"/>
+    <circle cx="40" cy="58" r="3.8"/>
+    <circle cx="175" cy="128" r="5"/>
+    <circle cx="90" cy="178" r="3.5"/>
+
+    <!-- Small dots -->
+    <circle cx="102" cy="82" r="2.5"/>
+    <circle cx="138" cy="98" r="2"/>
+    <circle cx="155" cy="85" r="1.8"/>
+    <circle cx="215" cy="102" r="2.2"/>
+    <circle cx="242" cy="115" r="1.5"/>
+    <circle cx="270" cy="62" r="2"/>
+    <circle cx="282" cy="76" r="1.5"/>
+    <circle cx="30" cy="85" r="2"/>
+    <circle cx="48" cy="108" r="1.8"/>
+    <circle cx="62" cy="48" r="2.5"/>
+    <circle cx="82" cy="158" r="2"/>
+    <circle cx="110" cy="168" r="1.5"/>
+    <circle cx="160" cy="162" r="2.2"/>
+    <circle cx="192" cy="175" r="1.8"/>
+    <circle cx="248" cy="172" r="2"/>
+
+    <!-- Tiny specks -->
+    <circle cx="115" cy="78" r="1.2"/>
+    <circle cx="148" cy="108" r="1"/>
+    <circle cx="228" cy="88" r="1.2"/>
+    <circle cx="252" cy="98" r="1"/>
+    <circle cx="35" cy="72" r="1"/>
+    <circle cx="72" cy="36" r="1.2"/>
+    <circle cx="135" cy="50" r="1"/>
+    <circle cx="200" cy="40" r="1.2"/>
+    <circle cx="280" cy="128" r="1"/>
+    <circle cx="290" cy="110" r="1.2"/>
+    <circle cx="45" cy="132" r="1"/>
+    <circle cx="72" cy="138" r="1.2"/>
+    <circle cx="130" cy="178" r="1"/>
+    <circle cx="180" cy="188" r="1.2"/>
+    <circle cx="260" cy="160" r="1"/>
+  </g>
+</svg>
