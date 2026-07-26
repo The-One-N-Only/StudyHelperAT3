@@ -1,2 +1,26 @@
-from . import answer, citations, db, export, files, proxy, pubmed, search, similarity, summarise, whitelist, embeddings, semantic_scholar, oer, nesa_data
-from . import english, mathematics, austlii, abs_data, rba_data, gallery_search, aiatsis, tas, dashboard
+from . import (
+    abs_data,
+    aiatsis,
+    answer,
+    austlii,
+    citations,
+    dashboard,
+    db,
+    embeddings,
+    english,
+    export,
+    files,
+    gallery_search,
+    mathematics,
+    nesa_data,
+    oer,
+    proxy,
+    pubmed,
+    rba_data,
+    search,
+    semantic_scholar,
+    similarity,
+    summarise,
+    tas,
+    whitelist,
+)

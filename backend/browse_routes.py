@@ -1,8 +1,9 @@
 import logging
-import json
-from flask import Blueprint, render_template, session, redirect, url_for, request, jsonify
-import src.pubmed as pubmed
+
+from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+
 import src.db as db
+import src.pubmed as pubmed
 
 browse_bp = Blueprint('browse', __name__)
 

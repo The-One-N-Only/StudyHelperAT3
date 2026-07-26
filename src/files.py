@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import json as json_lib
 import logging
-import os
 
 import fitz  # PyMuPDF
 from docx import Document
@@ -49,7 +47,7 @@ def extract_text(file_path: str, file_type: str) -> str:
         elif file_type == "image":
             return ""
         elif file_type == "txt":
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 return f.read()
         elif file_type == "pptx":
             try:
@@ -68,7 +66,7 @@ def extract_text(file_path: str, file_type: str) -> str:
                 return ""
         elif file_type == "csv":
             rows = []
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 sample = f.read(2048)
                 f.seek(0)
                 dialect = csv.Sniffer().sniff(sample) if sample else csv.excel
@@ -80,7 +78,7 @@ def extract_text(file_path: str, file_type: str) -> str:
                         rows.append(" | ".join(row.get(col, "") for col in reader.fieldnames))
             return "\n".join(rows) if rows else ""
         elif file_type == "json":
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding='utf-8') as f:
                 data = json_lib.load(f)
             return json_lib.dumps(data, indent=2)
         else:
@@ -142,8 +140,9 @@ def extract_text_ocr(filepath: str, file_type: str) -> str:
                 page = doc.load_page(page_num)
                 pix = page.get_pixmap()
                 img_data = pix.tobytes("png")
-                from PIL import Image
                 import io
+
+                from PIL import Image
                 img = Image.open(io.BytesIO(img_data))
                 text_parts.append(pytesseract.image_to_string(img))
             doc.close()

@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import json
-from typing import Optional
-
 import src.citations as citations
 import src.db as db
 

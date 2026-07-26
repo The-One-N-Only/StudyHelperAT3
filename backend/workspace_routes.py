@@ -1,6 +1,7 @@
-import json
 import logging
-from flask import Blueprint, render_template, session, redirect, url_for, request, jsonify
+
+from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+
 import src.db as db
 
 workspace_bp = Blueprint('workspace', __name__)
@@ -343,7 +344,7 @@ def restore_from_trash(workspace_id):
 # ── Note Version History Endpoints ──
 
 @workspace_bp.route('/workspace/<int:workspace_id>/note/<int:note_id>/versions')
-def get_note_versions(workspace_id, note_id):
+def get_note_versions(_workspace_id, note_id):
     user_id = session.get('user_id')
     if not user_id:
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
@@ -352,7 +353,7 @@ def get_note_versions(workspace_id, note_id):
 
 
 @workspace_bp.route('/workspace/<int:workspace_id>/note/<int:note_id>/restore/<int:version_id>', methods=['POST'])
-def restore_note_version(workspace_id, note_id, version_id):
+def restore_note_version(_workspace_id, note_id, version_id):
     user_id = session.get('user_id')
     if not user_id:
         return jsonify({'status': False, 'error': 'Not logged in'}), 401

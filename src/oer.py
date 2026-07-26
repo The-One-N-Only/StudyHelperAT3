@@ -1,5 +1,5 @@
 def search_openstax(query: str, limit: int = 5) -> list[dict]:
-    OPENSTAX_BOOKS = {
+    openstax_books = {
         "Algebra and Trigonometry": {"url": "https://openstax.org/details/books/algebra-and-trigonometry-2e", "subjects": ["math"]},
         "Calculus Volume 1": {"url": "https://openstax.org/details/books/calculus-volume-1", "subjects": ["math"]},
         "Physics": {"url": "https://openstax.org/details/books/college-physics-2e", "subjects": ["physics", "science"]},
@@ -12,7 +12,7 @@ def search_openstax(query: str, limit: int = 5) -> list[dict]:
     }
     query_lower = query.lower()
     results = []
-    for name, info in OPENSTAX_BOOKS.items():
+    for name, info in openstax_books.items():
         if query_lower in name.lower() or any(s in query_lower for s in info["subjects"]):
             results.append({
                 "source_name": "OpenStax",

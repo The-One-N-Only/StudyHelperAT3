@@ -1,5 +1,7 @@
 from functools import wraps
-from flask import session, jsonify, request
+
+from flask import jsonify, request, session
+
 import src.db as db
 
 ROLE_HIERARCHY = {"viewer": 0, "editor": 1, "owner": 2}

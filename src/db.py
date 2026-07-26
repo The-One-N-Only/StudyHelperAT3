@@ -1,15 +1,25 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
 import string
 import time
-from typing import Any, Optional
+from typing import Any
 
-import hashlib
 from itsdangerous import URLSafeTimedSerializer
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, Boolean, UniqueConstraint, create_engine, func, text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    func,
+    text,
+)
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
@@ -34,7 +44,7 @@ class User(Base):
     login_platform: Mapped[str] = mapped_column(String(16), nullable=False, default='local')
     platform_id: Mapped[dict] = mapped_column(JSON, nullable=False, default={})
     time_created: Mapped[int] = mapped_column(nullable=True, default=None)
-    deleted_at: Mapped[Optional[int]] = mapped_column(nullable=True, default=None)
+    deleted_at: Mapped[int | None] = mapped_column(nullable=True, default=None)
 
     # Relationships
     saved_items = relationship("UserToSaved", back_populates="user")
@@ -126,11 +136,11 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     time_created: Mapped[int] = mapped_column(nullable=False)
     persona: Mapped[str] = mapped_column(String(32), nullable=False, default="formal")
-    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("workspaces.id"), nullable=True)
-    folder_id: Mapped[Optional[int]] = mapped_column(ForeignKey("workspace_folders.id"), nullable=True)
-    course_id: Mapped[Optional[int]] = mapped_column(ForeignKey("nesa_courses.id"), nullable=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("workspaces.id"), nullable=True)
+    folder_id: Mapped[int | None] = mapped_column(ForeignKey("workspace_folders.id"), nullable=True)
+    course_id: Mapped[int | None] = mapped_column(ForeignKey("nesa_courses.id"), nullable=True)
     archived: Mapped[bool] = mapped_column(nullable=False, default=False)
-    deleted_at: Mapped[Optional[int]] = mapped_column(nullable=True)
+    deleted_at: Mapped[int | None] = mapped_column(nullable=True)
 
     user = relationship("User", back_populates="workspaces")
     items = relationship("WorkspaceItem", back_populates="workspace")
@@ -148,9 +158,9 @@ class WorkspaceChatMessage(Base):
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    citations: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    citations: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     time_created: Mapped[int] = mapped_column(nullable=False)
-    author_name: Mapped[Optional[str]] = mapped_column(String(254), nullable=True)
+    author_name: Mapped[str | None] = mapped_column(String(254), nullable=True)
 
     user = relationship("User", back_populates="workspace_chat_messages")
     workspace = relationship("Workspace", back_populates="chat_messages")
@@ -172,7 +182,7 @@ class WorkspaceItem(Base):
     position: Mapped[int] = mapped_column(nullable=False)
     time_added: Mapped[int] = mapped_column(nullable=False)
     archived: Mapped[bool] = mapped_column(nullable=False, default=False)
-    deleted_at: Mapped[Optional[int]] = mapped_column(nullable=True)
+    deleted_at: Mapped[int | None] = mapped_column(nullable=True)
 
     user = relationship("User", back_populates="workspace_items")
     workspace = relationship("Workspace", back_populates="items")
@@ -250,7 +260,7 @@ class WorkspaceFolder(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("workspace_folders.id"), nullable=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("workspace_folders.id"), nullable=True)
     sort_order: Mapped[int] = mapped_column(nullable=False, default=0)
 
     user = relationship("User")
@@ -299,7 +309,7 @@ class WorkspaceMember(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="viewer")
     invited_at: Mapped[int] = mapped_column(nullable=False)
-    accepted_at: Mapped[Optional[int]] = mapped_column(nullable=True)
+    accepted_at: Mapped[int | None] = mapped_column(nullable=True)
 
     workspace = relationship("Workspace")
     user = relationship("User")
@@ -327,8 +337,8 @@ class ActivityLog(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     target_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    target_id: Mapped[Optional[int]] = mapped_column(nullable=True)
-    details_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    target_id: Mapped[int | None] = mapped_column(nullable=True)
+    details_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[int] = mapped_column(nullable=False)
 
     user = relationship("User")
@@ -406,7 +416,7 @@ def _seed_nesa_outcomes() -> None:
         session.commit()
 
 
-def get_nesa_courses(kla: Optional[str] = None) -> list[dict]:
+def get_nesa_courses(kla: str | None = None) -> list[dict]:
     with SessionLocal() as session:
         q = session.query(NESACourse)
         if kla:
@@ -424,7 +434,7 @@ def get_course_outcomes(course_id: int) -> list[dict]:
         outcomes = session.query(NESAOutcome).filter_by(course_id=course_id).all()
         return [{"id": o.id, "code": o.code, "description": o.description, "course_id": o.course_id} for o in outcomes]
 
-def tag_item_with_outcome(workspace_item_id: int, outcome_id: int) -> Optional[dict]:
+def tag_item_with_outcome(workspace_item_id: int, outcome_id: int) -> dict | None:
     with SessionLocal() as session:
         existing = session.query(ItemOutcome).filter_by(workspace_item_id=workspace_item_id, outcome_id=outcome_id).first()
         if existing:
@@ -500,7 +510,7 @@ Return ONLY the JSON array, e.g. ["CODE1", "CODE2"]. Maximum 3 codes."""
 def _generate_join_code() -> str:
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
-def create_class(teacher_user_id: int, name: str, course_id: Optional[int] = None) -> dict:
+def create_class(teacher_user_id: int, name: str, course_id: int | None = None) -> dict:
     with SessionLocal() as session:
         cls = ClassGroup(
             teacher_user_id=teacher_user_id,
@@ -514,7 +524,7 @@ def create_class(teacher_user_id: int, name: str, course_id: Optional[int] = Non
         session.refresh(cls)
         return {"id": cls.id, "name": cls.name, "course_id": cls.course_id, "join_code": cls.join_code, "created_at": cls.created_at}
 
-def join_class(join_code: str, student_user_id: int) -> Optional[dict]:
+def join_class(join_code: str, student_user_id: int) -> dict | None:
     with SessionLocal() as session:
         cls = session.query(ClassGroup).filter_by(join_code=join_code.upper()).first()
         if not cls:
@@ -837,7 +847,7 @@ def setup_db() -> None:
     except Exception:
         pass
 
-def get_or_create_user(email: str, platform: str, platform_id: dict, *, name: Optional[str] = None, username: Optional[str] = None) -> dict:
+def get_or_create_user(email: str, platform: str, platform_id: dict, *, name: str | None = None, username: str | None = None) -> dict:
     with SessionLocal() as session:
         user = session.query(User).filter_by(email=email).first()
         if user:
@@ -871,7 +881,7 @@ def get_or_create_user(email: str, platform: str, platform_id: dict, *, name: Op
         }
 
 
-def update_user(user_id: int, name: str, username: str, email: str, gender: str, password_hash: Optional[str] = None) -> Optional[dict]:
+def update_user(user_id: int, name: str, username: str, email: str, gender: str, password_hash: str | None = None) -> dict | None:
     with SessionLocal() as session:
         user = session.query(User).filter_by(id=user_id).first()
         if not user:
@@ -893,15 +903,15 @@ def update_user(user_id: int, name: str, username: str, email: str, gender: str,
             "platform": user.login_platform,
         }
 
-def get_user_by_username(username: str) -> Optional[User]:
+def get_user_by_username(username: str) -> User | None:
     with SessionLocal() as session:
         return session.query(User).filter(func.lower(User.username) == username.lower()).first()
 
-def get_user_by_email(email: str) -> Optional[User]:
+def get_user_by_email(email: str) -> User | None:
     with SessionLocal() as session:
         return session.query(User).filter(func.lower(User.email) == email.lower()).first()
 
-def get_user_by_id(user_id: int) -> Optional[User]:
+def get_user_by_id(user_id: int) -> User | None:
     with SessionLocal() as session:
         return session.query(User).filter_by(id=user_id).first()
 
@@ -1009,7 +1019,7 @@ def delete_session(session_token: str) -> bool:
         return True
 
 
-def delete_all_user_sessions(user_id: int, except_token: Optional[str] = None) -> int:
+def delete_all_user_sessions(user_id: int, except_token: str | None = None) -> int:
     with SessionLocal() as session:
         q = session.query(UserSession).filter_by(user_id=user_id)
         if except_token:
@@ -1028,7 +1038,7 @@ GENDER_PROFILE_PICTURES = {
 def get_profile_picture_path(gender: str) -> str:
     return GENDER_PROFILE_PICTURES.get(gender, GENDER_PROFILE_PICTURES['secret'])
 
-def create_local_user(email: str, username: str, password_hash: str, name: Optional[str] = None, gender: str = "gentleman") -> dict:
+def create_local_user(email: str, username: str, password_hash: str, name: str | None = None, gender: str = "gentleman") -> dict:
     with SessionLocal() as session:
         new_user = User(
             email=email,
@@ -1134,7 +1144,7 @@ def get_or_create_item(item_data: dict, user_id: int, add_to_recent_search: bool
         append_to_recently_searched(user_id, result["id"])
     return result
 
-def get_item_by_id(item_id: int, user_id: int, add_to_recent_search: bool) -> Optional[dict]:
+def get_item_by_id(item_id: int, user_id: int, add_to_recent_search: bool) -> dict | None:
     with SessionLocal() as session:
         item = session.query(Item).filter_by(id=item_id).first()
         if not item:
@@ -1143,7 +1153,7 @@ def get_item_by_id(item_id: int, user_id: int, add_to_recent_search: bool) -> Op
             append_to_recently_searched(user_id, item.id)
         return _item_to_dict(item)
 
-def get_search_cache(cache_key: str) -> Optional[dict[str, Any]]:
+def get_search_cache(cache_key: str) -> dict[str, Any] | None:
     try:
         with SessionLocal() as session:
             row = session.query(SearchCache).filter_by(cache_key=cache_key).first()
@@ -1167,7 +1177,7 @@ def set_search_cache(cache_key: str, item_ids: str) -> None:
     except OperationalError:
         pass
 
-def get_saved_items(user_id: int) -> Optional[list[dict[str, Any]]]:
+def get_saved_items(user_id: int) -> list[dict[str, Any]] | None:
     with SessionLocal() as session:
         saved = session.query(UserToSaved, Item).join(Item).filter(UserToSaved.user_id == user_id).order_by(UserToSaved.time_inserted.desc()).all()
         if not saved:
@@ -1228,7 +1238,7 @@ def get_saved_items_grouped(user_id: int) -> list[dict[str, Any]]:
 
         return [{"query": q, "items": items} for q, items in groups.items()]
 
-def save_item(item_id: int, user_id: int, query: str = '') -> Optional[str]:
+def save_item(item_id: int, user_id: int, query: str = '') -> str | None:
     with SessionLocal() as session:
         existing = session.query(UserToSaved).filter_by(user_id=user_id, item_id=item_id).first()
         if existing:
@@ -1238,7 +1248,7 @@ def save_item(item_id: int, user_id: int, query: str = '') -> Optional[str]:
         session.commit()
         return "Saved"
 
-def unsave_item(item_id: int, user_id: int) -> Optional[str]:
+def unsave_item(item_id: int, user_id: int) -> str | None:
     with SessionLocal() as session:
         save = session.query(UserToSaved).filter_by(user_id=user_id, item_id=item_id).first()
         if not save:
@@ -1247,7 +1257,7 @@ def unsave_item(item_id: int, user_id: int) -> Optional[str]:
         session.commit()
         return "Unsaved"
 
-def get_recently_viewed(user_id: int) -> Optional[list[dict[str, Any]]]:
+def get_recently_viewed(user_id: int) -> list[dict[str, Any]] | None:
     with SessionLocal() as session:
         viewed = session.query(UserToRecentlyViewed, Item).join(Item).filter(UserToRecentlyViewed.user_id == user_id).order_by(UserToRecentlyViewed.time_inserted.desc()).limit(10).all()
         if not viewed:
@@ -1272,7 +1282,7 @@ def get_recently_viewed(user_id: int) -> Optional[list[dict[str, Any]]]:
             "viewed_at": rtv.time_inserted
         } for rtv, item in viewed]
 
-def get_recently_searched(user_id: int) -> Optional[list[dict[str, Any]]]:
+def get_recently_searched(user_id: int) -> list[dict[str, Any]] | None:
     with SessionLocal() as session:
         searched = session.query(UserToRecentlySearched, Item).join(Item).filter(UserToRecentlySearched.user_id == user_id).order_by(UserToRecentlySearched.time_inserted.desc()).limit(10).all()
         if not searched:
@@ -1297,7 +1307,7 @@ def get_recently_searched(user_id: int) -> Optional[list[dict[str, Any]]]:
             "searched_at": rts.time_inserted
         } for rts, item in searched]
 
-def append_to_recently_viewed(user_id: int, item_id: int) -> Optional[str]:
+def append_to_recently_viewed(user_id: int, item_id: int) -> str | None:
     if not user_id:
         return None
     with SessionLocal() as session:
@@ -1312,7 +1322,7 @@ def append_to_recently_viewed(user_id: int, item_id: int) -> Optional[str]:
         session.commit()
         return "Added"
 
-def append_to_recently_searched(user_id: int, item_id: int) -> Optional[str]:
+def append_to_recently_searched(user_id: int, item_id: int) -> str | None:
     if not user_id:
         return None
     with SessionLocal() as session:
@@ -1327,7 +1337,7 @@ def append_to_recently_searched(user_id: int, item_id: int) -> Optional[str]:
         session.commit()
         return "Added"
 
-def remove_from_workspace(workspace_item_id: int, user_id: int) -> Optional[str]:
+def remove_from_workspace(workspace_item_id: int, user_id: int) -> str | None:
     with SessionLocal() as session:
         item = session.query(WorkspaceItem).filter_by(id=workspace_item_id, user_id=user_id).first()
         if not item:
@@ -1422,7 +1432,7 @@ def hash_file(filepath: str) -> str:
             sha256.update(chunk)
     return sha256.hexdigest()
 
-def check_duplicate_file(user_id: int, file_hash: str) -> Optional[dict]:
+def check_duplicate_file(user_id: int, file_hash: str) -> dict | None:
     with SessionLocal() as session:
         existing = session.query(UploadedFile).filter_by(user_id=user_id, file_hash=file_hash).first()
         if existing:
@@ -1435,7 +1445,7 @@ def check_duplicate_file(user_id: int, file_hash: str) -> Optional[dict]:
             }
         return None
 
-def delete_uploaded_file(file_id: int, user_id: int) -> Optional[str]:
+def delete_uploaded_file(file_id: int, user_id: int) -> str | None:
     with SessionLocal() as session:
         file = session.query(UploadedFile).filter_by(id=file_id, user_id=user_id).first()
         if not file:
@@ -1495,7 +1505,7 @@ def get_notes(user_id: int) -> list[dict[str, Any]]:
             "time_updated": n.time_updated
         } for n in notes]
 
-def get_note(note_id: int, user_id: int) -> Optional[dict[str, Any]]:
+def get_note(note_id: int, user_id: int) -> dict[str, Any] | None:
     with SessionLocal() as session:
         note = session.query(Note).filter_by(id=note_id, user_id=user_id).first()
         if note:
@@ -1508,7 +1518,7 @@ def get_note(note_id: int, user_id: int) -> Optional[dict[str, Any]]:
             }
         return None
 
-def update_note(note_id: int, user_id: int, title: Optional[str] = None, content: Optional[str] = None) -> Optional[dict[str, Any]]:
+def update_note(note_id: int, user_id: int, title: str | None = None, content: str | None = None) -> dict[str, Any] | None:
     with SessionLocal() as session:
         note = session.query(Note).filter_by(id=note_id, user_id=user_id).first()
         if not note:
@@ -1584,7 +1594,7 @@ def get_user_workspaces(user_id: int) -> list[dict[str, Any]]:
                 })
         return results
 
-def get_workspace(user_id: int, workspace_id: int) -> Optional[dict[str, Any]]:
+def get_workspace(user_id: int, workspace_id: int) -> dict[str, Any] | None:
     """Get a single workspace for a user (owner or member)"""
     with SessionLocal() as session:
         workspace = session.query(Workspace).filter_by(user_id=user_id, id=workspace_id).first()
@@ -1610,7 +1620,7 @@ def get_workspace(user_id: int, workspace_id: int) -> Optional[dict[str, Any]]:
         }
 
 
-def set_workspace_persona(workspace_id: int, user_id: int, persona: str) -> Optional[dict]:
+def set_workspace_persona(workspace_id: int, user_id: int, persona: str) -> dict | None:
     """Set the AI persona for a workspace."""
     valid_personas = {"formal", "casual", "socratic", "tutor"}
     if persona not in valid_personas:
@@ -1655,8 +1665,8 @@ def append_workspace_chat_turn(
     workspace_id: int,
     user_content: str,
     assistant_content: str,
-    citations: Optional[list] = None,
-    author_name: Optional[str] = None,
+    citations: list | None = None,
+    author_name: str | None = None,
 ) -> bool:
     """Atomically persist one user/assistant turn for a workspace (owner or member)."""
     with SessionLocal() as session:
@@ -1695,7 +1705,7 @@ def append_workspace_chat_turn(
         session.commit()
         return True
 
-def create_workspace(user_id: int, name: str, parent_id: Optional[int] = None, folder_id: Optional[int] = None, course_id: Optional[int] = None) -> dict:
+def create_workspace(user_id: int, name: str, parent_id: int | None = None, folder_id: int | None = None, course_id: int | None = None) -> dict:
     """Create a new workspace"""
     with SessionLocal() as session:
         new_workspace = Workspace(
@@ -1718,7 +1728,7 @@ def create_workspace(user_id: int, name: str, parent_id: Optional[int] = None, f
             "course_id": new_workspace.course_id
         }
 
-def rename_workspace(workspace_id: int, user_id: int, new_name: str) -> Optional[dict]:
+def rename_workspace(workspace_id: int, user_id: int, new_name: str) -> dict | None:
     """Rename a workspace"""
     with SessionLocal() as session:
         workspace = session.query(Workspace).filter_by(id=workspace_id, user_id=user_id).first()
@@ -1742,7 +1752,7 @@ def delete_workspace(workspace_id: int, user_id: int) -> bool:
         session.commit()
         return True
 
-def get_workspace_items(user_id: int, workspace_id: Optional[int] = None) -> list[dict[str, Any]]:
+def get_workspace_items(user_id: int, workspace_id: int | None = None) -> list[dict[str, Any]]:
     """Get items from a workspace, or default workspace if workspace_id is None"""
     with SessionLocal() as session:
         query = session.query(WorkspaceItem, Item, UploadedFile).outerjoin(Item).outerjoin(UploadedFile).filter(WorkspaceItem.user_id == user_id)
@@ -1813,7 +1823,7 @@ def get_workspace_items(user_id: int, workspace_id: Optional[int] = None) -> lis
                 })
         return items
 
-def add_to_workspace(user_id: int, item_id: int, summary: str, bullets: str, relevance: str, atn_used: str, citation_apa: str, citation_harvard: str, workspace_id: Optional[int] = None) -> dict:
+def add_to_workspace(user_id: int, item_id: int, summary: str, bullets: str, relevance: str, atn_used: str, citation_apa: str, citation_harvard: str, workspace_id: int | None = None) -> dict:
     """Add an item to workspace"""
     with SessionLocal() as session:
         # If no workspace_id, get or create the default workspace
@@ -1824,7 +1834,7 @@ def add_to_workspace(user_id: int, item_id: int, summary: str, bullets: str, rel
                 session.add(default)
                 session.flush()
             workspace_id = default.id
-        
+
         existing = session.query(WorkspaceItem).filter_by(
             workspace_id=workspace_id, item_id=item_id, user_id=user_id
         ).first()
@@ -1863,7 +1873,7 @@ def add_to_workspace(user_id: int, item_id: int, summary: str, bullets: str, rel
             "time_added": new_item.time_added
         }
 
-def add_file_to_workspace(user_id: int, file_id: int, workspace_id: Optional[int] = None) -> dict:
+def add_file_to_workspace(user_id: int, file_id: int, workspace_id: int | None = None) -> dict:
     """Add an uploaded file to a workspace"""
     with SessionLocal() as session:
         if workspace_id is None:
@@ -1964,7 +1974,7 @@ def clear_search_history(user_id: int) -> bool:
         return True
 
 
-def get_search_history_entry(entry_id: int, user_id: int) -> Optional[dict]:
+def get_search_history_entry(entry_id: int, user_id: int) -> dict | None:
     with SessionLocal() as session:
         entry = session.query(SearchHistory).filter_by(id=entry_id, user_id=user_id).first()
         if not entry:
@@ -1983,7 +1993,7 @@ def get_search_history_entry(entry_id: int, user_id: int) -> Optional[dict]:
 def get_export_templates(user_id: int) -> list[dict]:
     with SessionLocal() as session:
         templates = session.query(ExportTemplate).filter(
-            (ExportTemplate.user_id == user_id) | (ExportTemplate.is_public == True)
+            (ExportTemplate.user_id == user_id) | (ExportTemplate.is_public)
         ).order_by(ExportTemplate.name).all()
         return [{
             "id": t.id,
@@ -2017,7 +2027,7 @@ def create_export_template(user_id: int, name: str, template_content: str, is_pu
         }
 
 
-def update_export_template(template_id: int, user_id: int, name: str = None, template_content: str = None, is_public: bool = None) -> Optional[dict]:
+def update_export_template(template_id: int, user_id: int, name: str = None, template_content: str = None, is_public: bool = None) -> dict | None:
     with SessionLocal() as session:
         tmpl = session.query(ExportTemplate).filter_by(id=template_id, user_id=user_id).first()
         if not tmpl:
@@ -2107,7 +2117,7 @@ def get_workspace_tree(user_id: int) -> list[dict]:
         return roots
 
 
-def move_workspace(workspace_id: int, new_parent_id: Optional[int], user_id: int) -> bool:
+def move_workspace(workspace_id: int, new_parent_id: int | None, user_id: int) -> bool:
     """Move workspace under new parent, validates no circular refs"""
     with SessionLocal() as session:
         ws = session.query(Workspace).filter_by(id=workspace_id, user_id=user_id).first()
@@ -2130,7 +2140,7 @@ def move_workspace(workspace_id: int, new_parent_id: Optional[int], user_id: int
 
 # ========== WorkspaceFolder CRUD ==========
 
-def create_folder(name: str, user_id: int, parent_id: Optional[int] = None) -> dict:
+def create_folder(name: str, user_id: int, parent_id: int | None = None) -> dict:
     with SessionLocal() as session:
         max_order = session.query(func.max(WorkspaceFolder.sort_order)).filter_by(user_id=user_id, parent_id=parent_id).scalar() or 0
         folder = WorkspaceFolder(name=name, user_id=user_id, parent_id=parent_id, sort_order=max_order + 1)
@@ -2156,7 +2166,7 @@ def get_folder_tree(user_id: int) -> dict:
                 "workspaces": []
             }
         roots = []
-        for fid, node in folder_map.items():
+        for _fid, node in folder_map.items():
             if node["parent_id"] is None:
                 roots.append(node)
             elif node["parent_id"] in folder_map:
@@ -2176,7 +2186,7 @@ def get_folder_tree(user_id: int) -> dict:
         return {"folders": roots, "root_workspaces": [w for w in workspaces if w.folder_id is None and not w.archived and w.deleted_at is None]}
 
 
-def rename_folder(folder_id: int, new_name: str, user_id: int) -> Optional[dict]:
+def rename_folder(folder_id: int, new_name: str, user_id: int) -> dict | None:
     with SessionLocal() as session:
         folder = session.query(WorkspaceFolder).filter_by(id=folder_id, user_id=user_id).first()
         if not folder:
@@ -2202,7 +2212,7 @@ def delete_folder(folder_id: int, user_id: int) -> bool:
         return True
 
 
-def move_to_folder(workspace_id: int, folder_id: Optional[int], user_id: int) -> bool:
+def move_to_folder(workspace_id: int, folder_id: int | None, user_id: int) -> bool:
     with SessionLocal() as session:
         ws = session.query(Workspace).filter_by(id=workspace_id, user_id=user_id).first()
         if not ws:
@@ -2229,7 +2239,7 @@ def get_user_tags(user_id: int) -> list[dict]:
         return [{"id": t.id, "name": t.name, "color": t.color} for t in tags]
 
 
-def add_tag_to_workspace_item(workspace_item_id: int, tag_id: int) -> Optional[dict]:
+def add_tag_to_workspace_item(workspace_item_id: int, tag_id: int) -> dict | None:
     with SessionLocal() as session:
         existing = session.query(WorkspaceItemTag).filter_by(workspace_item_id=workspace_item_id, tag_id=tag_id).first()
         if existing:
@@ -2274,7 +2284,7 @@ def delete_tag(tag_id: int, user_id: int) -> bool:
 
 # ========== Workspace Member Functions ==========
 
-def add_workspace_member(workspace_id: int, user_id: int, role: str = "viewer") -> Optional[dict]:
+def add_workspace_member(workspace_id: int, user_id: int, role: str = "viewer") -> dict | None:
     with SessionLocal() as session:
         existing = session.query(WorkspaceMember).filter_by(workspace_id=workspace_id, user_id=user_id).first()
         if existing:
@@ -2316,7 +2326,7 @@ def get_workspace_members(workspace_id: int) -> list[dict]:
         } for m in members]
 
 
-def get_user_workspace_role(workspace_id: int, user_id: int) -> Optional[str]:
+def get_user_workspace_role(workspace_id: int, user_id: int) -> str | None:
     with SessionLocal() as session:
         workspace = session.query(Workspace).filter_by(id=workspace_id).first()
         if workspace and workspace.user_id == user_id:
@@ -2350,11 +2360,11 @@ def update_member_role(workspace_id: int, user_id: int, new_role: str) -> bool:
 
 # ========== Invite Token Functions ==========
 
-def generate_invite_token(workspace_id: int, role: str, expires_in: int = 86400 * 7) -> str:
+def generate_invite_token(workspace_id: int, role: str, _expires_in: int = 86400 * 7) -> str:
     return _serializer.dumps({"workspace_id": workspace_id, "role": role})
 
 
-def verify_invite_token(token: str) -> Optional[tuple]:
+def verify_invite_token(token: str) -> tuple | None:
     try:
         data = _serializer.loads(token, max_age=86400 * 7)
         return data["workspace_id"], data["role"]
@@ -2486,7 +2496,7 @@ def get_note_versions(note_id: int, limit: int = 20) -> list[dict]:
         return [{"id": v.id, "title": v.title, "content": v.content[:200], "created_at": v.created_at} for v in versions]
 
 
-def restore_note_version(note_id: int, version_id: int, user_id: int) -> Optional[dict]:
+def restore_note_version(note_id: int, version_id: int, user_id: int) -> dict | None:
     with SessionLocal() as session:
         note = session.query(Note).filter_by(id=note_id, user_id=user_id).first()
         if not note:

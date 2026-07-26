@@ -1,6 +1,4 @@
 import re
-from collections import Counter
-from typing import List, Tuple
 
 
 def _shingle(text: str, n: int = 5) -> set:
@@ -17,7 +15,7 @@ def _jaccard_similarity(a: set, b: set) -> float:
     return len(intersection) / len(union)
 
 
-def check_similarity(draft: str, source_texts: List[Tuple[str, str, str]]) -> List[dict]:
+def check_similarity(draft: str, source_texts: list[tuple[str, str, str]]) -> list[dict]:
     """
     Check draft text against source texts.
     source_texts: list of (source_title, source_url, source_text)
@@ -44,7 +42,7 @@ def check_similarity(draft: str, source_texts: List[Tuple[str, str, str]]) -> Li
     return results
 
 
-def _find_common_passages(draft: str, source: str, common_shingles: set) -> List[dict]:
+def _find_common_passages(draft: str, source: str, common_shingles: set) -> list[dict]:
     """Find overlapping text passages between draft and source."""
     sentences = re.split(r'(?<=[.!?])\s+', draft)
     passages = []

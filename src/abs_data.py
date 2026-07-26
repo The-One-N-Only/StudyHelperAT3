@@ -1,8 +1,8 @@
 """Australian Bureau of Statistics data integration."""
 
-import requests
 import logging
-from typing import Optional
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def search_datasets(query: str) -> list[dict]:
             })
     return results
 
-def get_dataset_data(dataset_code: str) -> Optional[dict]:
+def get_dataset_data(dataset_code: str) -> dict | None:
     """Fetch latest data for a dataset."""
     dataset = DATASETS.get(dataset_code)
     if not dataset:

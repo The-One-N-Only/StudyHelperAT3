@@ -1,12 +1,12 @@
-import math
 import hashlib
-from typing import List
+import math
+
 
 def _hash_feature(text: str, feature: str, dim: int) -> int:
     h = hashlib.md5(f"{text}:{feature}".encode()).hexdigest()
     return int(h, 16) % dim
 
-def compute_simple_embedding(text: str, dim: int = 128) -> List[float]:
+def compute_simple_embedding(text: str, dim: int = 128) -> list[float]:
     if not text:
         return [0.0] * dim
 
@@ -25,8 +25,8 @@ def compute_simple_embedding(text: str, dim: int = 128) -> List[float]:
 
     return vector
 
-def cosine_similarity(a: List[float], b: List[float]) -> float:
-    dot = sum(x*y for x, y in zip(a, b))
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x*y for x, y in zip(a, b, strict=False))
     mag_a = math.sqrt(sum(x*x for x in a))
     mag_b = math.sqrt(sum(y*y for y in b))
     if mag_a == 0 or mag_b == 0:

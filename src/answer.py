@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
 import logging
+import os
 import re
-from typing import Generator, Optional
+from collections.abc import Generator
 from urllib.parse import quote
 
 import anthropic
 
 import src.db as db
-import src.proxy as proxy
-import src.search as search
-import src.whitelist as whitelist
 import src.pubmed as pubmed
+import src.search as search
 
 AI_NOT_CONFIGURED_ERROR = (
     "Alexander is not configured. Add ANTHROPIC_API_KEY and restart StudyLib."
@@ -121,7 +119,7 @@ def gather_workspace_notes_context(workspace_id: int, user_id: int, query: str) 
     return {"status": True, "context": "", "sources": []}
 
 
-def search_files_for_context(user_id: int, query: str, num_results: int = 5, workspace_id: Optional[int] = None) -> dict:
+def search_files_for_context(user_id: int, query: str, num_results: int = 5, workspace_id: int | None = None) -> dict:
     """
     Search uploaded files for content relevant to the query.
     When workspace_id is provided, only searches files in that workspace.
@@ -131,19 +129,19 @@ def search_files_for_context(user_id: int, query: str, num_results: int = 5, wor
         uploaded_files = db.get_workspace_uploaded_files(workspace_id, user_id) if workspace_id else db.get_uploaded_files(user_id)
         if not uploaded_files:
             return {"status": True, "context": "", "sources": []}
-        
+
         # Simple relevance scoring based on keyword matching
         relevant_passages = []
         keywords = query.lower().split()
-        
+
         for file_data in uploaded_files:
             text = file_data.get("extracted_text", "").lower()
             filename = file_data.get("filename", "Unknown")
             file_id = file_data.get("id")
-            
+
             # Calculate relevance score
             score = sum(text.count(keyword) for keyword in keywords)
-            
+
             if score > 0:
                 # Extract relevant passages (sentences containing keywords)
                 sentences = text.split('.')
@@ -151,7 +149,7 @@ def search_files_for_context(user_id: int, query: str, num_results: int = 5, wor
                 for sentence in sentences:
                     if any(keyword in sentence for keyword in keywords):
                         relevant_sentences.append(sentence.strip())
-                
+
                 if relevant_sentences:
                     # Limit to first 1000 chars of relevant content per file
                     passage = ". ".join(relevant_sentences[:5])[:1000]
@@ -161,11 +159,11 @@ def search_files_for_context(user_id: int, query: str, num_results: int = 5, wor
                         "passage": passage,
                         "score": score
                     })
-        
+
         # Sort by relevance score and limit results
         relevant_passages.sort(key=lambda x: x["score"], reverse=True)
         relevant_passages = relevant_passages[:num_results]
-        
+
         # Format context for Claude
         context_text = ""
         sources = []
@@ -178,7 +176,7 @@ def search_files_for_context(user_id: int, query: str, num_results: int = 5, wor
                     "filename": item["filename"],
                     "file_id": item["file_id"]
                 })
-        
+
         return {
             "status": True,
             "context": context_text,
@@ -197,14 +195,14 @@ def search_wikipedia_for_context(query: str) -> dict:
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(query)}"
         headers = {"User-Agent": "StudyLib/1.0 (Academic Research Assistant)"}
         import requests
-        
+
         resp = requests.get(url, headers=headers, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
             extract = data.get("extract", "")
             title = data.get("title", "")
             content_url = data.get("content_urls", {}).get("desktop", {}).get("page", "")
-            
+
             if extract and len(extract) > 50:
                 context = f"**Information from Wikipedia ({title}):**\n{extract}\n\n"
                 return {
@@ -287,8 +285,8 @@ PERSONA_PROMPTS = {
 }
 
 
-def _build_system_prompt(atn: Optional[str] = None, context_text: str = "", persona: str = "formal",
-                         workspace_id: Optional[int] = None, user_id: Optional[int] = None) -> str:
+def _build_system_prompt(atn: str | None = None, context_text: str = "", persona: str = "formal",
+                         workspace_id: int | None = None, user_id: int | None = None) -> str:
     base = PERSONA_PROMPTS.get(persona, PERSONA_PROMPTS["formal"])
     system_prompt = base + (
         " You never fabricate information or cite sources not provided in the context."
@@ -306,21 +304,21 @@ def _build_system_prompt(atn: Optional[str] = None, context_text: str = "", pers
     if atn:
         system_prompt += f"\n\nAssessment Task Context: {atn}"
     if context_text:
-        system_prompt += f"\n\nContext from your files and sources is provided below."
+        system_prompt += "\n\nContext from your files and sources is provided below."
     return system_prompt
 
 
-def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: Optional[str] = None, workspace_id: Optional[int] = None, persona: str = "formal") -> dict:
+def answer_prompt(prompt: str, user_id: int, search_web: bool = True, atn: str | None = None, workspace_id: int | None = None, persona: str = "formal") -> dict:
     """
     Answer a user prompt using information from uploaded files and optionally web sources.
-    
+
     Args:
         prompt: The user's question or prompt
         user_id: The user ID
         search_web: Whether to search Wikipedia for additional context
         atn: Optional assessment task/note for context
         workspace_id: Optional workspace ID to include workspace notes as context
-    
+
     Returns:
         Dict with answer, sources used, and status
     """
@@ -387,17 +385,17 @@ def _parse_citations(text: str, sources: list) -> tuple[str, list]:
     return text, citations
 
 
-def chat_with_sources(messages: list, user_id: int, atn: Optional[str] = None, workspace_id: Optional[int] = None, persona: str = "formal") -> dict:
+def chat_with_sources(messages: list, user_id: int, atn: str | None = None, workspace_id: int | None = None, persona: str = "formal") -> dict:
     """
     Multi-turn conversation with context from uploaded files and web.
-    
+
     Args:
         messages: List of message dicts with 'role' and 'content'
         user_id: The user ID
         atn: Optional assessment task/note for context
         workspace_id: Optional workspace ID to include workspace notes as context
         persona: AI persona/tone (formal, casual, socratic, tutor)
-    
+
     Returns:
         Dict with response, sources used, and citations
     """
@@ -503,11 +501,11 @@ def generate_follow_up_questions(conversation_history: list, workspace_context: 
 def synthesize_sources(source_texts: list[dict], instruction: str) -> dict:
     """
     Multi-document synthesis of provided sources.
-    
+
     Args:
         source_texts: List of dicts with 'title', 'source', 'content' keys
         instruction: One of 'compare', 'contradictions', 'themes', 'argument'
-    
+
     Returns:
         Dict with status and synthesis text
     """
@@ -583,9 +581,9 @@ def generate_study_guide(workspace_id: int, user_id: int) -> dict:
 
 def chat_with_sources_streaming(
     user_content: str,
-    atn: Optional[str] = None,
-    workspace_id: Optional[int] = None,
-    user_id: Optional[int] = None,
+    atn: str | None = None,
+    workspace_id: int | None = None,
+    user_id: int | None = None,
     persona: str = "formal",
 ) -> Generator[str, None, dict]:
     """
@@ -611,8 +609,7 @@ def chat_with_sources_streaming(
             system=system_prompt,
             messages=messages,
         ) as stream:
-            for text_delta in stream.text_deltas:
-                yield text_delta
+            yield from stream.text_deltas
 
             final_message = stream.get_final_message()
 

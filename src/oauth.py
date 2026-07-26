@@ -1,6 +1,7 @@
 import os
 import secrets
 from urllib.parse import urlencode
+
 import requests
 from flask import session, url_for
 

@@ -1453,32 +1453,28 @@
     position: fixed;
     top: 0;
     left: 0;
-    width: 280px;
-    height: 480px;
+    width: 350px;
+    height: 350px;
     pointer-events: none;
     z-index: var(--z-candle-glow);
-    will-change: transform, opacity;
     mix-blend-mode: screen;
-    background:
-        /* inner bright core */
-        radial-gradient(ellipse 25% 30% at 50% 55%, hsl(40 100% 92% / 0.30) 0%, transparent 50%),
-        /* main flame body */
-        radial-gradient(ellipse 35% 42% at 50% 50%, hsl(35 100% 78% / 0.18) 0%, transparent 55%),
-        /* outer warm glow */
-        radial-gradient(ellipse 45% 52% at 50% 48%, hsl(30 85% 55% / 0.08) 0%, transparent 65%);
-    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    border-radius: 50%;
+    background: radial-gradient(farthest-side at 50% 50%,
+        hsl(35 100% 70% / 0.55) 0%,
+        hsl(30 100% 60% / 0.30) 25%,
+        hsl(20 100% 50% / 0.12) 50%,
+        transparent 75%
+    );
     animation: candle-flicker 2.5s ease-in-out infinite;
 }
 
 @keyframes candle-flicker {
-    0%, 100% { opacity: 0.82; transform: translate(-50%, -50%) scaleX(1) scaleY(1) rotate(0deg); }
-    12% { opacity: 0.92; transform: translate(-50%, -50%) scaleX(0.97) scaleY(1.04) rotate(0.4deg); }
-    25% { opacity: 0.75; transform: translate(-50%, -50%) scaleX(1.03) scaleY(0.94) rotate(-0.3deg); }
-    37% { opacity: 0.95; transform: translate(-50%, -50%) scaleX(0.98) scaleY(1.06) rotate(0.5deg); }
-    50% { opacity: 0.78; transform: translate(-50%, -50%) scaleX(1.01) scaleY(0.96) rotate(-0.2deg); }
-    62% { opacity: 0.88; transform: translate(-50%, -50%) scaleX(0.96) scaleY(1.03) rotate(0.3deg); }
-    75% { opacity: 0.72; transform: translate(-50%, -50%) scaleX(1.02) scaleY(0.92) rotate(-0.4deg); }
-    87% { opacity: 0.9; transform: translate(-50%, -50%) scaleX(0.99) scaleY(1.02) rotate(0.2deg); }
+    0%, 100% { opacity: 0.9; transform: translate(-50%, -50%) scale(1); }
+    15% { opacity: 1; transform: translate(-50%, -50%) scale(1.04); }
+    30% { opacity: 0.78; transform: translate(-50%, -50%) scale(0.95); }
+    45% { opacity: 0.95; transform: translate(-50%, -50%) scale(1.02); }
+    60% { opacity: 0.8; transform: translate(-50%, -50%) scale(0.96); }
+    75% { opacity: 0.88; transform: translate(-50%, -50%) scale(0.98); }
 }
 
 /* ── Candlelit Archive: navbar, wordmark, sidebar ── */

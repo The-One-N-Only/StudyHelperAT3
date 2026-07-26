@@ -5,12 +5,13 @@
 
     var finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
     var cursorGlow = null;
+    var flameOffsetY = -5;
     var targetX = window.innerWidth / 2;
     var targetY = window.innerHeight * 0.3;
     var currentX = targetX;
     var currentY = targetY;
-    var glowOpacity = 0.82;
-    var targetOpacity = 0.82;
+    var glowOpacity = 0.85;
+    var targetOpacity = 0.85;
     var flickerTimer = 0;
     var animationFrame = null;
 
@@ -61,12 +62,81 @@
     applyDyslexicFont();
     applyHighContrast();
 
-    function emojiCursor(emoji, hotX, hotY) {
-        var size = 32;
-        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '">' +
-            '<text x="50%" y="50%" font-size="24" text-anchor="middle" dominant-baseline="central">' +
-            emoji + '</text></svg>';
-        return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '") ' + hotX + ' ' + hotY + ', auto';
+    function drawCandleCursor() {
+        var c = document.createElement('canvas');
+        c.width = 32;
+        c.height = 32;
+        var ctx = c.getContext('2d');
+
+        ctx.fillStyle = '#F5DEB3';
+        ctx.beginPath();
+        ctx.roundRect(12, 15, 8, 15, 1.5);
+        ctx.fill();
+
+        ctx.fillStyle = '#E8D5B7';
+        ctx.beginPath();
+        ctx.ellipse(16, 29.5, 4.5, 1.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(16, 15);
+        ctx.lineTo(16, 11);
+        ctx.stroke();
+
+        var grad = ctx.createRadialGradient(16, 8, 1, 16, 8, 7);
+        grad.addColorStop(0, '#FFF8E0');
+        grad.addColorStop(0.25, '#FFB800');
+        grad.addColorStop(0.55, '#E87800');
+        grad.addColorStop(1, '#C85000');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(16, 1);
+        ctx.quadraticCurveTo(21, 6, 16, 13);
+        ctx.quadraticCurveTo(11, 6, 16, 1);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 248, 224, 0.5)';
+        ctx.beginPath();
+        ctx.ellipse(16, 7, 2.5, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        return 'url(' + c.toDataURL('image/png') + ') 16 4, auto';
+    }
+
+    function drawQuillCursor() {
+        var c = document.createElement('canvas');
+        c.width = 32;
+        c.height = 32;
+        var ctx = c.getContext('2d');
+
+        ctx.fillStyle = '#E8D5B7';
+        ctx.strokeStyle = '#B8966A';
+        ctx.lineWidth = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(7, 30);
+        ctx.quadraticCurveTo(12, 18, 24, 3);
+        ctx.quadraticCurveTo(29, 4, 24, 9);
+        ctx.quadraticCurveTo(15, 20, 7, 30);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = '#B8966A';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(7, 30);
+        ctx.lineTo(24, 5);
+        ctx.stroke();
+
+        ctx.fillStyle = '#4A3520';
+        ctx.beginPath();
+        ctx.moveTo(7, 30);
+        ctx.lineTo(5, 31);
+        ctx.lineTo(9, 29);
+        ctx.fill();
+
+        return 'url(' + c.toDataURL('image/png') + ') 7 30, auto';
     }
 
     function applyCursor() {
@@ -74,20 +144,22 @@
             document.body.style.cursor = 'auto';
             return;
         }
-        var isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
-        document.body.style.cursor = isDark
-            ? emojiCursor('\uD83D\uDD6F\uFE0F', 16, 6)
-            : emojiCursor('\uD83E\uDEB6', 4, 28);
+        try {
+            var isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+            document.body.style.cursor = isDark
+                ? drawCandleCursor()
+                : drawQuillCursor();
+        } catch(e) {
+            document.body.style.cursor = 'auto';
+        }
     }
 
     function animateGlow() {
         if (!cursorGlow) return;
         
-        // Smooth position following (slower for flame-like drift)
-        currentX += (targetX - currentX) * 0.15;
-        currentY += (targetY - currentY) * 0.15;
+        currentX += (targetX - currentX) * 0.35;
+        currentY += (targetY - currentY) * 0.35;
         
-        // Flicker logic - randomized opacity and micro-position jitter
         flickerTimer++;
         if (flickerTimer % 3 === 0) {
             targetOpacity = 0.65 + Math.random() * 0.3;
@@ -96,14 +168,11 @@
         
         var jitterX = (Math.random() - 0.5) * 6;
         var jitterY = (Math.random() - 0.5) * 8;
-        var jitterScaleX = 1 + (Math.random() - 0.5) * 0.04;
-        var jitterScaleY = 1 + (Math.random() - 0.5) * 0.06;
         
         cursorGlow.style.left = (currentX + jitterX) + 'px';
-        cursorGlow.style.top = (currentY + jitterY) + 'px';
+        cursorGlow.style.top = (currentY + jitterY + flameOffsetY) + 'px';
         cursorGlow.style.opacity = glowOpacity;
         
-        var isMoving = Math.abs(targetX - currentX) > 0.5 || Math.abs(targetY - currentY) > 0.5;
         animationFrame = requestAnimationFrame(animateGlow);
     }
 
@@ -232,14 +301,13 @@
 
     document.addEventListener("DOMContentLoaded", function () {
         cursorGlow = document.querySelector(".candle-glow");
-        // Initialize position to center-ish of viewport
         targetX = window.innerWidth / 2;
         targetY = window.innerHeight * 0.4;
         currentX = targetX;
         currentY = targetY;
         if (cursorGlow) {
             cursorGlow.style.left = currentX + 'px';
-            cursorGlow.style.top = currentY + 'px';
+            cursorGlow.style.top = (currentY + flameOffsetY) + 'px';
         }
         var themeBtn = document.getElementById("themeToggle");
         if (themeBtn) {

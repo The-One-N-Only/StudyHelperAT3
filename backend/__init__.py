@@ -2,14 +2,16 @@ import logging
 import os
 import random
 import secrets
-from flask import Flask, render_template, request, session, redirect, url_for
+
+from flask import Flask, redirect, render_template, request, session, url_for
 from flask_session import Session
 from flask_sqlalchemy import SQLAlchemy
+
 import src.db as db
+from backend.error_handlers import register_error_handlers
+from src.cache import cache
 from src.logging_config import setup_logging
 from src.tasks import task_queue
-from src.cache import cache
-from backend.error_handlers import register_error_handlers
 
 _root = os.path.dirname(os.path.dirname(__file__))
 
@@ -55,10 +57,10 @@ def create_app():
     app.config['SESSION_SQLALCHEMY'] = db_flask
     Session(app)
 
+    from backend.api_routes import api_bp
     from backend.auth_routes import auth_bp
     from backend.browse_routes import browse_bp
     from backend.workspace_routes import workspace_bp
-    from backend.api_routes import api_bp
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(browse_bp)

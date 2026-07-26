@@ -1,10 +1,12 @@
-import threading
+import contextlib
 import logging
+import threading
 import uuid
-from typing import Callable, Any, Optional
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from queue import Queue
 from enum import Enum
+from queue import Queue
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ class BackgroundTaskQueue:
         self._queue.put(task)
         logger.debug(f"Task enqueued: {task.id}")
 
-    def get_result(self, task_id: str) -> Optional[Any]:
+    def get_result(self, task_id: str) -> Any | None:
         with self._lock:
             return self._results.get(task_id)
 
@@ -87,9 +89,10 @@ def generate_task_id() -> str:
 
 def check_search_alerts(app) -> None:
     """Check due search alerts and create notifications for new results."""
+    import json
+
     import src.db as db
     import src.search as search
-    import json
 
     with app.app_context():
         due = db.get_due_search_alerts()
@@ -105,10 +108,8 @@ def check_search_alerts(app) -> None:
                     elif source == "semantic_scholar":
                         results.extend(search.semantic_scholar(alert["query"], 10, user_id=alert["user_id"]))
                     elif source:
-                        try:
+                        with contextlib.suppress(Exception):
                             results.extend(search.browse_serpapi_search(alert["query"], 10, source, {}, user_id=alert["user_id"]))
-                        except Exception:
-                            pass
 
                 new_ids = [str(r.get("id", "")) for r in results if r.get("id")]
                 old_ids = json.loads(alert.get("last_result_ids_json", "[]"))

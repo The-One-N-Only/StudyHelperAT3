@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import os
-import requests
 import json
 import logging
-from typing import Optional
-import src.whitelist as whitelist
+import os
+
+import requests
+
 import src.proxy as proxy
+import src.whitelist as whitelist
 
 AI_NOT_CONFIGURED_ERROR = (
     "Alexander is not configured. Add ANTHROPIC_API_KEY and restart StudyLib."
@@ -55,7 +56,7 @@ def _parse_ai_json_response(content: str) -> dict:
     return {}
 
 
-def summarise_url(url: str, title: Optional[str] = None, atn: Optional[str] = None, user_id: Optional[int] = None) -> dict:
+def summarise_url(url: str, title: str | None = None, atn: str | None = None, user_id: int | None = None) -> dict:
     if not ANTHROPIC_API_KEY:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
@@ -89,7 +90,7 @@ def summarise_url(url: str, title: Optional[str] = None, atn: Optional[str] = No
         return {"status": False, "error": AI_PROVIDER_ERROR}
 
 
-def summarise_file(file_id: int, user_id: int, atn: Optional[str] = None) -> dict:
+def summarise_file(file_id: int, user_id: int, atn: str | None = None) -> dict:
     if not ANTHROPIC_API_KEY:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 
@@ -145,7 +146,7 @@ def suggest_tags(title: str, snippet: str) -> list:
         return []
 
 
-def summarise_search_results(query: str, results: list[dict], atn: str | None = None) -> dict:
+def summarise_search_results(_query: str, results: list[dict], atn: str | None = None) -> dict:
     if not ANTHROPIC_API_KEY:
         return {"status": False, "error": AI_NOT_CONFIGURED_ERROR}
 

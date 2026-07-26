@@ -3,33 +3,33 @@ import json
 import logging
 import os
 import re
-import secrets
 import uuid
-import flask
-from flask import Blueprint, request, jsonify, session, send_file, Response
+
+from flask import Blueprint, Response, jsonify, request, send_file, session
+
+import src.abs_data as abs_data
+import src.aiatsis as aiatsis
 import src.answer as answer
+import src.austlii as austlii
 import src.citations as citations
+import src.dashboard as dashboard
 import src.db as db
 import src.embeddings as embeddings
+import src.english as english
 import src.files as files
+import src.gallery_search as gallery_search
+import src.mathematics as mathematics
 import src.proxy as proxy
 import src.pubmed as pubmed
+import src.rba_data as rba_data
 import src.search as search
 import src.semantic_scholar as semantic_scholar
 import src.summarise as summarise
+import src.tas as tas
 from backend.config import BROWSE_SERVER_TIMEOUT_SECONDS
 from backend.decorators import require_workspace_role
-from src.ratelimit import user_rate_limit, ip_rate_limit
-from src.tasks import task_queue, generate_task_id, Task, TaskPriority
-import src.english as english
-import src.mathematics as mathematics
-import src.austlii as austlii
-import src.abs_data as abs_data
-import src.rba_data as rba_data
-import src.gallery_search as gallery_search
-import src.aiatsis as aiatsis
-import src.tas as tas
-import src.dashboard as dashboard
+from src.ratelimit import ip_rate_limit, user_rate_limit
+from src.tasks import Task, generate_task_id, task_queue
 
 api_bp = Blueprint('api', __name__)
 
@@ -48,8 +48,8 @@ def browse_search():
     # Apply enhanced filter parameters
     date_from = filters.get('date_from', '')
     date_to = filters.get('date_to', '')
-    source_types = filters.get('source_types', [])
-    reading_level = filters.get('reading_level', '')
+    filters.get('source_types', [])
+    filters.get('reading_level', '')
     if date_from:
         filters['min_date'] = date_from[:4] if len(date_from) >= 4 else date_from
     if date_to:
@@ -673,8 +673,8 @@ def export_citations():
     if fmt == "json":
         return jsonify({"status": True, "citations": citations_list})
     elif fmt == "csv":
-        import io
         import csv as csv_mod
+        import io
         output = io.StringIO()
         writer = csv_mod.writer(output)
         writer.writerow(["Citation"])
@@ -1203,8 +1203,8 @@ def export_account_data():
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
 
     import io
-    import zipfile
     import json as json_mod
+    import zipfile
 
     user = db.get_user_by_id(user_id)
     if not user:
@@ -1429,12 +1429,12 @@ def bulk_move_items():
     target_workspace_id = data.get('target_workspace_id')
     if not item_ids or not target_workspace_id:
         return jsonify({'status': False, 'error': 'item_ids and target_workspace_id required'}), 400
-    with db.SessionLocal() as session:
+    with db.SessionLocal() as db_session:
         for wid in item_ids:
-            wi = session.query(db.WorkspaceItem).filter_by(id=wid, user_id=user_id).first()
+            wi = db_session.query(db.WorkspaceItem).filter_by(id=wid, user_id=user_id).first()
             if wi:
                 wi.workspace_id = target_workspace_id
-        session.commit()
+        db_session.commit()
     return jsonify({'status': True, 'moved': len(item_ids)})
 
 
@@ -1448,12 +1448,12 @@ def bulk_delete_items():
     if not item_ids:
         return jsonify({'status': False, 'error': 'item_ids required'}), 400
     now = int(__import__('time').time())
-    with db.SessionLocal() as session:
+    with db.SessionLocal() as db_session:
         for wid in item_ids:
-            wi = session.query(db.WorkspaceItem).filter_by(id=wid, user_id=user_id).first()
+            wi = db_session.query(db.WorkspaceItem).filter_by(id=wid, user_id=user_id).first()
             if wi:
                 wi.deleted_at = now
-        session.commit()
+        db_session.commit()
     return jsonify({'status': True, 'deleted': len(item_ids)})
 
 
@@ -1521,9 +1521,8 @@ def search_all_workspaces():
     workspaces = db.get_user_workspaces(user_id)
     results = {}
     for ws in workspaces:
-        if q in ws['name'].lower():
-            if ws['id'] not in results:
-                results[ws['id']] = {'workspace': ws, 'items': [], 'notes': []}
+        if q in ws['name'].lower() and ws['id'] not in results:
+            results[ws['id']] = {'workspace': ws, 'items': [], 'notes': []}
         items = db.get_workspace_items(user_id, ws['id'])
         for item in items:
             title = (item.get('title') or '').lower()
@@ -1724,8 +1723,8 @@ def export_flashcards(workspace_id):
         except ImportError:
             return jsonify({'status': False, 'error': 'genanki library not installed'}), 500
     else:
-        import io
         import csv
+        import io
         buf = io.StringIO()
         writer = csv.writer(buf)
         writer.writerow(['question', 'answer'])
@@ -1964,7 +1963,7 @@ def semantic_search():
         return jsonify({'status': False, 'error': 'Not logged in'}), 401
     data = request.json
     query = data.get('query', '').strip()
-    workspace_id = data.get('workspace_id')
+    data.get('workspace_id')
     if not query:
         return jsonify({'status': False, 'error': 'Query required'}), 400
     query_embedding = embeddings.compute_simple_embedding(query)

@@ -2,12 +2,23 @@ import logging
 import re
 import secrets
 import time
-from flask import Blueprint, request, render_template, session, redirect, url_for, flash, abort, jsonify
-from werkzeug.security import generate_password_hash, check_password_hash
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+
+from flask import (
+    Blueprint,
+    abort,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from werkzeug.security import check_password_hash, generate_password_hash
+
 import src.db as db
-import src.oauth as oauth
 import src.email as email
+import src.oauth as oauth
 from src.ratelimit import check_login_rate_limit, record_login_attempt
 
 auth_bp = Blueprint('auth', __name__)

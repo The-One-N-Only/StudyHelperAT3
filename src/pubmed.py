@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import requests
-import os
-from typing import Any, Optional
-from urllib.parse import quote
 import json
+import os
+from typing import Any
+from xml.etree import ElementTree as ET
+
+import requests
+from dotenv import load_dotenv
+
 import src.db as db
 import src.whitelist as whitelist
-from xml.etree import ElementTree as ET
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -24,7 +25,7 @@ SEARCH_PARAMS = {
 }
 
 
-def _build_search_query(query: str, mesh_terms: Optional[list[str]] = None, min_date: Optional[str] = None, max_date: Optional[str] = None) -> str:
+def _build_search_query(query: str, mesh_terms: list[str] | None = None, min_date: str | None = None, max_date: str | None = None) -> str:
     """Build a PubMed search query with optional filters."""
     search_parts = [query]
 
@@ -38,7 +39,7 @@ def _build_search_query(query: str, mesh_terms: Optional[list[str]] = None, min_
     return " AND ".join(search_parts) if len(search_parts) > 1 else query
 
 
-def search(query: str, num_results: int = 20, mesh_terms: Optional[list[str]] = None, min_date: Optional[str] = None, max_date: Optional[str] = None, *, user_id: int) -> list[dict[str, Any]]:
+def search(query: str, num_results: int = 20, mesh_terms: list[str] | None = None, min_date: str | None = None, max_date: str | None = None, *, user_id: int) -> list[dict[str, Any]]:
     """
     Search PubMed using ESearch.
 
@@ -143,7 +144,7 @@ def _fetch_articles(pmids: list[str], user_id: int) -> list[dict[str, Any]]:
         return []
 
 
-def _parse_article(article_elem: ET.Element) -> Optional[dict[str, Any]]:
+def _parse_article(article_elem: ET.Element) -> dict[str, Any] | None:
     """
     Parse a PubmedArticle XML element into our item format.
 

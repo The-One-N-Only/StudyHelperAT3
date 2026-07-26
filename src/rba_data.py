@@ -15,6 +15,6 @@ def get_exchange_rate(currency: str = "USD") -> dict:
     return {
         "title": f"AUD/{currency} Exchange Rate",
         "source": "Reserve Bank of Australia",
-        "url": f"https://www.rba.gov.au/statistics/frequency/exchange-rates.html",
+        "url": "https://www.rba.gov.au/statistics/frequency/exchange-rates.html",
         "note": "Visit RBA website for current exchange rates.",
     }

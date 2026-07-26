@@ -1,8 +1,7 @@
 """English subject-specific tools: related texts, literary criticism search."""
 
-import json
 import logging
-from typing import Optional
+
 from . import search as search_mod
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,7 @@ PRESCRIBED_TEXTS = {
     "The Poetry of T.S. Eliot": {"author": "T.S. Eliot", "type": "poetry", "module": "Critical Study", "elective": "N/A"},
 }
 
-def find_prescribed_text(query: str) -> Optional[dict]:
+def find_prescribed_text(query: str) -> dict | None:
     """Search for a prescribed text by title or author."""
     query_lower = query.lower()
     for title, info in PRESCRIBED_TEXTS.items():

@@ -2,14 +2,15 @@
 
 import time
 from datetime import datetime, timedelta
-from typing import Optional
+
 from . import db
+
 
 def get_dashboard_data(user_id: int) -> dict:
     """Aggregate dashboard analytics for a user."""
-    now = int(time.time())
+    int(time.time())
     week_ago = int((datetime.now() - timedelta(days=7)).timestamp())
-    month_ago = int((datetime.now() - timedelta(days=30)).timestamp())
+    int((datetime.now() - timedelta(days=30)).timestamp())
 
     # Workspace stats
     workspaces = db.get_user_workspaces(user_id)

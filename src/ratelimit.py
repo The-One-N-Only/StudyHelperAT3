@@ -1,8 +1,9 @@
-import time
 import logging
+import time
+from collections.abc import Callable
 from functools import wraps
-from flask import request, jsonify, session
-from typing import Callable
+
+from flask import jsonify, request, session
 
 logger = logging.getLogger(__name__)
 

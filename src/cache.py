@@ -1,7 +1,7 @@
-import json
 import hashlib
+import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class Cache:
         self._memory: dict[str, tuple[Any, float]] = {}
         self._default_ttl = 300  # 5 minutes
 
-    def init_app(self, redis_url: Optional[str] = None):
+    def init_app(self, redis_url: str | None = None):
         if REDIS_AVAILABLE and redis_url:
             try:
                 self._redis = redis_lib.from_url(redis_url, decode_responses=True)
@@ -35,7 +35,7 @@ class Cache:
         raw = json.dumps(params, sort_keys=True)
         return f"{prefix}:{hashlib.md5(raw.encode()).hexdigest()}"
 
-    def get(self, prefix: str, **params) -> Optional[Any]:
+    def get(self, prefix: str, **params) -> Any | None:
         key = self._make_key(prefix, **params)
         if self._redis:
             val = self._redis.get(key)
@@ -48,7 +48,7 @@ class Cache:
             del self._memory[key]
         return None
 
-    def set(self, prefix: str, value: Any, ttl: Optional[int] = None, **params):
+    def set(self, prefix: str, value: Any, ttl: int | None = None, **params):
         key = self._make_key(prefix, **params)
         ttl = ttl or self._default_ttl
         if self._redis:

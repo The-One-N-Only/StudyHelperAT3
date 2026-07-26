@@ -89,7 +89,7 @@ def test_whitelist_search_uses_serpapi_when_key_set(monkeypatch):
         assert "site:en.wikipedia.org" in params["q"]
         class FakeResponse:
             status_code = 200
-            def json(self_non):
+            def json(self):
                 return {"organic_results": [{"link": "https://en.wikipedia.org/wiki/Test", "title": "Test Title", "snippet": "Test snippet"}]}
         return FakeResponse()
     monkeypatch.setattr(search.requests, "get", fake_get)

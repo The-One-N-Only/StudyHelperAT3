@@ -7,12 +7,14 @@ import math
 import os
 import re
 from collections.abc import Mapping
-from typing import Any, Optional
+from difflib import SequenceMatcher
+from typing import Any
 from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 import requests
-import src.whitelist as whitelist
+
 import src.db as db
+import src.whitelist as whitelist
 from src.cache import cache
 
 USER_AGENT = "StudyLib/1.0 (Academic Research Assistant)"
@@ -58,7 +60,7 @@ def _bounded_search_count(num_results: int, maximum: int = CUSTOM_SEARCH_MAX_RES
     return min(max(requested, 0), maximum)
 
 
-def _browse_source_scope(source: str) -> tuple[str, Optional[str]]:
+def _browse_source_scope(source: str) -> tuple[str, str | None]:
     if source in BROWSE_SOURCE_DOMAINS:
         domain, source_name = BROWSE_SOURCE_DOMAINS[source]
         return f"site:{domain}", source_name
@@ -460,7 +462,7 @@ def canonical_source_url(value: str) -> str:
     return urlunsplit((scheme, netloc, parsed.path, parsed.query, ""))
 
 
-def result_identity(item: Mapping) -> Optional[tuple]:
+def result_identity(item: Mapping) -> tuple | None:
     """Return source/id, URL, display tuple, or None in approved priority order."""
     if not isinstance(item, Mapping):
         return None
@@ -513,9 +515,6 @@ def with_response_dedupe_metadata(item: Mapping) -> dict:
     )
     return response_item
 
-
-import re
-from difflib import SequenceMatcher
 
 
 def _normalize_title(title: str) -> str:
@@ -614,7 +613,7 @@ def deduplicate_results(results: Any) -> list[dict]:
         if surname:
             surname_groups.setdefault(surname, []).append(index)
 
-    for surname, indices in surname_groups.items():
+    for _surname, indices in surname_groups.items():
         for i in range(len(indices)):
             for j in range(i + 1, len(indices)):
                 idx_i = indices[i]
@@ -641,7 +640,7 @@ def deduplicate_results(results: Any) -> list[dict]:
         root = find(index)
         group_map.setdefault(root, []).append(index)
 
-    seen_in_deduped = set(id(d) for d in deduped)
+    set(id(d) for d in deduped)
     for item in deduped:
         item["duplicate_group"] = []
         for idx in group_map.get(find(items.index(item)), []):
@@ -771,7 +770,7 @@ def gbooks(query: str, num_results: int, filters: dict, *, user_id: int) -> list
             cache.set("gbooks", results, ttl=300, query=query, num_results=num_results, filters=filter_key)
             return results
         return []
-    except:
+    except Exception:
         return []
 
 
@@ -956,7 +955,7 @@ def oer_search(query: str, num_results: int, *, user_id: int) -> list[dict]:
         return []
 
 
-def whitelist_search(query: str, num_results: int, domains: Optional[list[str]] = None, *, user_id: int) -> list[dict]:
+def whitelist_search(query: str, num_results: int, domains: list[str] | None = None, *, user_id: int) -> list[dict]:
     """Search approved academic domains through SerpAPI only."""
     if not SERP_API_KEY:
         raise SerpApiConfigurationError("SERP_API_KEY is not configured")

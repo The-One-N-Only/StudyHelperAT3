@@ -4,16 +4,16 @@ import src.whitelist as whitelist
 
 
 def test_allowed_exact_domain():
-    assert whitelist.is_allowed("https://en.wikipedia.org/wiki/Test") == True
+    assert whitelist.is_allowed("https://en.wikipedia.org/wiki/Test")
 
 def test_allowed_wildcard_domain():
-    assert whitelist.is_allowed("https://uni.edu.au/page") == True
+    assert whitelist.is_allowed("https://uni.edu.au/page")
 
 def test_not_allowed_domain():
-    assert whitelist.is_allowed("https://example.com/page") == False
+    assert not whitelist.is_allowed("https://example.com/page")
 
 def test_malformed_url():
-    assert whitelist.is_allowed("not-a-url") == False
+    assert not whitelist.is_allowed("not-a-url")
 
 def test_get_domain():
     assert whitelist.get_domain("https://en.wikipedia.org/wiki/Test") == "en.wikipedia.org"
@@ -27,7 +27,7 @@ def test_get_whitelisted_domains():
 
 
 def test_allowed_gov_wildcard_domain():
-    assert whitelist.is_allowed("https://www.usa.gov/page") == True
+    assert whitelist.is_allowed("https://www.usa.gov/page")
 
 
 @pytest.mark.parametrize(

@@ -33,12 +33,9 @@ LOGIN_REDIRECT_PATTERNS = [
 ]
 
 
-def _looks_like_paywall(final_url: str, domain: str) -> bool:
+def _looks_like_paywall(final_url: str, _domain: str) -> bool:
     """Return True if the final URL suggests a login/paywall redirect."""
-    for pattern in LOGIN_REDIRECT_PATTERNS:
-        if pattern in final_url.lower():
-            return True
-    return False
+    return any(pattern in final_url.lower() for pattern in LOGIN_REDIRECT_PATTERNS)
 
 
 def _check_paywall_content(text: str) -> bool:
@@ -52,7 +49,7 @@ def _check_paywall_content(text: str) -> bool:
     return any(kw in text_lower for kw in paywall_keywords)
 
 
-def _wayback_fallback(url: str) -> Optional[str]:
+def _wayback_fallback(url: str) -> str | None:
     """Query Wayback Machine API for an archived copy."""
     try:
         resp = requests.get(

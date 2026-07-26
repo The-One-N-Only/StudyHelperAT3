@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Optional
 from urllib.parse import urlparse
 
 # Load base whitelist
 _whitelist_path = os.path.join(os.path.dirname(__file__), 'whitelist.json')
-WHITELIST = json.load(open(_whitelist_path))
+with open(_whitelist_path) as f:
+    WHITELIST = json.load(f)
 
 # Load packs if available
 _packs_path = os.path.join(os.path.dirname(__file__), 'whitelist_packs.json')
 WHITELIST_PACKS = {}
 if os.path.exists(_packs_path):
-    WHITELIST_PACKS = json.load(open(_packs_path))
+    with open(_packs_path) as f:
+        WHITELIST_PACKS = json.load(f)
 
 KLA_TO_PACKS = {
     "Science": ["science"],
@@ -27,7 +28,7 @@ KLA_TO_PACKS = {
 }
 
 
-def get_domains_for_kla(kla: Optional[str] = None) -> list[str]:
+def get_domains_for_kla(kla: str | None = None) -> list[str]:
     """Get merged domain/pattern list: base + KLA-specific packs."""
     domains = list(WHITELIST.get("domains", []))
     patterns = list(WHITELIST.get("domain_patterns", []))
@@ -44,7 +45,7 @@ def get_domains_for_kla(kla: Optional[str] = None) -> list[str]:
     return domains + patterns
 
 
-def is_allowed(url: str, domains: Optional[list[str]] = None) -> bool:
+def is_allowed(url: str, domains: list[str] | None = None) -> bool:
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname
@@ -66,7 +67,7 @@ def is_allowed(url: str, domains: Optional[list[str]] = None) -> bool:
                 if hostname.endswith('.' + suffix):
                     return True
         return False
-    except:
+    except Exception:
         return False
 
 
@@ -74,21 +75,21 @@ def get_domain(url: str) -> str:
     try:
         parsed = urlparse(url)
         return parsed.hostname or ''
-    except:
+    except Exception:
         return ''
 
 
-def get_whitelisted_domains(kla: Optional[str] = None) -> list[str]:
+def get_whitelisted_domains(_kla: str | None = None) -> list[str]:
     """Return the explicitly whitelisted domains, optionally filtered by KLA."""
     return list(WHITELIST.get('domains', []))
 
 
-def get_whitelisted_domain_patterns(kla: Optional[str] = None) -> list[str]:
+def get_whitelisted_domain_patterns(_kla: str | None = None) -> list[str]:
     """Return approved wildcard domain patterns, optionally filtered by KLA."""
     return list(WHITELIST.get('domain_patterns', []))
 
 
-def get_whitelist_search_scope(kla: Optional[str] = None) -> str:
+def get_whitelist_search_scope(kla: str | None = None) -> str:
     """Generate a SerpAPI site scope covering base + KLA-specific domains."""
     domains = get_domains_for_kla(kla)
     scope_parts = []

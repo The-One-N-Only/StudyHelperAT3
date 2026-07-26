@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 KLA_CITATION_STYLES = {
     "Science": "apa",
@@ -19,7 +18,7 @@ def get_default_style_for_kla(kla: str) -> str:
     return KLA_CITATION_STYLES.get(kla, "apa")
 
 
-def _parse_authors(authors_raw: Optional[str | list[str]]) -> Optional[list[str]]:
+def _parse_authors(authors_raw: str | list[str] | None) -> list[str] | None:
     if not authors_raw:
         return None
     try:
@@ -38,12 +37,12 @@ def _format_academic_citation(
     style: str,
     title: str,
     url: str,
-    author_list: Optional[list[str]],
-    journal: Optional[str],
-    year: Optional[str],
-    volume: Optional[str],
-    issue: Optional[str],
-    doi: Optional[str],
+    author_list: list[str] | None,
+    journal: str | None,
+    year: str | None,
+    volume: str | None,
+    issue: str | None,
+    doi: str | None,
 ) -> str:
     if not author_list:
         author_str = journal or ""
@@ -75,8 +74,8 @@ def _format_web_citation(
     title: str,
     source_name: str,
     url: str,
-    author: Optional[str],
-    year: Optional[str],
+    author: str | None,
+    year: str | None,
 ) -> str:
     if style == "harvard":
         if author and year:
@@ -92,15 +91,15 @@ def format_apa(
     title: str,
     source_name: str,
     url: str,
-    author: Optional[str] = None,
-    year: Optional[str] = None,
-    authors: Optional[str] = None,
-    journal: Optional[str] = None,
-    volume: Optional[str] = None,
-    issue: Optional[str] = None,
-    doi: Optional[str] = None,
-    publisher: Optional[str] = None,
-    pages: Optional[str] = None,
+    author: str | None = None,
+    year: str | None = None,
+    authors: str | None = None,
+    journal: str | None = None,
+    volume: str | None = None,
+    issue: str | None = None,
+    doi: str | None = None,
+    _publisher: str | None = None,
+    _pages: str | None = None,
 ) -> str:
     author_list = _parse_authors(authors)
     if author_list is not None and journal:
@@ -112,15 +111,15 @@ def format_harvard(
     title: str,
     source_name: str,
     url: str,
-    author: Optional[str] = None,
-    year: Optional[str] = None,
-    authors: Optional[str] = None,
-    journal: Optional[str] = None,
-    volume: Optional[str] = None,
-    issue: Optional[str] = None,
-    doi: Optional[str] = None,
-    publisher: Optional[str] = None,
-    pages: Optional[str] = None,
+    author: str | None = None,
+    year: str | None = None,
+    authors: str | None = None,
+    journal: str | None = None,
+    volume: str | None = None,
+    issue: str | None = None,
+    doi: str | None = None,
+    _publisher: str | None = None,
+    _pages: str | None = None,
 ) -> str:
     author_list = _parse_authors(authors)
     if author_list is not None and journal:
@@ -128,7 +127,7 @@ def format_harvard(
     return _format_web_citation("harvard", title, source_name, url, author, year)
 
 
-def _format_author_last_first(author: Optional[str]) -> str:
+def _format_author_last_first(author: str | None) -> str:
     if not author:
         return ""
     parts = author.strip().split(None, 1)
@@ -141,18 +140,15 @@ def format_mla(
     title: str,
     source: str,
     url: str,
-    author: Optional[str] = None,
-    year: Optional[str] = None,
-    publisher: Optional[str] = None,
-    pages: Optional[str] = None,
-    volume: Optional[str] = None,
-    issue: Optional[str] = None,
-    doi: Optional[str] = None,
+    author: str | None = None,
+    year: str | None = None,
+    publisher: str | None = None,
+    pages: str | None = None,
+    volume: str | None = None,
+    issue: str | None = None,
+    _doi: str | None = None,
 ) -> str:
-    if author:
-        formatted_author = _format_author_last_first(author) + ". "
-    else:
-        formatted_author = ""
+    formatted_author = _format_author_last_first(author) + ". " if author else ""
     journal_part = ""
     if volume or issue:
         journal_part = ", vol. " + (volume or "") + ", no. " + (issue or "")
@@ -170,18 +166,15 @@ def format_chicago(
     title: str,
     source: str,
     url: str,
-    author: Optional[str] = None,
-    year: Optional[str] = None,
-    publisher: Optional[str] = None,
-    pages: Optional[str] = None,
-    volume: Optional[str] = None,
-    issue: Optional[str] = None,
-    doi: Optional[str] = None,
+    author: str | None = None,
+    year: str | None = None,
+    publisher: str | None = None,
+    pages: str | None = None,
+    volume: str | None = None,
+    issue: str | None = None,
+    _doi: str | None = None,
 ) -> str:
-    if author:
-        formatted_author = author.strip() + ". "
-    else:
-        formatted_author = ""
+    formatted_author = author.strip() + ". " if author else ""
     info_parts = [source]
     if volume:
         info_parts.append("vol. " + volume)
@@ -202,18 +195,15 @@ def format_ieee(
     title: str,
     source: str,
     url: str,
-    author: Optional[str] = None,
-    year: Optional[str] = None,
-    publisher: Optional[str] = None,
-    pages: Optional[str] = None,
-    volume: Optional[str] = None,
-    issue: Optional[str] = None,
-    doi: Optional[str] = None,
+    author: str | None = None,
+    year: str | None = None,
+    _publisher: str | None = None,
+    _pages: str | None = None,
+    _volume: str | None = None,
+    _issue: str | None = None,
+    _doi: str | None = None,
 ) -> str:
-    if author:
-        formatted_author = author.strip() + ", "
-    else:
-        formatted_author = ""
+    formatted_author = author.strip() + ", " if author else ""
     year_part = ", " + (year or "n.d.")
     return f'{formatted_author}"{title}," {source}{year_part}, {url}.'
 
@@ -223,8 +213,8 @@ def format_citation(
     source: str,
     url: str,
     style: str,
-    author: Optional[str] = None,
-    year: Optional[str] = None,
+    author: str | None = None,
+    year: str | None = None,
     **kwargs,
 ) -> str:
     kwargs.setdefault("publisher", None)

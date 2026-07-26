@@ -1,8 +1,8 @@
 """AustLII search for Australian case law and legislation."""
 
-import requests
 import logging
-from typing import Optional
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def search_cases(query: str, limit: int = 10) -> list[dict]:
         return _fallback_search(query, limit)
 
 
-def _fallback_search(query: str, limit: int) -> list[dict]:
+def _fallback_search(query: str, _limit: int) -> list[dict]:
     """Fallback: return AustLII search URL for manual browsing."""
     return [{
         "source_name": "AustLII",
