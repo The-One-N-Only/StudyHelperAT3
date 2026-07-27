@@ -20,4 +20,5 @@ alembic>=1.13.0
 redis>=5.0.0
 python-pptx>=1.0.0
 gunicorn>=21.2.0
+psycopg2-binary>=2.9.9
 sympy>=1.12
