@@ -76,7 +76,9 @@ def create_app():
 
     @app.route('/')
     def index():
-        user_id = session['user_id']
+        user_id = session.get('user_id')
+        if not user_id:
+            return redirect(url_for('auth.login'))
         logging.info(f"User {user_id} accessed home page")
         return render_template('index.html')
 
@@ -91,11 +93,14 @@ def create_app():
         if user_id:
             sid = request.cookies.get("session")
             if sid:
-                db.record_session(
-                    user_id, sid,
-                    request.remote_addr or "",
-                    request.user_agent.string if request.user_agent else "",
-                )
+                try:
+                    db.record_session(
+                        user_id, sid,
+                        request.remote_addr or "",
+                        request.user_agent.string if request.user_agent else "",
+                    )
+                except Exception as e:
+                    logging.warning(f"Failed to record session: {e}")
 
     @app.context_processor
     def inject_user():

@@ -1467,6 +1467,7 @@ def get_user_workspaces(user_id: int) -> list[dict[str, Any]]:
             results.append({
                 "id": w.id,
                 "name": w.name,
+                "persona": w.persona,
                 "time_created": w.time_created,
                 "item_count": len(w.items) if w.items else 0,
                 "note_count": len(w.notes) if w.notes else 0,
@@ -1485,6 +1486,7 @@ def get_user_workspaces(user_id: int) -> list[dict[str, Any]]:
                 results.append({
                     "id": w.id,
                     "name": w.name,
+                    "persona": w.persona,
                     "time_created": w.time_created,
                     "item_count": len(w.items) if w.items else 0,
                     "note_count": len(w.notes) if w.notes else 0,
@@ -1512,6 +1514,7 @@ def get_workspace(user_id: int, workspace_id: int) -> dict[str, Any] | None:
         return {
             "id": workspace.id,
             "name": workspace.name,
+            "persona": workspace.persona,
             "time_created": workspace.time_created,
             "item_count": len(workspace.items) if workspace.items else 0,
             "note_count": len(workspace.notes) if workspace.notes else 0,
@@ -1626,6 +1629,7 @@ def create_workspace(user_id: int, name: str, parent_id: int | None = None, fold
         return {
             "id": new_workspace.id,
             "name": new_workspace.name,
+            "persona": new_workspace.persona,
             "time_created": new_workspace.time_created,
             "parent_id": new_workspace.parent_id,
             "folder_id": new_workspace.folder_id,
@@ -2087,7 +2091,19 @@ def get_folder_tree(user_id: int) -> dict:
             }
             if ws.folder_id and ws.folder_id in folder_map:
                 folder_map[ws.folder_id]["workspaces"].append(w_node)
-        return {"folders": roots, "root_workspaces": [w for w in workspaces if w.folder_id is None and not w.archived and w.deleted_at is None]}
+        root_workspaces = []
+        for w in workspaces:
+            if w.folder_id is None and not w.archived and w.deleted_at is None:
+                root_workspaces.append({
+                    "id": w.id,
+                    "name": w.name,
+                    "time_created": w.time_created,
+                    "item_count": len(w.items) if w.items else 0,
+                    "note_count": len(w.notes) if w.notes else 0,
+                    "archived": w.archived,
+                    "folder_id": w.folder_id
+                })
+        return {"folders": roots, "root_workspaces": root_workspaces}
 
 
 def rename_folder(folder_id: int, new_name: str, user_id: int) -> dict | None:

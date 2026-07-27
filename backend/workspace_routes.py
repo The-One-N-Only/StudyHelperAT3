@@ -75,7 +75,7 @@ def workspace(workspace_id):
         return redirect(url_for('index'))
 
     logging.info(f"User {user_id} accessed workspace {workspace_id}")
-    return render_template('workspace.html', workspace_id=workspace_id, workspace_name=workspace['name'], course_id=workspace.get('course_id'), course_name=workspace.get('course_name'), course_kla=workspace.get('course_kla'))
+    return render_template('workspace.html', workspace_id=workspace_id, workspace_name=workspace['name'], persona=workspace.get('persona', 'formal'), course_id=workspace.get('course_id'), course_name=workspace.get('course_name'), course_kla=workspace.get('course_kla'))
 
 
 # ── Folder Endpoints ──
